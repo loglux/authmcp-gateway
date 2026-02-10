@@ -1,0 +1,249 @@
+"""Configuration management for RAG MCP Server authentication."""
+
+import os
+from dataclasses import dataclass, field
+from typing import List, Optional, Set
+
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    """Parse boolean from environment variable."""
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_list(name: str) -> List[str]:
+    """Parse comma-separated list from environment variable."""
+    value = os.getenv(name, "").strip()
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _env_set(name: str) -> Set[str]:
+    """Parse comma-separated list into set from environment variable."""
+    return set(_env_list(name))
+
+
+def _env_int(name: str, default: int) -> int:
+    """Parse integer from environment variable."""
+    value = os.getenv(name)
+    if value is None:
+        return default
+    try:
+        return int(value.strip())
+    except ValueError:
+        return default
+
+
+@dataclass
+class JWTConfig:
+    """JWT token configuration."""
+
+    algorithm: str  # HS256 or RS256
+    secret_key: Optional[str] = None
+    private_key: Optional[str] = None
+    public_key: Optional[str] = None
+    access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 7
+
+    def __post_init__(self):
+        """Validate JWT configuration."""
+        if self.algorithm == "HS256":
+            if not self.secret_key:
+                raise ValueError("JWT_SECRET_KEY is required when using HS256 algorithm")
+        elif self.algorithm == "RS256":
+            if not self.private_key or not self.public_key:
+                raise ValueError("JWT_PRIVATE_KEY and JWT_PUBLIC_KEY are required when using RS256 algorithm")
+        else:
+            raise ValueError(f"Unsupported JWT algorithm: {self.algorithm}. Use HS256 or RS256.")
+
+
+@dataclass
+class AuthConfig:
+    """Authentication and password policy configuration."""
+
+    allow_registration: bool = False
+    sqlite_path: str = "data/auth.db"
+    password_min_length: int = 8
+    password_require_uppercase: bool = True
+    password_require_lowercase: bool = True
+    password_require_digit: bool = True
+    password_require_special: bool = True
+
+
+@dataclass
+class AppConfig:
+    """Complete application configuration."""
+
+    # JWT settings
+    jwt: JWTConfig
+
+    # Auth settings
+    auth: AuthConfig
+
+    # MCP public URL
+    mcp_public_url: str
+
+    # Authentication enforcement
+    auth_required: bool = True
+
+    # Static bearer tokens (for backward compatibility or service accounts)
+    static_bearer_tokens: List[str] = field(default_factory=list)
+
+    # Trusted IPs (bypass auth for local services)
+    trusted_ips: Set[str] = field(default_factory=set)
+
+    # RAG backend configuration
+    rag_api_base_url: str = "http://localhost:8004/api/v1"
+    rag_api_bearer: Optional[str] = None
+    rag_api_key: Optional[str] = None
+    rag_api_username: Optional[str] = None
+    rag_api_password: Optional[str] = None
+
+    # Default knowledge base
+    default_kb_id: Optional[str] = None
+
+    # Network settings
+    request_timeout_seconds: int = 60
+    allow_insecure_http: bool = False
+    allowed_origins: Set[str] = field(default_factory=set)
+    disable_dns_rebinding: bool = True
+    transport_allowed_hosts: List[str] = field(default_factory=list)
+    transport_allowed_origins: List[str] = field(default_factory=list)
+
+    # Retrieval config
+    retrieval_config_path: Optional[str] = None
+    retrieval_config_ttl_seconds: float = 2.0
+
+    # Logging
+    log_level: str = "INFO"
+
+    @property
+    def retrieval_config_ttl(self) -> float:
+        """Alias for retrieval_config_ttl_seconds for backward compatibility."""
+        return self.retrieval_config_ttl_seconds
+
+
+def _load_jwt_keys(algorithm: str, private_key_path: Optional[str], public_key_path: Optional[str]) -> tuple[Optional[str], Optional[str]]:
+    """Load RSA keys from file paths if using RS256."""
+    if algorithm != "RS256":
+        return None, None
+
+    private_key = None
+    public_key = None
+
+    if private_key_path:
+        try:
+            with open(private_key_path, "r", encoding="utf-8") as f:
+                private_key = f.read()
+        except FileNotFoundError:
+            raise ValueError(f"Private key file not found: {private_key_path}")
+        except Exception as e:
+            raise ValueError(f"Failed to read private key from {private_key_path}: {e}")
+
+    if public_key_path:
+        try:
+            with open(public_key_path, "r", encoding="utf-8") as f:
+                public_key = f.read()
+        except FileNotFoundError:
+            raise ValueError(f"Public key file not found: {public_key_path}")
+        except Exception as e:
+            raise ValueError(f"Failed to read public key from {public_key_path}: {e}")
+
+    return private_key, public_key
+
+
+def load_config() -> AppConfig:
+    """Load configuration from environment variables.
+
+    Returns:
+        AppConfig: Complete application configuration
+
+    Raises:
+        ValueError: If required configuration is missing or invalid
+    """
+    # JWT Configuration
+    jwt_algorithm = os.getenv("JWT_ALGORITHM", "HS256").strip().upper()
+    jwt_secret_key = os.getenv("JWT_SECRET_KEY", "").strip() or None
+
+    # Load RSA keys from file paths if RS256
+    jwt_private_key_path = os.getenv("JWT_PRIVATE_KEY_PATH", "").strip() or None
+    jwt_public_key_path = os.getenv("JWT_PUBLIC_KEY_PATH", "").strip() or None
+
+    jwt_private_key, jwt_public_key = _load_jwt_keys(
+        jwt_algorithm,
+        jwt_private_key_path,
+        jwt_public_key_path
+    )
+
+    jwt_config = JWTConfig(
+        algorithm=jwt_algorithm,
+        secret_key=jwt_secret_key,
+        private_key=jwt_private_key,
+        public_key=jwt_public_key,
+        access_token_expire_minutes=_env_int("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", 30),
+        refresh_token_expire_days=_env_int("JWT_REFRESH_TOKEN_EXPIRE_DAYS", 7),
+    )
+
+    # Auth Configuration
+    auth_config = AuthConfig(
+        allow_registration=_env_bool("ALLOW_REGISTRATION", False),
+        sqlite_path=os.getenv("AUTH_SQLITE_PATH", "data/auth.db"),
+        password_min_length=_env_int("PASSWORD_MIN_LENGTH", 8),
+        password_require_uppercase=_env_bool("PASSWORD_REQUIRE_UPPERCASE", True),
+        password_require_lowercase=_env_bool("PASSWORD_REQUIRE_LOWERCASE", True),
+        password_require_digit=_env_bool("PASSWORD_REQUIRE_DIGIT", True),
+        password_require_special=_env_bool("PASSWORD_REQUIRE_SPECIAL", True),
+    )
+
+    # Application Configuration
+    mcp_public_url = os.getenv("MCP_PUBLIC_URL", "http://localhost:8000").rstrip("/")
+
+    app_config = AppConfig(
+        jwt=jwt_config,
+        auth=auth_config,
+        mcp_public_url=mcp_public_url,
+        auth_required=_env_bool("AUTH_REQUIRED", True),
+        static_bearer_tokens=_env_list("STATIC_BEARER_TOKENS"),
+        trusted_ips=_env_set("MCP_TRUSTED_IPS"),
+        rag_api_base_url=os.getenv("RAG_API_BASE_URL", "http://localhost:8004/api/v1").rstrip("/"),
+        rag_api_bearer=os.getenv("RAG_API_BEARER", "").strip() or None,
+        rag_api_key=os.getenv("RAG_API_KEY", "").strip() or None,
+        rag_api_username=os.getenv("RAG_API_USERNAME", "").strip() or None,
+        rag_api_password=os.getenv("RAG_API_PASSWORD", "").strip() or None,
+        default_kb_id=os.getenv("DEFAULT_KB_ID", "").strip() or None,
+        request_timeout_seconds=_env_int("REQUEST_TIMEOUT_SECONDS", 60),
+        allow_insecure_http=_env_bool("ALLOW_INSECURE_HTTP", False),
+        allowed_origins=_env_set("ALLOWED_ORIGINS"),
+        disable_dns_rebinding=_env_bool("DISABLE_DNS_REBINDING", True),
+        transport_allowed_hosts=_env_list("TRANSPORT_ALLOWED_HOSTS"),
+        transport_allowed_origins=_env_list("TRANSPORT_ALLOWED_ORIGINS"),
+        retrieval_config_path=os.getenv("RETRIEVAL_CONFIG_PATH", "").strip() or None,
+        retrieval_config_ttl_seconds=float(os.getenv("RETRIEVAL_CONFIG_TTL_SECONDS", "2.0")),
+        log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    )
+
+    return app_config
+
+
+# Global config instance (loaded once on import)
+_config_instance: Optional[AppConfig] = None
+
+
+def get_config() -> AppConfig:
+    """Get the global configuration instance.
+
+    Returns:
+        AppConfig: The application configuration
+    """
+    global _config_instance
+    if _config_instance is None:
+        _config_instance = load_config()
+    return _config_instance

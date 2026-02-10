@@ -1,0 +1,21 @@
+# Core dependencies
+mcp>=1.2.0
+starlette>=0.37.2
+uvicorn>=0.30.0
+httpx>=0.27.0
+pyjwt[crypto]>=2.8.0
+python-dotenv>=1.0.1
+
+# Authentication
+passlib[bcrypt]>=1.7.4
+bcrypt<4.2.0
+email-validator>=2.1.0
+
+# Optional: Development
+# pytest>=8.0.0
+# pytest-asyncio>=0.23.0
+# pytest-cov>=4.1.0
+# black>=24.0.0
+# isort>=5.13.0
+# flake8>=7.0.0
+# mypy>=1.8.0

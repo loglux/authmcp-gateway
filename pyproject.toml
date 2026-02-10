@@ -1,0 +1,95 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fastmcp-auth"
+version = "1.0.0"
+description = "Universal Authentication Gateway for MCP (Model Context Protocol) Servers"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "FastMCP Auth Contributors"}
+]
+keywords = [
+    "mcp",
+    "authentication",
+    "gateway",
+    "oauth2",
+    "jwt",
+    "proxy",
+    "model-context-protocol"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+    "Topic :: Security",
+]
+
+dependencies = [
+    "mcp>=1.2.0",
+    "starlette>=0.37.2",
+    "uvicorn>=0.30.0",
+    "httpx>=0.27.0",
+    "pyjwt[crypto]>=2.8.0",
+    "python-dotenv>=1.0.1",
+    "passlib[bcrypt]>=1.7.4",
+    "email-validator>=2.1.0",
+    "bcrypt<4.2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "black>=24.0.0",
+    "isort>=5.13.0",
+    "flake8>=7.0.0",
+    "mypy>=1.8.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/loglux/fastmcp-auth"
+Documentation = "https://github.com/loglux/fastmcp-auth#readme"
+Repository = "https://github.com/loglux/fastmcp-auth"
+Issues = "https://github.com/loglux/fastmcp-auth/issues"
+
+[project.scripts]
+fastmcp-auth = "fastmcp_auth.cli:main"
+
+[tool.setuptools]
+packages = ["fastmcp_auth"]
+package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+fastmcp_auth = ["py.typed"]
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+
+[tool.isort]
+profile = "black"
+line_length = 100
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --cov=fastmcp_auth --cov-report=term-missing"
