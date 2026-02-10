@@ -4,10 +4,10 @@ from typing import Optional
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response, RedirectResponse, JSONResponse
-from src.auth.jwt_handler import verify_token, decode_token_unsafe
-from src.auth.user_store import is_token_blacklisted, get_user_by_id
-from src.config import AppConfig
-from src.setup_wizard import is_setup_required
+from fastmcp_auth.auth.jwt_handler import verify_token, decode_token_unsafe
+from fastmcp_auth.auth.user_store import is_token_blacklisted, get_user_by_id
+from fastmcp_auth.config import AppConfig
+from fastmcp_auth.setup_wizard import is_setup_required
 
 logger = logging.getLogger(__name__)
 

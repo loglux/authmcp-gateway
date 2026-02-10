@@ -5,7 +5,7 @@ from typing import Optional, Tuple
 
 from passlib.context import CryptContext
 
-from src.config import AuthConfig
+from fastmcp_auth.config import AuthConfig
 
 # Password context using bcrypt
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

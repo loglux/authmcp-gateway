@@ -3,13 +3,13 @@ import logging
 from typing import Optional
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, Response
-from src.auth.user_store import (
+from fastmcp_auth.auth.user_store import (
     get_all_users,
     get_auth_logs,
     update_user_status,
     make_user_superuser,
 )
-from src.config import AppConfig
+from fastmcp_auth.config import AppConfig
 
 logger = logging.getLogger(__name__)
 
@@ -1299,7 +1299,7 @@ async def admin_settings(_: Request) -> HTMLResponse:
 async def api_get_settings(_: Request) -> JSONResponse:
     """Get current settings."""
     try:
-        from src.settings_manager import get_settings_manager
+        from fastmcp_auth.settings_manager import get_settings_manager
         settings_manager = get_settings_manager()
         return JSONResponse(settings_manager.get_all())
     except Exception as e:
@@ -1310,7 +1310,7 @@ async def api_get_settings(_: Request) -> JSONResponse:
 async def api_save_settings(request: Request) -> JSONResponse:
     """Save settings."""
     try:
-        from src.settings_manager import get_settings_manager
+        from fastmcp_auth.settings_manager import get_settings_manager
         settings_manager = get_settings_manager()
         
         body = await request.json()
@@ -1757,7 +1757,7 @@ async def admin_mcp_servers(_: Request) -> HTMLResponse:
 async def api_list_mcp_servers(_: Request) -> JSONResponse:
     """API: List all MCP servers."""
     try:
-        from src.mcp.store import list_mcp_servers
+        from fastmcp_auth.mcp.store import list_mcp_servers
         
         servers = list_mcp_servers(_config.auth.sqlite_path)
         
@@ -1770,7 +1770,7 @@ async def api_list_mcp_servers(_: Request) -> JSONResponse:
 async def api_create_mcp_server(request: Request) -> JSONResponse:
     """API: Create new MCP server."""
     try:
-        from src.mcp.store import create_mcp_server
+        from fastmcp_auth.mcp.store import create_mcp_server
         
         data = await request.json()
         
@@ -1787,10 +1787,10 @@ async def api_create_mcp_server(request: Request) -> JSONResponse:
         )
         
         # Trigger health check for new server
-        from src.mcp.health import get_health_checker
+        from fastmcp_auth.mcp.health import get_health_checker
         try:
             health_checker = get_health_checker()
-            from src.mcp.store import get_mcp_server
+            from fastmcp_auth.mcp.store import get_mcp_server
             server = get_mcp_server(_config.auth.sqlite_path, server_id)
             if server:
                 await health_checker.check_server(server)
@@ -1806,7 +1806,7 @@ async def api_create_mcp_server(request: Request) -> JSONResponse:
 async def api_delete_mcp_server(request: Request) -> JSONResponse:
     """API: Delete MCP server."""
     try:
-        from src.mcp.store import delete_mcp_server
+        from fastmcp_auth.mcp.store import delete_mcp_server
         
         server_id = int(request.path_params["server_id"])
         
@@ -1814,7 +1814,7 @@ async def api_delete_mcp_server(request: Request) -> JSONResponse:
         
         if success:
             # Invalidate cache
-            from src.mcp.proxy import McpProxy
+            from fastmcp_auth.mcp.proxy import McpProxy
             proxy = McpProxy(_config.auth.sqlite_path)
             proxy.invalidate_cache(server_id)
             
@@ -1829,8 +1829,8 @@ async def api_delete_mcp_server(request: Request) -> JSONResponse:
 async def api_test_mcp_server(request: Request) -> JSONResponse:
     """API: Test MCP server connection."""
     try:
-        from src.mcp.health import HealthChecker
-        from src.mcp.store import get_mcp_server
+        from fastmcp_auth.mcp.health import HealthChecker
+        from fastmcp_auth.mcp.store import get_mcp_server
         
         server_id = int(request.path_params["server_id"])
         server = get_mcp_server(_config.auth.sqlite_path, server_id)
@@ -1855,8 +1855,8 @@ async def api_test_mcp_server(request: Request) -> JSONResponse:
 async def api_get_mcp_server_tools(request: Request) -> JSONResponse:
     """API: Get tools from MCP server."""
     try:
-        from src.mcp.proxy import McpProxy
-        from src.mcp.store import get_mcp_server
+        from fastmcp_auth.mcp.proxy import McpProxy
+        from fastmcp_auth.mcp.store import get_mcp_server
         
         server_id = int(request.path_params["server_id"])
         server = get_mcp_server(_config.auth.sqlite_path, server_id)

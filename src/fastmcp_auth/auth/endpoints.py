@@ -8,8 +8,8 @@ import jwt
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from src.config import AppConfig
-from src.settings_manager import get_settings_manager
+from fastmcp_auth.config import AppConfig
+from fastmcp_auth.settings_manager import get_settings_manager
 
 from .jwt_handler import (
     create_access_token,

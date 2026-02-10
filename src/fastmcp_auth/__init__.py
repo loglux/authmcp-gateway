@@ -4,7 +4,8 @@ __version__ = "1.0.0"
 __author__ = "loglux"
 __license__ = "MIT"
 
-from .app import app
-from .config import load_config, get_config
+# Lazy imports to avoid loading config when not needed
+# from .app import app  # Import directly when needed
+# from .config import load_config, get_config  # Import directly when needed
 
-__all__ = ["app", "load_config", "get_config", "__version__"]
+__all__ = ["__version__"]

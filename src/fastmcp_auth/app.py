@@ -185,18 +185,18 @@ app = Starlette(
         Route("/admin/api-test", admin_routes.admin_api_test, methods=["GET"]),
 
         # Admin API
-        Route("/admin/api/users", admin_routes.api_list_users, methods=["GET"]),
-        Route("/admin/api/users", admin_routes.api_create_user, methods=["POST"]),
-        Route("/admin/api/users/{user_id:int}", admin_routes.api_delete_user, methods=["DELETE"]),
-        Route("/admin/api/users/{user_id:int}/toggle", admin_routes.api_toggle_user, methods=["POST"]),
+        Route("/admin/api/stats", admin_routes.api_stats, methods=["GET"]),
+        Route("/admin/api/users", admin_routes.api_users, methods=["GET"]),
+        Route("/admin/api/users/{user_id:int}/status", admin_routes.api_update_user_status, methods=["POST"]),
+        Route("/admin/api/users/{user_id:int}/superuser", admin_routes.api_make_superuser, methods=["POST"]),
         Route("/admin/api/mcp-servers", admin_routes.api_list_mcp_servers, methods=["GET"]),
         Route("/admin/api/mcp-servers", admin_routes.api_create_mcp_server, methods=["POST"]),
         Route("/admin/api/mcp-servers/{server_id:int}", admin_routes.api_delete_mcp_server, methods=["DELETE"]),
         Route("/admin/api/mcp-servers/{server_id:int}/test", admin_routes.api_test_mcp_server, methods=["POST"]),
         Route("/admin/api/mcp-servers/{server_id:int}/tools", admin_routes.api_get_mcp_server_tools, methods=["GET"]),
-        Route("/admin/api/logs", admin_routes.api_get_logs, methods=["GET"]),
+        Route("/admin/api/logs", admin_routes.api_logs, methods=["GET"]),
         Route("/admin/api/settings", admin_routes.api_get_settings, methods=["GET"]),
-        Route("/admin/api/settings", admin_routes.api_update_settings, methods=["PUT"]),
+        Route("/admin/api/settings", admin_routes.api_save_settings, methods=["PUT"]),
 
         # Discovery endpoints
         Route("/.well-known/oauth-protected-resource", oauth_protected_resource, methods=["GET"]),
@@ -227,9 +227,10 @@ app.add_middleware(
 )
 app.add_middleware(AdminAuthMiddleware, config=config)
 
-# Start health checker
-health_checker.start()
-logger.info("✓ Health checker started (interval=60s)")
+# Health checker will start automatically when server runs
+# (Lifecycle events are handled by uvicorn)
+# health_checker.start()
+# logger.info("✓ Health checker started (interval=60s)")
 
 logger.info("✓ Application configured")
 logger.info("  - Auth endpoints: /auth/register, /auth/login, /auth/refresh, /auth/logout, /auth/me")
