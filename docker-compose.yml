@@ -8,4 +8,6 @@ services:
       - .env
     volumes:
       - ./data:/app/data
+      - ./templates:/app/templates
+      - ./src:/app/src
     restart: unless-stopped

@@ -29,6 +29,33 @@
     </button>
 </div>
 
+<!-- Gateway Endpoints Info -->
+<div class="alert alert-info">
+    <div class="d-flex align-items-center">
+        <i class="bi bi-info-circle me-2"></i>
+        <div class="flex-grow-1">
+            <strong>Gateway Endpoints:</strong>
+            <div class="mt-1">
+                <div class="d-flex align-items-center mb-1">
+                    <code class="bg-white px-2 py-1 rounded" id="aggregatedEndpoint">http://192.168.10.32:9105/mcp</code>
+                    <button class="btn btn-sm btn-outline-secondary ms-2 py-0 px-2" onclick="copyToClipboard(document.getElementById('aggregatedEndpoint').textContent, this)" title="Copy URL">
+                        <i class="bi bi-clipboard"></i>
+                    </button>
+                    <small class="text-muted ms-2">All servers aggregated (with prefixes)</small>
+                </div>
+                <small class="text-muted">Each server below also has its own dedicated endpoint for individual access.</small>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    // Set aggregated endpoint dynamically
+    document.addEventListener('DOMContentLoaded', function() {
+        const baseUrl = window.location.origin;
+        document.getElementById('aggregatedEndpoint').textContent = baseUrl + '/mcp';
+    });
+</script>
+
 <!-- Servers List -->
 <div class="row" id="serversList">
     <!-- Populated by JavaScript -->
@@ -212,8 +239,22 @@
                             ${server.enabled ? '' : '<span class="badge bg-secondary">Disabled</span>'}
                         </h5>
                         ${server.description ? `<p class="text-muted mb-2">${server.description}</p>` : ''}
-                        <p class="mb-1"><small class="text-muted"><i class="bi bi-link"></i> ${server.url}</small></p>
+                        <p class="mb-1"><small class="text-muted"><i class="bi bi-link"></i> Backend: ${server.url}</small></p>
                         ${server.tool_prefix ? `<p class="mb-1"><small class="text-muted"><i class="bi bi-tag"></i> Prefix: <code>${server.tool_prefix}</code></small></p>` : ''}
+
+                        <!-- Gateway Endpoints -->
+                        <div class="card bg-light mt-2 mb-2">
+                            <div class="card-body py-2 px-3">
+                                <small class="text-muted d-block mb-1"><strong><i class="bi bi-arrow-right-circle"></i> Gateway Endpoint:</strong></small>
+                                <div class="d-flex align-items-center mb-1">
+                                    <code class="flex-grow-1 text-primary" style="font-size: 0.85em;" data-path="/mcp/${server.name.toLowerCase().replace(/\s+/g, '')}">/mcp/${server.name.toLowerCase().replace(/\s+/g, '')}</code>
+                                    <button class="btn btn-sm btn-outline-secondary ms-2 py-0 px-2" onclick="copyServerEndpoint(this.previousElementSibling)" title="Copy full URL">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                                <small class="text-muted" style="font-size: 0.75em;">Use this in MCP connectors for ${server.name} only</small>
+                            </div>
+                        </div>
 
                         <div class="mt-2">
                             <span class="badge bg-${getStatusColor(server.status)}">${server.status}</span>
@@ -439,6 +480,32 @@
         } catch (error) {
             alert('Error: ' + error.message);
         }
+    }
+
+    // Copy to clipboard function
+    async function copyToClipboard(text, button) {
+        try {
+            await navigator.clipboard.writeText(text);
+            const originalHtml = button.innerHTML;
+            button.innerHTML = '<i class="bi bi-check"></i>';
+            button.classList.add('btn-success');
+            button.classList.remove('btn-outline-secondary');
+            setTimeout(() => {
+                button.innerHTML = originalHtml;
+                button.classList.remove('btn-success');
+                button.classList.add('btn-outline-secondary');
+            }, 2000);
+        } catch (error) {
+            alert('Failed to copy: ' + error.message);
+        }
+    }
+
+    // Copy server endpoint with full URL
+    async function copyServerEndpoint(codeElement) {
+        const path = codeElement.getAttribute('data-path');
+        const fullUrl = window.location.origin + path;
+        const button = codeElement.nextElementSibling;
+        await copyToClipboard(fullUrl, button);
     }
 
     // Load servers on page load

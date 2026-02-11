@@ -10,12 +10,14 @@
 
 - **🔐 JWT/OAuth2 Authentication** - Built-in JWT (HS256/RS256) and OAuth2 Authorization Code Flow with PKCE
 - **🌐 Multi-Server Gateway** - Aggregate and proxy multiple MCP servers through a single endpoint
+- **🔀 Dynamic Endpoints** - Each backend server gets its own dedicated endpoint (`/mcp/{server_name}`)
 - **👥 User Management** - SQLite-based user database with role-based access control
 - **🎛️ Admin Panel** - Beautiful web UI for managing users, servers, and monitoring
 - **🔍 Auto-Discovery** - Automatic tool discovery and routing from backend MCP servers
 - **💚 Health Monitoring** - Background health checker for all connected servers
-- **🔄 Token Refresh** - Automatic token refresh for seamless user experience
-- **🎯 Tool Aggregation** - Aggregate tools from multiple servers into single namespace
+- **🔄 Token Refresh** - Automatic token refresh for both users and backend MCP servers
+- **🎯 Tool Aggregation** - Aggregate tools from multiple servers into single namespace with prefixes
+- **🔑 Backend Token Management** - Automatic OAuth2 token refresh for backend MCP servers
 
 ## 📦 Installation
 
@@ -171,6 +173,84 @@ curl -H "Authorization: Bearer $TOKEN" \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
 ```
 
+## 🔀 Dynamic Server Endpoints
+
+AuthMCP Gateway provides two ways to access your backend MCP servers:
+
+### Aggregated Endpoint
+
+Access **all** backend servers through a single endpoint:
+
+```
+POST https://your-domain.com/mcp
+```
+
+Tools from all servers are aggregated with their configured prefixes (e.g., `rag_query`, `ha_turn_on_light`).
+
+**Use case**: Single MCP connector in Claude.ai that provides access to all tools.
+
+### Server-Specific Endpoints
+
+Each backend server gets its own dedicated endpoint:
+
+```
+POST https://your-domain.com/mcp/{server_name}
+```
+
+Examples:
+- `https://your-domain.com/mcp/rag` - Only RAG server tools
+- `https://your-domain.com/mcp/homeassistant` - Only Home Assistant tools
+- `https://your-domain.com/mcp/n8n` - Only N8N tools
+
+**Use case**: Multiple separate MCP connectors in Claude.ai, each accessing a specific backend server.
+
+### Claude.ai Configuration Examples
+
+**Single aggregated connector:**
+```json
+{
+  "mcpServers": {
+    "authmcp-all": {
+      "url": "https://your-domain.com/mcp",
+      "auth": {
+        "type": "oauth2",
+        "authorization_url": "https://your-domain.com/authorize",
+        "token_url": "https://your-domain.com/oauth/token",
+        "scope": "openid profile email"
+      }
+    }
+  }
+}
+```
+
+**Multiple separate connectors:**
+```json
+{
+  "mcpServers": {
+    "rag-knowledge-base": {
+      "url": "https://your-domain.com/mcp/rag",
+      "auth": {
+        "type": "oauth2",
+        "authorization_url": "https://your-domain.com/authorize",
+        "token_url": "https://your-domain.com/oauth/token",
+        "scope": "openid profile email"
+      }
+    },
+    "home-assistant": {
+      "url": "https://your-domain.com/mcp/homeassistant",
+      "auth": {
+        "type": "oauth2",
+        "authorization_url": "https://your-domain.com/authorize",
+        "token_url": "https://your-domain.com/oauth/token",
+        "scope": "openid profile email"
+      }
+    }
+  }
+}
+```
+
+**Finding endpoint URLs**: The admin panel displays the exact endpoint URL for each server with a copy button.
+
 ## 🏗️ Architecture
 
 ```
@@ -258,6 +338,10 @@ MCP_TRUSTED_IPS=127.0.0.1,::1
 
 # Optional: User Registration
 ALLOW_REGISTRATION=false                     # Allow public registration
+
+# Backend Token Management
+MCP_TOKEN_REFRESH_INTERVAL=300               # Check tokens every 5 minutes
+MCP_TOKEN_REFRESH_THRESHOLD=5                # Refresh if expires within 5 minutes
 ```
 
 ## 🤝 Compatible MCP Servers
@@ -297,8 +381,9 @@ docker run -d \
 version: '3.8'
 
 services:
-  fastmcp-auth:
-    image: loglux/fastmcp-auth:latest
+  authmcp-gateway:
+    build: .
+    container_name: authmcp-gateway
     ports:
       - "8000:8000"
     environment:
@@ -306,6 +391,8 @@ services:
       - MCP_PUBLIC_URL=https://your-domain.com
     volumes:
       - ./data:/app/data
+      - ./templates:/app/templates  # For live template editing
+      - ./src:/app/src              # For live code editing in development
     restart: unless-stopped
 ```
 

@@ -36,7 +36,11 @@ def init_mcp_database(db_path: str) -> None:
             last_error TEXT,
             tools_count INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            refresh_token_hash TEXT,
+            token_expires_at TIMESTAMP,
+            token_last_refreshed TIMESTAMP,
+            refresh_endpoint TEXT DEFAULT '/oauth/token'
         )
     """)
 

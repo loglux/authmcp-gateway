@@ -181,6 +181,15 @@ async def mcp_gateway_endpoint(request: Request) -> JSONResponse:
     return await mcp_handler.handle_request(request)
 
 
+async def mcp_server_endpoint(request: Request) -> JSONResponse:
+    """MCP Server-specific endpoint - routes to a single backend MCP server.
+
+    The server_name is extracted from the URL path (/mcp/{server_name}).
+    """
+    server_name = request.path_params.get("server_name")
+    return await mcp_handler.handle_request(request, server_name=server_name)
+
+
 # ============================================================================
 # APPLICATION SETUP
 # ============================================================================
@@ -246,7 +255,8 @@ app = Starlette(
     lifespan=lifespan,
     routes=[
         # MCP Gateway
-        Route("/mcp", mcp_gateway_endpoint, methods=["POST"]),
+        Route("/mcp/{server_name}", mcp_server_endpoint, methods=["POST"]),  # Server-specific endpoint
+        Route("/mcp", mcp_gateway_endpoint, methods=["POST"]),  # Aggregated endpoint
 
         # Auth endpoints
         Route("/auth/register", auth_endpoints.register, methods=["POST"]),

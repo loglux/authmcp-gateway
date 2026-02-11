@@ -23,11 +23,12 @@ class McpHandler:
         self.db_path = db_path
         self.proxy = McpProxy(db_path)
 
-    async def handle_request(self, request: Request) -> JSONResponse:
+    async def handle_request(self, request: Request, server_name: Optional[str] = None) -> JSONResponse:
         """Handle MCP jsonrpc request.
 
         Args:
             request: Starlette request
+            server_name: Optional server name to filter tools/calls
 
         Returns:
             JSONResponse with jsonrpc result
@@ -39,22 +40,22 @@ class McpHandler:
             method = data.get("method")
             params = data.get("params", {})
 
-            logger.debug(f"MCP request: method={method}, params={params}")
+            logger.debug(f"MCP request: method={method}, params={params}, server_name={server_name}")
 
             # Extract user_id from request state (set by auth middleware)
             user_id = getattr(request.state, "user_id", None)
 
             # Handle different MCP methods
             if method == "tools/list":
-                return await self._handle_tools_list(jsonrpc_id, user_id)
+                return await self._handle_tools_list(jsonrpc_id, user_id, server_name)
 
             elif method == "tools/call":
                 tool_name = params.get("name")
                 arguments = params.get("arguments", {})
-                return await self._handle_tool_call(jsonrpc_id, tool_name, arguments, user_id)
+                return await self._handle_tool_call(jsonrpc_id, tool_name, arguments, user_id, server_name)
 
             elif method == "initialize":
-                return await self._handle_initialize(jsonrpc_id, params)
+                return await self._handle_initialize(jsonrpc_id, params, server_name)
 
             else:
                 return self._error_response(
@@ -71,18 +72,19 @@ class McpHandler:
                 f"Internal error: {str(e)}"
             )
 
-    async def _handle_tools_list(self, jsonrpc_id: int, user_id: Optional[int]) -> JSONResponse:
+    async def _handle_tools_list(self, jsonrpc_id: int, user_id: Optional[int], server_name: Optional[str] = None) -> JSONResponse:
         """Handle tools/list request.
 
         Args:
             jsonrpc_id: JSON-RPC request ID
             user_id: Optional user ID for filtering
+            server_name: Optional server name to filter tools
 
         Returns:
             JSONResponse with tools list
         """
         try:
-            tools = await self.proxy.list_tools(user_id=user_id)
+            tools = await self.proxy.list_tools(user_id=user_id, server_name=server_name)
 
             # Format tools according to MCP protocol
             formatted_tools = []
@@ -121,7 +123,8 @@ class McpHandler:
         jsonrpc_id: int,
         tool_name: str,
         arguments: Dict[str, Any],
-        user_id: Optional[int]
+        user_id: Optional[int],
+        server_name: Optional[str] = None
     ) -> JSONResponse:
         """Handle tools/call request.
 
@@ -130,6 +133,7 @@ class McpHandler:
             tool_name: Tool name
             arguments: Tool arguments
             user_id: Optional user ID
+            server_name: Optional server name to restrict tool calls
 
         Returns:
             JSONResponse with tool call result
@@ -142,13 +146,14 @@ class McpHandler:
                     "Missing required parameter: name"
                 )
 
-            logger.info(f"Calling tool: {tool_name}")
+            logger.info(f"Calling tool: {tool_name} (server: {server_name or 'any'})")
 
             # Route and execute tool call via proxy
             result = await self.proxy.call_tool(
                 tool_name=tool_name,
                 arguments=arguments,
-                user_id=user_id
+                user_id=user_id,
+                server_name=server_name
             )
 
             # Return result from backend server
@@ -183,17 +188,23 @@ class McpHandler:
             logger.exception(f"Error calling tool '{tool_name}': {e}")
             return self._error_response(jsonrpc_id, -32603, str(e))
 
-    async def _handle_initialize(self, jsonrpc_id: int, params: Dict[str, Any]) -> JSONResponse:
+    async def _handle_initialize(self, jsonrpc_id: int, params: Dict[str, Any], server_name: Optional[str] = None) -> JSONResponse:
         """Handle initialize request.
 
         Args:
             jsonrpc_id: JSON-RPC request ID
             params: Initialize parameters
+            server_name: Optional server name for scoped endpoint
 
         Returns:
             JSONResponse with initialize result
         """
-        logger.info("Handling initialize request")
+        logger.info(f"Handling initialize request (server: {server_name or 'all'})")
+
+        # Customize server name if scoped to specific backend
+        display_name = "fastmcp-auth-gateway"
+        if server_name:
+            display_name = f"{server_name}"
 
         return JSONResponse({
             "jsonrpc": "2.0",
@@ -206,7 +217,7 @@ class McpHandler:
                     "prompts": {}
                 },
                 "serverInfo": {
-                    "name": "fastmcp-auth-gateway",
+                    "name": display_name,
                     "version": "2.0.0"
                 }
             }

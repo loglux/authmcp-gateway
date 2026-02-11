@@ -17,6 +17,11 @@ from .store import (
 logger = logging.getLogger(__name__)
 
 
+def normalize_server_name(name: str) -> str:
+    """Normalize server name for comparison (lowercase, no spaces/special chars)."""
+    return name.lower().replace(" ", "").replace("-", "").replace("_", "")
+
+
 class McpProxy:
     """MCP Gateway proxy that routes requests to backend MCP servers."""
 
@@ -33,20 +38,29 @@ class McpProxy:
         self._cache_timestamp: Dict[int, datetime] = {}
         self._cache_ttl = 60  # Cache TTL in seconds
 
-    async def list_tools(self, user_id: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Aggregate tools list from all backend MCP servers.
+    async def list_tools(self, user_id: Optional[int] = None, server_name: Optional[str] = None) -> List[Dict[str, Any]]:
+        """Aggregate tools list from backend MCP servers.
 
         Args:
             user_id: Optional user ID for permission filtering
+            server_name: Optional server name to filter to single server
 
         Returns:
-            List of tool definitions from all enabled servers
+            List of tool definitions from enabled servers
         """
         servers = list_mcp_servers(
             self.db_path,
             enabled_only=True,
             user_id=user_id
         )
+
+        # Filter by server_name if provided
+        if server_name:
+            normalized_name = normalize_server_name(server_name)
+            servers = [s for s in servers if normalize_server_name(s['name']) == normalized_name]
+            if not servers:
+                logger.warning(f"No server found with name: {server_name}")
+                return []
 
         if not servers:
             logger.warning("No enabled MCP servers found")
@@ -208,7 +222,8 @@ class McpProxy:
         self,
         tool_name: str,
         arguments: Optional[Dict[str, Any]] = None,
-        user_id: Optional[int] = None
+        user_id: Optional[int] = None,
+        server_name: Optional[str] = None
     ) -> Dict[str, Any]:
         """Route tool call to appropriate backend MCP server.
 
@@ -216,6 +231,7 @@ class McpProxy:
             tool_name: Name of the tool to call
             arguments: Tool arguments
             user_id: Optional user ID for permission checking
+            server_name: Optional server name to restrict tool calls
 
         Returns:
             Tool call result
@@ -226,10 +242,11 @@ class McpProxy:
             httpx.HTTPError: If backend request fails
         """
         # Find server for this tool
-        server = await self._route_tool_to_server(tool_name, user_id)
+        server = await self._route_tool_to_server(tool_name, user_id, server_name)
 
         if not server:
-            raise ToolNotFoundError(f"Tool '{tool_name}' not found in any MCP server")
+            scope = f" in server '{server_name}'" if server_name else " in any MCP server"
+            raise ToolNotFoundError(f"Tool '{tool_name}' not found{scope}")
 
         # Check user permissions
         if user_id and not check_user_mcp_access(self.db_path, user_id, server['id']):
@@ -241,7 +258,8 @@ class McpProxy:
     async def _route_tool_to_server(
         self,
         tool_name: str,
-        user_id: Optional[int] = None
+        user_id: Optional[int] = None,
+        server_name: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """Determine which backend server should handle this tool.
 
@@ -253,6 +271,7 @@ class McpProxy:
         Args:
             tool_name: Tool name
             user_id: Optional user ID for filtering
+            server_name: Optional server name to restrict search
 
         Returns:
             Server dict or None if not found
@@ -262,6 +281,14 @@ class McpProxy:
             enabled_only=True,
             user_id=user_id
         )
+
+        # Filter by server_name if provided
+        if server_name:
+            normalized_name = normalize_server_name(server_name)
+            servers = [s for s in servers if normalize_server_name(s['name']) == normalized_name]
+            if not servers:
+                logger.warning(f"No server found with name: {server_name}")
+                return None
 
         # Strategy 1: Prefix match
         for server in servers:
