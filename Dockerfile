@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy source code
 COPY src ./src
 COPY templates ./templates
+COPY scripts ./scripts
 COPY pyproject.toml ./
 
 # Install package

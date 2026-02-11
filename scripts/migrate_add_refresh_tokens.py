@@ -37,9 +37,29 @@ def migrate(db_path: str) -> None:
     cursor = conn.cursor()
 
     try:
+        # === STEP 0: Ensure mcp_servers table exists ===
+
+        logger.info("Checking if mcp_servers table exists...")
+        cursor.execute("""
+            SELECT name FROM sqlite_master
+            WHERE type='table' AND name='mcp_servers'
+        """)
+
+        if not cursor.fetchone():
+            logger.info("Creating mcp_servers table (first time setup)...")
+            # Import and call init function
+            import sys
+            sys.path.insert(0, '/app/src')
+            from authmcp_gateway.mcp.store import init_mcp_database
+            conn.close()
+            init_mcp_database(db_path)
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            logger.info("✓ Base MCP tables created")
+
         # === STEP 1: Add columns to mcp_servers table ===
 
-        logger.info("Checking mcp_servers table...")
+        logger.info("Checking mcp_servers table columns...")
         cursor.execute("PRAGMA table_info(mcp_servers)")
         columns = [row[1] for row in cursor.fetchall()]
 
