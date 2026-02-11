@@ -19,6 +19,11 @@ class McpServerBase(BaseModel):
     auth_type: Literal["none", "bearer", "basic"] = Field("none", description="Auth method for backend MCP")
     auth_token: Optional[str] = Field(None, description="Token for backend MCP authentication")
 
+    # Refresh token support (NEW)
+    refresh_token: Optional[str] = Field(None, description="OAuth2 refresh token (will be hashed in storage)")
+    token_expires_at: Optional[datetime] = Field(None, description="Access token expiration time")
+    refresh_endpoint: Optional[str] = Field(default="/oauth/token", description="OAuth2 token endpoint URL")
+
     # Routing
     routing_strategy: Literal["prefix", "explicit", "auto"] = Field(
         "prefix",
@@ -40,6 +45,10 @@ class McpServerUpdate(BaseModel):
     enabled: Optional[bool] = None
     auth_type: Optional[Literal["none", "bearer", "basic"]] = None
     auth_token: Optional[str] = None
+    # Refresh token support (NEW)
+    refresh_token: Optional[str] = None
+    token_expires_at: Optional[datetime] = None
+    refresh_endpoint: Optional[str] = None
     routing_strategy: Optional[Literal["prefix", "explicit", "auto"]] = None
 
 
@@ -50,6 +59,7 @@ class McpServerResponse(McpServerBase):
     last_health_check: Optional[datetime] = None
     last_error: Optional[str] = None
     tools_count: int = 0
+    token_last_refreshed: Optional[datetime] = None  # NEW
     created_at: datetime
     updated_at: datetime
 
@@ -140,3 +150,34 @@ class McpToolCallResponse(BaseModel):
         default=None,
         description="Metadata about which server handled the request"
     )
+
+
+# Token Management Models (NEW)
+class McpServerTokenStatus(BaseModel):
+    """Token status for backend MCP server (admin UI)."""
+    server_id: int
+    server_name: str
+    auth_type: str
+    has_refresh_token: bool
+    token_expires_at: Optional[datetime] = None
+    token_expired: bool = False
+    time_until_expiry_seconds: Optional[int] = None
+    last_refreshed: Optional[datetime] = None
+    can_auto_refresh: bool = False  # True if has refresh_token and endpoint
+
+
+class TokenAuditLog(BaseModel):
+    """Token audit log entry."""
+    id: int
+    mcp_server_id: int
+    server_name: Optional[str] = None  # Joined from mcp_servers
+    event_type: str
+    success: bool
+    error_message: Optional[str] = None
+    old_expires_at: Optional[datetime] = None
+    new_expires_at: Optional[datetime] = None
+    triggered_by: str
+    timestamp: datetime
+
+    class Config:
+        from_attributes = True

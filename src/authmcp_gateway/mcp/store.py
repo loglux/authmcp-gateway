@@ -562,3 +562,223 @@ def check_user_mcp_access(db_path: str, user_id: int, mcp_server_id: int) -> boo
         return True
 
     return bool(row[0])
+
+
+# Token Management & Audit (NEW)
+
+def log_token_audit(
+    db_path: str,
+    mcp_server_id: int,
+    event_type: str,
+    success: bool = True,
+    error_message: Optional[str] = None,
+    old_expires_at: Optional[datetime] = None,
+    new_expires_at: Optional[datetime] = None,
+    triggered_by: str = "manual"
+) -> None:
+    """Log token refresh operation to audit table.
+
+    Args:
+        db_path: Path to SQLite database
+        mcp_server_id: MCP server ID
+        event_type: Event type ('refresh', 'manual_refresh', 'refresh_failed')
+        success: Whether operation succeeded
+        error_message: Error message if failed
+        old_expires_at: Previous expiration time
+        new_expires_at: New expiration time
+        triggered_by: What triggered refresh ('proactive', 'reactive_401', 'manual', 'startup')
+    """
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            """
+            INSERT INTO backend_mcp_token_audit
+            (mcp_server_id, event_type, success, error_message,
+             old_expires_at, new_expires_at, triggered_by, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                mcp_server_id,
+                event_type,
+                1 if success else 0,
+                error_message,
+                old_expires_at.isoformat() if old_expires_at else None,
+                new_expires_at.isoformat() if new_expires_at else None,
+                triggered_by,
+                datetime.now(timezone.utc).isoformat()
+            )
+        )
+
+        conn.commit()
+        logger.debug(
+            f"Token audit logged: server={mcp_server_id}, "
+            f"event={event_type}, success={success}, triggered_by={triggered_by}"
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to log token audit: {e}")
+        conn.rollback()
+
+    finally:
+        conn.close()
+
+
+def get_token_audit_logs(
+    db_path: str,
+    mcp_server_id: Optional[int] = None,
+    limit: int = 100
+) -> List[Dict[str, Any]]:
+    """Get token audit logs.
+
+    Args:
+        db_path: Path to SQLite database
+        mcp_server_id: Filter by MCP server ID (optional)
+        limit: Maximum number of logs to return
+
+    Returns:
+        List of audit log dicts with server name joined
+    """
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    if mcp_server_id:
+        cursor.execute(
+            """
+            SELECT a.*, s.name as server_name
+            FROM backend_mcp_token_audit a
+            JOIN mcp_servers s ON a.mcp_server_id = s.id
+            WHERE a.mcp_server_id = ?
+            ORDER BY a.timestamp DESC
+            LIMIT ?
+            """,
+            (mcp_server_id, limit)
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT a.*, s.name as server_name
+            FROM backend_mcp_token_audit a
+            JOIN mcp_servers s ON a.mcp_server_id = s.id
+            ORDER BY a.timestamp DESC
+            LIMIT ?
+            """,
+            (limit,)
+        )
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
+
+
+def update_mcp_server_token(
+    db_path: str,
+    server_id: int,
+    access_token: str,
+    token_expires_at: datetime,
+    refresh_token_hash: Optional[str] = None
+) -> None:
+    """Update MCP server tokens after refresh.
+
+    Args:
+        db_path: Path to SQLite database
+        server_id: MCP server ID
+        access_token: New access token
+        token_expires_at: New expiration time
+        refresh_token_hash: New refresh token hash if backend rotated it
+    """
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    now = datetime.now(timezone.utc).isoformat()
+
+    try:
+        if refresh_token_hash:
+            # Backend rotated refresh token - update both
+            cursor.execute(
+                """
+                UPDATE mcp_servers
+                SET auth_token = ?,
+                    token_expires_at = ?,
+                    refresh_token_hash = ?,
+                    token_last_refreshed = ?,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (access_token, token_expires_at.isoformat(), refresh_token_hash, now, now, server_id)
+            )
+        else:
+            # Only update access token
+            cursor.execute(
+                """
+                UPDATE mcp_servers
+                SET auth_token = ?,
+                    token_expires_at = ?,
+                    token_last_refreshed = ?,
+                    updated_at = ?
+                WHERE id = ?
+                """,
+                (access_token, token_expires_at.isoformat(), now, now, server_id)
+            )
+
+        rows_affected = cursor.rowcount
+        conn.commit()
+
+        if rows_affected > 0:
+            logger.info(
+                f"Updated tokens for server {server_id}: "
+                f"expires_at={token_expires_at.isoformat()}, "
+                f"rotated_refresh={refresh_token_hash is not None}"
+            )
+        else:
+            logger.warning(f"No server found with id {server_id} to update tokens")
+
+    except Exception as e:
+        logger.error(f"Failed to update server tokens: {e}")
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+def get_servers_needing_refresh(
+    db_path: str,
+    threshold_minutes: int = 5
+) -> List[Dict[str, Any]]:
+    """Get MCP servers whose tokens will expire soon.
+
+    Args:
+        db_path: Path to SQLite database
+        threshold_minutes: Refresh if expires within N minutes
+
+    Returns:
+        List of server dicts with expiring tokens
+    """
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+
+    # Calculate threshold timestamp
+    from datetime import timedelta
+    threshold = datetime.now(timezone.utc) + timedelta(minutes=threshold_minutes)
+
+    cursor.execute(
+        """
+        SELECT * FROM mcp_servers
+        WHERE enabled = 1
+          AND refresh_token_hash IS NOT NULL
+          AND token_expires_at IS NOT NULL
+          AND datetime(token_expires_at) <= datetime(?)
+        ORDER BY token_expires_at ASC
+        """,
+        (threshold.isoformat(),)
+    )
+
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
