@@ -107,6 +107,38 @@ class McpProxy:
                     headers=headers
                 )
 
+                # Handle 401 with token refresh (NEW)
+                if response.status_code == 401 and server.get('refresh_token_hash'):
+                    logger.warning(f"Got 401 from {server_name}, attempting token refresh")
+
+                    try:
+                        from .token_manager import get_token_manager
+                        token_mgr = get_token_manager()
+                        success, error = await token_mgr.refresh_server_token(
+                            server_id,
+                            triggered_by='reactive_401'
+                        )
+
+                        if success:
+                            # Reload server with new token and retry
+                            server = get_mcp_server(self.db_path, server_id)
+                            headers = self._get_auth_headers(server)
+                            response = await client.post(
+                                server_url,
+                                json={
+                                    "jsonrpc": "2.0",
+                                    "id": 1,
+                                    "method": "tools/list",
+                                    "params": {}
+                                },
+                                headers=headers
+                            )
+                            logger.info(f"Retry after token refresh succeeded for {server_name}")
+                        else:
+                            logger.error(f"Token refresh failed for {server_name}: {error}")
+                    except Exception as refresh_error:
+                        logger.error(f"Exception during token refresh: {refresh_error}")
+
                 response.raise_for_status()
                 data = response.json()
 
@@ -311,6 +343,41 @@ class McpProxy:
                     },
                     headers=headers
                 )
+
+                # Handle 401 with token refresh (NEW)
+                if response.status_code == 401 and server.get('refresh_token_hash'):
+                    logger.warning(f"Got 401 calling '{tool_name}' on {server_name}, attempting token refresh")
+
+                    try:
+                        from .token_manager import get_token_manager
+                        token_mgr = get_token_manager()
+                        success, error = await token_mgr.refresh_server_token(
+                            server['id'],
+                            triggered_by='reactive_401'
+                        )
+
+                        if success:
+                            # Reload server with new token and retry
+                            server = get_mcp_server(self.db_path, server['id'])
+                            headers = self._get_auth_headers(server)
+                            response = await client.post(
+                                server_url,
+                                json={
+                                    "jsonrpc": "2.0",
+                                    "id": 1,
+                                    "method": "tools/call",
+                                    "params": {
+                                        "name": tool_name,
+                                        "arguments": arguments or {}
+                                    }
+                                },
+                                headers=headers
+                            )
+                            logger.info(f"Retry after token refresh succeeded for '{tool_name}' on {server_name}")
+                        else:
+                            logger.error(f"Token refresh failed for {server_name}: {error}")
+                    except Exception as refresh_error:
+                        logger.error(f"Exception during token refresh: {refresh_error}")
 
                 response.raise_for_status()
                 data = response.json()

@@ -122,6 +122,40 @@ class HealthChecker:
                     headers=headers
                 )
 
+                # Handle 401 with token refresh (NEW)
+                if response.status_code == 401 and server.get('refresh_token_hash'):
+                    logger.warning(f"Got 401 during health check for {server_name}, attempting token refresh")
+
+                    try:
+                        from .token_manager import get_token_manager
+                        from .store import get_mcp_server
+
+                        token_mgr = get_token_manager()
+                        success, error = await token_mgr.refresh_server_token(
+                            server_id,
+                            triggered_by='reactive_401'
+                        )
+
+                        if success:
+                            # Reload server with new token and retry
+                            server = get_mcp_server(self.db_path, server_id)
+                            headers = self._get_auth_headers(server)
+                            response = await client.post(
+                                server_url,
+                                json={
+                                    "jsonrpc": "2.0",
+                                    "id": 1,
+                                    "method": "tools/list",
+                                    "params": {}
+                                },
+                                headers=headers
+                            )
+                            logger.info(f"Health check retry after token refresh succeeded for {server_name}")
+                        else:
+                            logger.error(f"Token refresh failed during health check for {server_name}: {error}")
+                    except Exception as refresh_error:
+                        logger.error(f"Exception during token refresh in health check: {refresh_error}")
+
                 response.raise_for_status()
                 data = response.json()
 

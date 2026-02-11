@@ -64,6 +64,21 @@ health_checker = initialize_health_checker(
     timeout=10    # 10 second timeout per check
 )
 
+# Initialize token manager and refresher (NEW)
+from .mcp.token_manager import initialize_token_manager
+from .mcp.token_refresher import initialize_token_refresher
+
+token_manager = initialize_token_manager(
+    db_path=config.auth.sqlite_path,
+    timeout=config.request_timeout_seconds
+)
+
+token_refresher = initialize_token_refresher(
+    db_path=config.auth.sqlite_path,
+    interval=int(os.getenv("MCP_TOKEN_REFRESH_INTERVAL", "300")),        # 5 minutes
+    threshold_minutes=int(os.getenv("MCP_TOKEN_REFRESH_THRESHOLD", "5"))  # 5 minutes
+)
+
 # Configure middleware globals
 set_middleware_config(
     static_bearer_tokens=set(config.static_bearer_tokens),
@@ -185,6 +200,9 @@ async def lifespan(app):
     health_checker.start()
     logger.info("✓ Health checker started (interval=60s)")
 
+    token_refresher.start()
+    logger.info("✓ Token refresher started")
+
     # Start rate limiter cleanup task
     cleanup_task = None
     if config.rate_limit.enabled:
@@ -215,6 +233,9 @@ async def lifespan(app):
         except asyncio.CancelledError:
             pass
         logger.info("✓ Rate limiter cleanup stopped")
+
+    await token_refresher.stop()
+    logger.info("✓ Token refresher stopped")
 
     await health_checker.stop()
     logger.info("✓ Health checker stopped")
