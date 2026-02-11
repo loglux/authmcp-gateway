@@ -8,6 +8,78 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def init_mcp_database(db_path: str) -> None:
+    """Initialize MCP-related database tables.
+
+    Creates:
+    - mcp_servers: Backend MCP server configurations
+    - tool_mappings: Explicit tool-to-server mappings
+    - user_mcp_permissions: User access permissions to servers
+    """
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
+
+    # MCP servers table
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS mcp_servers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL,
+            description TEXT,
+            url TEXT NOT NULL,
+            tool_prefix TEXT,
+            enabled INTEGER DEFAULT 1,
+            auth_type TEXT DEFAULT 'none',
+            auth_token TEXT,
+            routing_strategy TEXT DEFAULT 'prefix',
+            status TEXT DEFAULT 'unknown',
+            last_health_check TIMESTAMP,
+            last_error TEXT,
+            tools_count INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+
+    # Tool mappings for explicit routing
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS tool_mappings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            tool_name TEXT UNIQUE NOT NULL,
+            mcp_server_id INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (mcp_server_id) REFERENCES mcp_servers(id) ON DELETE CASCADE
+        )
+    """)
+
+    # User permissions for MCP servers
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_mcp_permissions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            mcp_server_id INTEGER NOT NULL,
+            can_access INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, mcp_server_id),
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (mcp_server_id) REFERENCES mcp_servers(id) ON DELETE CASCADE
+        )
+    """)
+
+    # Create indexes for performance
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_mcp_servers_enabled ON mcp_servers(enabled)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_mcp_servers_status ON mcp_servers(status)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_mcp_servers_tool_prefix ON mcp_servers(tool_prefix)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_tool_mappings_tool_name ON tool_mappings(tool_name)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_tool_mappings_mcp_server_id ON tool_mappings(mcp_server_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_mcp_permissions_user_id ON user_mcp_permissions(user_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_mcp_permissions_mcp_server_id ON user_mcp_permissions(mcp_server_id)")
+
+    conn.commit()
+    conn.close()
+    logger.info("✓ MCP database tables initialized")
+
+
 def create_mcp_server(
     db_path: str,
     name: str,

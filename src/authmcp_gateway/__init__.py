@@ -1,4 +1,4 @@
-"""FastMCP Auth Gateway - Universal Authentication for MCP Servers."""
+"""AuthMCP Gateway - Universal Authentication for MCP Servers."""
 
 __version__ = "1.0.0"
 __author__ = "loglux"

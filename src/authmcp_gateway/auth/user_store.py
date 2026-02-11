@@ -501,3 +501,27 @@ def make_user_superuser(db_path: str, user_id: int):
             """,
             (datetime.now(timezone.utc).isoformat(), user_id)
         )
+
+
+def delete_user(db_path: str, user_id: int) -> bool:
+    """Delete user from database.
+
+    Args:
+        db_path: Path to SQLite database file
+        user_id: User ID to delete
+
+    Returns:
+        bool: True if user was deleted, False if user not found
+    """
+    with get_db_connection(db_path) as conn:
+        cursor = conn.cursor()
+
+        # Check if user exists
+        cursor.execute("SELECT id FROM users WHERE id = ?", (user_id,))
+        if not cursor.fetchone():
+            return False
+
+        # Delete user (CASCADE will delete related records)
+        cursor.execute("DELETE FROM users WHERE id = ?", (user_id,))
+
+        return True

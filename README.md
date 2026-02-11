@@ -1,4 +1,4 @@
-# FastMCP Auth Gateway
+# AuthMCP Gateway
 
 **Universal Authentication Gateway for MCP (Model Context Protocol) Servers**
 
@@ -175,7 +175,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ```
 ┌────────────────────────────────────────────┐
-│  FastMCP Auth Gateway                      │
+│  AuthMCP Gateway                      │
 │  • JWT/OAuth Authentication                │
 │  • Multi-server proxy & routing            │
 │  • Admin Panel                             │
@@ -262,7 +262,7 @@ ALLOW_REGISTRATION=false                     # Allow public registration
 
 ## 🤝 Compatible MCP Servers
 
-FastMCP Auth Gateway works with **any** MCP-compliant server:
+AuthMCP Gateway works with **any** MCP-compliant server:
 
 - [FastMCP](https://github.com/jlowin/fastmcp) - Python framework for MCP servers
 - [Home Assistant MCP](https://github.com/home-assistant/mcp) - Smart home integration

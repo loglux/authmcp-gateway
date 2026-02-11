@@ -8,8 +8,9 @@ import jwt
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from fastmcp_auth.config import AppConfig
-from fastmcp_auth.settings_manager import get_settings_manager
+from authmcp_gateway.config import AppConfig
+from authmcp_gateway.settings_manager import get_settings_manager
+from authmcp_gateway.rate_limiter import get_rate_limiter
 
 from .jwt_handler import (
     create_access_token,
@@ -176,6 +177,30 @@ async def register(request: Request) -> JSONResponse:
         logger.error("Failed to parse registration request: %s", str(e))
         return _error_response(400, "Invalid request body", "INVALID_REQUEST")
 
+    # Rate limiting check
+    if config.rate_limit.enabled:
+        limiter = get_rate_limiter()
+        client_ip = _get_client_ip(request) or "unknown"
+        identifier = f"register:{client_ip}"
+
+        allowed, retry_after = limiter.check_limit(
+            identifier=identifier,
+            limit=config.rate_limit.register_limit,
+            window=config.rate_limit.register_window
+        )
+
+        if not allowed:
+            logger.warning(f"Rate limit exceeded for registration from {client_ip}")
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "detail": "Too many registration attempts. Please try again later.",
+                    "error_code": "RATE_LIMIT_EXCEEDED",
+                    "retry_after": retry_after
+                },
+                headers={"Retry-After": str(retry_after)}
+            )
+
     # Validate password strength
     is_valid, error_msg = validate_password_strength(user_data.password, config.auth)
     if not is_valid:
@@ -278,10 +303,34 @@ async def login(request: Request) -> JSONResponse:
         logger.error("Failed to parse login request: %s", str(e))
         return _error_response(400, "Invalid request body", "INVALID_REQUEST")
 
+    # Rate limiting check
+    if config.rate_limit.enabled:
+        limiter = get_rate_limiter()
+        client_ip = _get_client_ip(request) or "unknown"
+        identifier = f"login:{client_ip}"
+
+        allowed, retry_after = limiter.check_limit(
+            identifier=identifier,
+            limit=config.rate_limit.login_limit,
+            window=config.rate_limit.login_window
+        )
+
+        if not allowed:
+            logger.warning(f"Rate limit exceeded for login from {client_ip}")
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "detail": "Too many login attempts. Please try again later.",
+                    "error_code": "RATE_LIMIT_EXCEEDED",
+                    "retry_after": retry_after
+                },
+                headers={"Retry-After": str(retry_after)}
+            )
+
     # Get user by username
     user = get_user_by_username(db_path, login_data.username)
     if not user:
-        logger.warning("Login failed: user '%s' not found", login_data.username)
+        logger.warning("Login failed: invalid credentials - '%s'", login_data.username)
         log_auth_event(
             db_path=db_path,
             event_type="login",
@@ -289,13 +338,13 @@ async def login(request: Request) -> JSONResponse:
             ip_address=_get_client_ip(request),
             user_agent=_get_user_agent(request),
             success=False,
-            details="User not found"
+            details="Invalid credentials"
         )
         return _error_response(401, "Invalid username or password", "INVALID_CREDENTIALS")
 
     # Verify password
     if not verify_password(login_data.password, user["password_hash"]):
-        logger.warning("Login failed: invalid password for user '%s'", login_data.username)
+        logger.warning("Login failed: invalid credentials - '%s'", login_data.username)
         log_auth_event(
             db_path=db_path,
             event_type="login",
@@ -304,7 +353,7 @@ async def login(request: Request) -> JSONResponse:
             ip_address=_get_client_ip(request),
             user_agent=_get_user_agent(request),
             success=False,
-            details="Invalid password"
+            details="Invalid credentials"
         )
         return _error_response(401, "Invalid username or password", "INVALID_CREDENTIALS")
 
@@ -701,7 +750,7 @@ async def oauth_token(request: Request) -> JSONResponse:
             username = data.get("username")
             password = data.get("password")
 
-            logger.debug(f"OAuth login attempt: username={username}, password={repr(password)}")
+            logger.debug(f"OAuth login attempt: username={username}")
 
             if not username or not password:
                 return JSONResponse(
@@ -712,10 +761,34 @@ async def oauth_token(request: Request) -> JSONResponse:
                     }
                 )
 
+            # Rate limiting check
+            if _config.rate_limit.enabled:
+                limiter = get_rate_limiter()
+                client_ip = request.client.host if request.client else "unknown"
+                identifier = f"oauth_login:{client_ip}"
+
+                allowed, retry_after = limiter.check_limit(
+                    identifier=identifier,
+                    limit=_config.rate_limit.login_limit,
+                    window=_config.rate_limit.login_window
+                )
+
+                if not allowed:
+                    logger.warning(f"Rate limit exceeded for OAuth login from {client_ip}")
+                    return JSONResponse(
+                        status_code=429,
+                        content={
+                            "error": "too_many_requests",
+                            "error_description": "Too many login attempts. Please try again later.",
+                            "retry_after": retry_after
+                        },
+                        headers={"Retry-After": str(retry_after)}
+                    )
+
             # Get user from database
             user = get_user_by_username(_config.auth.sqlite_path, username)
             if not user:
-                logger.warning(f"Login failed: user not found - {username}")
+                logger.warning(f"OAuth login failed: invalid credentials - {username}")
                 log_auth_event(
                     _config.auth.sqlite_path,
                     "failed_login",
@@ -724,7 +797,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                     request.client.host if request.client else None,
                     request.headers.get("user-agent"),
                     False,
-                    "User not found"
+                    "Invalid credentials"
                 )
                 return JSONResponse(
                     status_code=401,
@@ -736,7 +809,7 @@ async def oauth_token(request: Request) -> JSONResponse:
 
             # Verify password
             if not verify_password(password, user["password_hash"]):
-                logger.warning(f"Login failed: invalid password - {username}")
+                logger.warning(f"OAuth login failed: invalid credentials - {username}")
                 log_auth_event(
                     _config.auth.sqlite_path,
                     "failed_login",
@@ -745,7 +818,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                     request.client.host if request.client else None,
                     request.headers.get("user-agent"),
                     False,
-                    "Invalid password"
+                    "Invalid credentials"
                 )
                 return JSONResponse(
                     status_code=401,

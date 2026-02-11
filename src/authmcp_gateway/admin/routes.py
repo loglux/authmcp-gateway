@@ -1,0 +1,532 @@
+"""Admin panel routes."""
+import logging
+import sqlite3
+from pathlib import Path
+from typing import Optional, Callable, Any
+from functools import wraps
+from jinja2 import Environment, FileSystemLoader
+from starlette.requests import Request
+from starlette.responses import HTMLResponse, JSONResponse, Response
+from authmcp_gateway.auth.user_store import (
+    get_all_users,
+    get_auth_logs,
+    update_user_status,
+    make_user_superuser,
+)
+from authmcp_gateway.config import AppConfig
+
+logger = logging.getLogger(__name__)
+
+# Setup Jinja2 templates
+TEMPLATE_DIR = Path(__file__).parent.parent.parent.parent / "templates"
+jinja_env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
+
+# Global config instance
+_config: Optional[AppConfig] = None
+
+
+def initialize(config: AppConfig) -> None:
+    """Initialize admin routes with config."""
+    global _config
+    _config = config
+    logger.info("Admin routes initialized")
+
+
+def render_template(template_name: str, **context) -> HTMLResponse:
+    """Render Jinja2 template with context.
+
+    Args:
+        template_name: Name of template file (e.g., "admin/dashboard.html")
+        **context: Template context variables
+
+    Returns:
+        HTMLResponse with rendered template
+    """
+    template = jinja_env.get_template(template_name)
+    html = template.render(**context)
+    return HTMLResponse(content=html)
+
+
+def api_error_handler(func: Callable) -> Callable:
+    """Decorator for consistent error handling in admin API endpoints.
+
+    Handles:
+    - Config initialization check
+    - Exception catching and logging
+    - Consistent error response format
+
+    Usage:
+        @api_error_handler
+        async def my_api_endpoint(request: Request) -> JSONResponse:
+            # Your code here
+            return JSONResponse({"result": "success"})
+    """
+    @wraps(func)
+    async def wrapper(*args, **kwargs) -> JSONResponse:
+        # Check if config is initialized
+        if _config is None:
+            logger.error(f"{func.__name__}: Config not initialized")
+            return JSONResponse(
+                {"error": "Config not initialized"},
+                status_code=500
+            )
+
+        try:
+            # Call the actual function
+            return await func(*args, **kwargs)
+        except Exception as e:
+            # Log the error with context
+            logger.exception(f"{func.__name__} failed: {e}")
+            return JSONResponse(
+                {"error": str(e)},
+                status_code=500
+            )
+
+    return wrapper
+
+
+def _get_common_styles() -> str:
+    """Get common CSS styles for admin pages.
+
+    Returns:
+        CSS style block with common admin panel styles
+    """
+    return """
+        .sidebar {
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .nav-link {
+            color: rgba(255,255,255,0.8);
+            transition: all 0.3s;
+        }
+        .nav-link:hover, .nav-link.active {
+            color: white;
+            background: rgba(255,255,255,0.1);
+            border-radius: 8px;
+        }
+    """
+
+
+def _get_sidebar_nav(active_page: str = "") -> str:
+    """Generate unified sidebar navigation menu.
+
+    Args:
+        active_page: The current active page (dashboard, users, mcp-servers, settings, logs, api-test)
+
+    Returns:
+        HTML string for sidebar navigation (complete <li> elements)
+    """
+    menu_items = [
+        ("dashboard", "/admin", '<i class="bi bi-speedometer2"></i> Dashboard'),
+        ("users", "/admin/users", '<i class="bi bi-people"></i> Users'),
+        ("mcp-servers", "/admin/mcp-servers", '<i class="bi bi-hdd-network"></i> MCP Servers'),
+        ("settings", "/admin/settings", '<i class="bi bi-gear"></i> Settings'),
+        ("logs", "/admin/logs", '<i class="bi bi-clock-history"></i> Auth Logs'),
+        ("api-test", "/admin/api-test", '<i class="bi bi-code-square"></i> API Test'),
+    ]
+
+    nav_html = ""
+    for page_id, url, label in menu_items:
+        active_class = "active" if page_id == active_page else ""
+        nav_html += f'''                    <li class="nav-item mb-2">
+                        <a class="nav-link {active_class}" href="{url}">
+                            {label}
+                        </a>
+                    </li>
+'''
+
+    # Add external MCP endpoint link
+    nav_html += '''                    <li class="nav-item mt-4">
+                        <a class="nav-link" href="/mcp" target="_blank">
+                            <i class="bi bi-box-arrow-up-right"></i> MCP Endpoint
+                        </a>
+                    </li>
+'''
+
+    return nav_html
+
+
+async def admin_dashboard(_: Request) -> HTMLResponse:
+    """Admin dashboard page."""
+    return render_template("admin/dashboard.html", active_page="dashboard")
+
+
+async def admin_users(_: Request) -> HTMLResponse:
+    """Admin users management page."""
+    return render_template("admin/users.html", active_page="users")
+
+
+async def admin_logs(_: Request) -> HTMLResponse:
+    """Admin auth logs page."""
+    return render_template("admin/logs.html", active_page="logs")
+
+
+async def admin_api_test(_: Request) -> HTMLResponse:
+    """Admin API testing page."""
+    return render_template("admin/api_test.html", active_page="api-test")
+
+
+async def api_stats(_: Request) -> JSONResponse:
+    """Get dashboard statistics."""
+    users = get_all_users(_config.auth.sqlite_path)
+    logs = get_auth_logs(_config.auth.sqlite_path, limit=1000)
+
+    from datetime import datetime, timedelta, timezone
+    now = datetime.now(timezone.utc)
+    day_ago = now - timedelta(days=1)
+
+    recent_logins = len([
+        log for log in logs
+        if log["event_type"] in ["login", "admin_login"]
+        and log["success"]
+        and datetime.fromisoformat(log["created_at"]).replace(tzinfo=timezone.utc) > day_ago
+    ])
+
+    return JSONResponse({
+        "total_users": len(users),
+        "active_users": len([u for u in users if u["is_active"]]),
+        "superusers": len([u for u in users if u["is_superuser"]]),
+        "recent_logins": recent_logins,
+        "system": {
+            "jwt_algorithm": _config.jwt.algorithm,
+            "access_token_ttl": f"{_config.jwt.access_token_expire_minutes} min",
+            "refresh_token_ttl": f"{_config.jwt.refresh_token_expire_days} days",
+            "public_url": _config.mcp_public_url,
+        }
+    })
+
+
+@api_error_handler
+async def api_users(_: Request) -> JSONResponse:
+    """Get all users."""
+    users = get_all_users(_config.auth.sqlite_path)
+    return JSONResponse(users)
+
+
+@api_error_handler
+async def api_create_user(request: Request) -> JSONResponse:
+    """Create new user (admin endpoint - bypasses allow_registration check)."""
+    from authmcp_gateway.auth.user_store import create_user
+    from authmcp_gateway.auth.password import hash_password
+    from authmcp_gateway.settings_manager import get_settings_manager
+    import re
+
+    body = await request.json()
+    username = body.get("username")
+    email = body.get("email")
+    password = body.get("password")
+    is_superuser = body.get("is_superuser", False)
+
+    # Validate input
+    if not username or not email or not password:
+        return JSONResponse({"error": "Username, email, and password are required"}, status_code=400)
+
+    # Validate password strength using dynamic settings
+    settings_manager = get_settings_manager()
+    password_policy = settings_manager.get("password_policy", default={})
+
+    min_length = password_policy.get("min_length", 8)
+    require_uppercase = password_policy.get("require_uppercase", True)
+    require_lowercase = password_policy.get("require_lowercase", True)
+    require_digit = password_policy.get("require_digit", True)
+    require_special = password_policy.get("require_special", False)
+
+    # Check minimum length
+    if len(password) < min_length:
+        return JSONResponse({"error": f"Password must be at least {min_length} characters long"}, status_code=400)
+
+    # Check for uppercase letter
+    if require_uppercase and not re.search(r"[A-Z]", password):
+        return JSONResponse({"error": "Password must contain at least one uppercase letter"}, status_code=400)
+
+    # Check for lowercase letter
+    if require_lowercase and not re.search(r"[a-z]", password):
+        return JSONResponse({"error": "Password must contain at least one lowercase letter"}, status_code=400)
+
+    # Check for digit
+    if require_digit and not re.search(r"\d", password):
+        return JSONResponse({"error": "Password must contain at least one digit"}, status_code=400)
+
+    # Check for special character
+    if require_special and not re.search(r"[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>/?]", password):
+        return JSONResponse({"error": "Password must contain at least one special character"}, status_code=400)
+
+    # Hash password and create user
+    password_hash = hash_password(password)
+
+    try:
+        user_id = create_user(
+            db_path=_config.auth.sqlite_path,
+            username=username,
+            email=email,
+            password_hash=password_hash,
+            is_superuser=is_superuser
+        )
+
+        return JSONResponse({
+            "id": user_id,
+            "username": username,
+            "email": email,
+            "is_superuser": is_superuser
+        }, status_code=201)
+
+    except sqlite3.IntegrityError:
+        return JSONResponse({"error": "Username or email already exists"}, status_code=400)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+
+
+@api_error_handler
+async def api_logs(request: Request) -> JSONResponse:
+    """Get auth logs."""
+    event_type = request.query_params.get("event_type")
+    limit = int(request.query_params.get("limit", "100"))
+
+    logs = get_auth_logs(_config.auth.sqlite_path, event_type=event_type, limit=limit)
+    return JSONResponse(logs)
+
+
+@api_error_handler
+async def api_update_user_status(request: Request) -> Response:
+    """Update user active status."""
+    user_id = int(request.path_params["user_id"])
+    body = await request.json()
+    is_active = body.get("is_active", True)
+
+    # Safety check: prevent deactivating the last active superuser
+    if not is_active:
+        users = get_all_users(_config.auth.sqlite_path)
+        user = next((u for u in users if u["id"] == user_id), None)
+
+        if user and user["is_superuser"]:
+            active_superusers = [
+                u for u in users
+                if u["is_superuser"] and u["is_active"] and u["id"] != user_id
+            ]
+
+            if len(active_superusers) == 0:
+                return JSONResponse(
+                    {"error": "Cannot deactivate the last active superuser"},
+                    status_code=400
+                )
+
+    update_user_status(_config.auth.sqlite_path, user_id, is_active)
+    return Response(status_code=200)
+
+
+@api_error_handler
+async def api_make_superuser(request: Request) -> Response:
+    """Make user a superuser."""
+    user_id = int(request.path_params["user_id"])
+    make_user_superuser(_config.auth.sqlite_path, user_id)
+    return Response(status_code=200)
+
+
+@api_error_handler
+async def api_delete_user(request: Request) -> JSONResponse:
+    """Delete user."""
+    from authmcp_gateway.auth.user_store import delete_user
+
+    user_id = int(request.path_params["user_id"])
+
+    # Safety check: prevent deleting the last active superuser
+    users = get_all_users(_config.auth.sqlite_path)
+    user = next((u for u in users if u["id"] == user_id), None)
+
+    if user and user["is_superuser"]:
+        active_superusers = [
+            u for u in users
+            if u["is_superuser"] and u["is_active"] and u["id"] != user_id
+        ]
+
+        if len(active_superusers) == 0:
+            return JSONResponse(
+                {"error": "Cannot delete the last active superuser"},
+                status_code=400
+            )
+
+    # Delete user
+    success = delete_user(_config.auth.sqlite_path, user_id)
+
+    if success:
+        return JSONResponse({"message": "User deleted successfully"})
+    else:
+        return JSONResponse({"error": "User not found"}, status_code=404)
+
+
+async def admin_settings(_: Request) -> HTMLResponse:
+    """Admin settings page."""
+    return render_template("admin/settings.html", active_page="settings")
+
+
+async def api_get_settings(_: Request) -> JSONResponse:
+    """Get current settings."""
+    from authmcp_gateway.settings_manager import get_settings_manager
+    settings_manager = get_settings_manager()
+    return JSONResponse(settings_manager.get_all())
+
+
+@api_error_handler
+async def api_save_settings(request: Request) -> JSONResponse:
+    """Save settings."""
+    from authmcp_gateway.settings_manager import get_settings_manager
+    settings_manager = get_settings_manager()
+
+    body = await request.json()
+    settings_manager.update(body)
+    settings_manager.save()
+
+    return JSONResponse({"success": True, "message": "Settings saved successfully"})
+
+
+# ============================================================================
+# MCP SERVERS MANAGEMENT
+# ============================================================================
+
+async def admin_mcp_servers(_: Request) -> HTMLResponse:
+    """MCP servers management page."""
+    return render_template("admin/mcp_servers.html", active_page="mcp-servers")
+
+
+async def api_list_mcp_servers(_: Request) -> JSONResponse:
+    """API: List all MCP servers."""
+    from authmcp_gateway.mcp.store import list_mcp_servers
+
+    servers = list_mcp_servers(_config.auth.sqlite_path)
+
+    return JSONResponse({"servers": servers})
+
+
+@api_error_handler
+async def api_create_mcp_server(request: Request) -> JSONResponse:
+    """API: Create new MCP server."""
+    from authmcp_gateway.mcp.store import create_mcp_server
+
+    data = await request.json()
+
+    server_id = create_mcp_server(
+        db_path=_config.auth.sqlite_path,
+        name=data["name"],
+        url=data["url"],
+        description=data.get("description"),
+        tool_prefix=data.get("tool_prefix"),
+        enabled=data.get("enabled", True),
+        auth_type=data.get("auth_type", "none"),
+        auth_token=data.get("auth_token"),
+        routing_strategy=data.get("routing_strategy", "prefix")
+    )
+
+    # Trigger health check for new server
+    from authmcp_gateway.mcp.health import get_health_checker
+    try:
+        health_checker = get_health_checker()
+        from authmcp_gateway.mcp.store import get_mcp_server
+        server = get_mcp_server(_config.auth.sqlite_path, server_id)
+        if server:
+            await health_checker.check_server(server)
+    except:
+        pass  # Health checker might not be initialized yet
+
+    return JSONResponse({"id": server_id, "message": "Server created successfully"})
+
+
+@api_error_handler
+async def api_delete_mcp_server(request: Request) -> JSONResponse:
+    """API: Delete MCP server."""
+    from authmcp_gateway.mcp.store import delete_mcp_server
+
+    server_id = int(request.path_params["server_id"])
+
+    success = delete_mcp_server(_config.auth.sqlite_path, server_id)
+
+    if success:
+        # Invalidate cache
+        from authmcp_gateway.mcp.proxy import McpProxy
+        proxy = McpProxy(_config.auth.sqlite_path)
+        proxy.invalidate_cache(server_id)
+
+        return JSONResponse({"message": "Server deleted successfully"})
+    else:
+        return JSONResponse({"error": "Server not found"}, status_code=404)
+
+
+@api_error_handler
+async def api_update_mcp_server(request: Request) -> JSONResponse:
+    """API: Update MCP server."""
+    from authmcp_gateway.mcp.store import update_mcp_server, get_mcp_server
+
+    server_id = int(request.path_params["server_id"])
+    data = await request.json()
+
+    # Update server
+    success = update_mcp_server(
+        db_path=_config.auth.sqlite_path,
+        server_id=server_id,
+        **data
+    )
+
+    if success:
+        # Invalidate cache
+        from authmcp_gateway.mcp.proxy import McpProxy
+        proxy = McpProxy(_config.auth.sqlite_path)
+        proxy.invalidate_cache(server_id)
+
+        # Trigger health check for updated server
+        from authmcp_gateway.mcp.health import get_health_checker
+        try:
+            health_checker = get_health_checker()
+            server = get_mcp_server(_config.auth.sqlite_path, server_id)
+            if server:
+                await health_checker.check_server(server)
+        except:
+            pass  # Health checker might not be initialized yet
+
+        return JSONResponse({"message": "Server updated successfully"})
+    else:
+        return JSONResponse({"error": "Server not found"}, status_code=404)
+
+
+@api_error_handler
+async def api_test_mcp_server(request: Request) -> JSONResponse:
+    """API: Test MCP server connection."""
+    from authmcp_gateway.mcp.health import HealthChecker
+    from authmcp_gateway.mcp.store import get_mcp_server
+
+    server_id = int(request.path_params["server_id"])
+    server = get_mcp_server(_config.auth.sqlite_path, server_id)
+
+    if not server:
+        return JSONResponse({"error": "Server not found"}, status_code=404)
+
+    # Perform health check
+    health_checker = HealthChecker(_config.auth.sqlite_path)
+    result = await health_checker.check_server(server)
+
+    # Convert datetime to ISO string for JSON serialization
+    if 'checked_at' in result and result['checked_at']:
+        result['checked_at'] = result['checked_at'].isoformat()
+
+    return JSONResponse(result)
+
+
+@api_error_handler
+async def api_get_mcp_server_tools(request: Request) -> JSONResponse:
+    """API: Get tools from MCP server."""
+    from authmcp_gateway.mcp.proxy import McpProxy
+    from authmcp_gateway.mcp.store import get_mcp_server
+
+    server_id = int(request.path_params["server_id"])
+    server = get_mcp_server(_config.auth.sqlite_path, server_id)
+
+    if not server:
+        return JSONResponse({"error": "Server not found"}, status_code=404)
+
+    # Fetch tools from server
+    proxy = McpProxy(_config.auth.sqlite_path)
+    tools = await proxy._fetch_tools_from_server(server)
+
+    # Extract tool names
+    tool_names = [tool.get("name") for tool in tools if "name" in tool]
+
+    return JSONResponse(tool_names)

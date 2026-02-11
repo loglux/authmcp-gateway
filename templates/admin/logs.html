@@ -1,0 +1,135 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Auth Logs - MCP Auth Admin{% endblock %}
+
+{% block extra_styles %}
+.log-entry {
+    border-left: 3px solid #e0e0e0;
+    transition: all 0.3s;
+}
+.log-entry:hover {
+    background: #f8f9fa;
+    border-left-color: #667eea;
+}
+.log-success { border-left-color: #28a745; }
+.log-failed { border-left-color: #dc3545; }
+.logs-card {
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+.logs-card .card-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    font-weight: 600;
+}
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="bi bi-journal-text"></i> Authentication Logs</h1>
+    <button class="btn btn-outline-secondary" onclick="loadLogs()">
+        <i class="bi bi-arrow-clockwise"></i> Refresh
+    </button>
+</div>
+
+<!-- Filters -->
+<div class="card mb-4">
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3">
+                <label class="form-label">Event Type</label>
+                <select class="form-select" id="eventTypeFilter" onchange="loadLogs()">
+                    <option value="">All Events</option>
+                    <option value="login">Login</option>
+                    <option value="register">Register</option>
+                    <option value="logout">Logout</option>
+                    <option value="failed_login">Failed Login</option>
+                </select>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Limit</label>
+                <select class="form-select" id="limitFilter" onchange="loadLogs()">
+                    <option value="50">Last 50</option>
+                    <option value="100">Last 100</option>
+                    <option value="500">Last 500</option>
+                </select>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Logs -->
+<div class="card logs-card">
+    <div class="card-header">
+        <i class="bi bi-list-ul"></i> Recent Events
+    </div>
+    <div class="card-body" id="logsContainer">
+        <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', loadLogs);
+
+    async function loadLogs() {
+        const eventType = document.getElementById('eventTypeFilter').value;
+        const limit = document.getElementById('limitFilter').value;
+
+        try {
+            const params = new URLSearchParams();
+            if (eventType) params.append('event_type', eventType);
+            if (limit) params.append('limit', limit);
+
+            const response = await fetch(`/admin/api/logs?${params}`);
+            const logs = await response.json();
+
+            const container = document.getElementById('logsContainer');
+            if (logs.length === 0) {
+                container.innerHTML = '<p class="text-center text-muted py-4">No logs found</p>';
+                return;
+            }
+
+            container.innerHTML = logs.map(log => `
+                <div class="log-entry ${log.success ? 'log-success' : 'log-failed'} p-3 mb-2">
+                    <div class="d-flex justify-content-between align-items-start">
+                        <div>
+                            <h6 class="mb-1">
+                                <span class="badge ${getEventBadgeClass(log.event_type)}">${log.event_type}</span>
+                                <strong>${log.username || 'Unknown'}</strong>
+                                ${log.success ? '<i class="bi bi-check-circle-fill text-success"></i>' : '<i class="bi bi-x-circle-fill text-danger"></i>'}
+                            </h6>
+                            <small class="text-muted">
+                                <i class="bi bi-clock"></i> ${new Date(log.created_at).toLocaleString()}
+                                ${log.ip_address ? `<i class="bi bi-geo-alt ms-3"></i> ${log.ip_address}` : ''}
+                            </small>
+                            ${log.details ? `<div class="mt-2"><small class="text-muted">${log.details}</small></div>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        } catch (error) {
+            console.error('Failed to load logs:', error);
+            document.getElementById('logsContainer').innerHTML = '<p class="text-center text-danger">Failed to load logs</p>';
+        }
+    }
+
+    function getEventBadgeClass(eventType) {
+        const classes = {
+            'login': 'bg-success',
+            'register': 'bg-info',
+            'logout': 'bg-secondary',
+            'failed_login': 'bg-danger'
+        };
+        return classes[eventType] || 'bg-secondary';
+    }
+
+    // Auto-refresh every 30 seconds
+    setInterval(loadLogs, 30000);
+</script>
+{% endblock %}

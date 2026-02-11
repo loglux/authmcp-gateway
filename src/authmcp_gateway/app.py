@@ -1,4 +1,4 @@
-"""FastMCP Auth Gateway - Main application."""
+"""AuthMCP Gateway - Main application."""
 
 import os
 import logging
@@ -16,13 +16,18 @@ from .auth import endpoints as auth_endpoints
 from .auth.authorize_endpoint import authorize_page
 from .auth.oauth_code_flow import create_authorization_code_table
 from .admin import routes as admin_routes
+from .admin import login as admin_login
 from .admin_auth import AdminAuthMiddleware
+from . import setup_wizard
 from .mcp.proxy import McpProxy
 from .mcp.handler import McpHandler
-from .mcp.health import HealthChecker
+from .mcp.health import initialize_health_checker
+from .mcp.store import init_mcp_database
+from .settings_manager import initialize_settings
+from .rate_limiter import get_rate_limiter
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
-logger = logging.getLogger("fastmcp-auth")
+logger = logging.getLogger("authmcp-gateway")
 
 # Load configuration
 config = load_config()
@@ -30,20 +35,30 @@ config = load_config()
 # Initialize database
 init_database(config.auth.sqlite_path)
 create_authorization_code_table(config.auth.sqlite_path)
+init_mcp_database(config.auth.sqlite_path)
 logger.info(f"✓ Database initialized: {config.auth.sqlite_path}")
+
+# Initialize settings manager
+settings_manager = initialize_settings("/app/data/auth_settings.json")
+logger.info("✓ Settings manager initialized")
 
 # Set global config for auth endpoints
 auth_endpoints.set_config(config)
 
 # Initialize admin routes
 admin_routes.initialize(config)
+admin_login.set_config(config)
+
+# Initialize setup wizard
+setup_wizard.initialize(config)
+logger.info("✓ Setup wizard initialized")
 
 # Initialize MCP Gateway components
 mcp_proxy = McpProxy(config.auth.sqlite_path, timeout=config.request_timeout_seconds)
 mcp_handler = McpHandler(config.auth.sqlite_path)
 
 # Initialize health checker
-health_checker = HealthChecker(
+health_checker = initialize_health_checker(
     db_path=config.auth.sqlite_path,
     interval=60,  # Check every 60 seconds
     timeout=10    # 10 second timeout per check
@@ -58,7 +73,7 @@ set_middleware_config(
     streamable_path="/mcp-internal"  # Internal path (not used in pure gateway mode)
 )
 
-logger.info("✓ FastMCP Auth Gateway initialized")
+logger.info("✓ AuthMCP Gateway initialized")
 logger.info(f"  - Auth required: {config.auth_required}")
 logger.info(f"  - JWT algorithm: {config.jwt.algorithm}")
 
@@ -125,7 +140,7 @@ async def health(_: Request) -> JSONResponse:
 async def root_endpoint(_: Request) -> JSONResponse:
     """Root endpoint - service info."""
     return JSONResponse({
-        "service": "FastMCP Auth Gateway",
+        "service": "AuthMCP Gateway",
         "version": "1.0.0",
         "endpoints": {
             "mcp": "/mcp",
@@ -156,11 +171,58 @@ async def mcp_gateway_endpoint(request: Request) -> JSONResponse:
 # ============================================================================
 
 # Create Starlette app
+from contextlib import asynccontextmanager
 from starlette.applications import Starlette
 from starlette.routing import Route
 
+
+@asynccontextmanager
+async def lifespan(app):
+    """Application lifespan manager."""
+    import asyncio
+
+    # Startup
+    health_checker.start()
+    logger.info("✓ Health checker started (interval=60s)")
+
+    # Start rate limiter cleanup task
+    cleanup_task = None
+    if config.rate_limit.enabled:
+        async def rate_limit_cleanup():
+            """Background task to clean up expired rate limit entries."""
+            while True:
+                try:
+                    await asyncio.sleep(config.rate_limit.cleanup_interval)
+                    limiter = get_rate_limiter()
+                    removed = limiter.cleanup_expired(max_age_seconds=config.rate_limit.cleanup_interval)
+                    if removed > 0:
+                        logger.debug(f"Rate limiter: cleaned up {removed} expired entries")
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    logger.error(f"Rate limiter cleanup error: {e}")
+
+        cleanup_task = asyncio.create_task(rate_limit_cleanup())
+        logger.info(f"✓ Rate limiter cleanup started (interval={config.rate_limit.cleanup_interval}s)")
+
+    yield
+
+    # Shutdown
+    if cleanup_task:
+        cleanup_task.cancel()
+        try:
+            await cleanup_task
+        except asyncio.CancelledError:
+            pass
+        logger.info("✓ Rate limiter cleanup stopped")
+
+    await health_checker.stop()
+    logger.info("✓ Health checker stopped")
+
+
 app = Starlette(
     debug=False,
+    lifespan=lifespan,
     routes=[
         # MCP Gateway
         Route("/mcp", mcp_gateway_endpoint, methods=["POST"]),
@@ -176,6 +238,15 @@ app = Starlette(
         Route("/oauth/token", auth_endpoints.oauth_token, methods=["POST"]),
         Route("/authorize", authorize_page, methods=["GET", "POST"]),
 
+        # Setup wizard
+        Route("/setup", setup_wizard.setup_page, methods=["GET"]),
+        Route("/setup/create-admin", setup_wizard.create_admin_user, methods=["POST"]),
+
+        # Admin login
+        Route("/admin/login", admin_login.admin_login_page, methods=["GET"]),
+        Route("/admin/api/login", admin_login.admin_login_api, methods=["POST"]),
+        Route("/admin/logout", admin_login.admin_logout, methods=["GET", "POST"]),
+
         # Admin panel
         Route("/admin", admin_routes.admin_dashboard, methods=["GET"]),
         Route("/admin/users", admin_routes.admin_users, methods=["GET"]),
@@ -187,11 +258,14 @@ app = Starlette(
         # Admin API
         Route("/admin/api/stats", admin_routes.api_stats, methods=["GET"]),
         Route("/admin/api/users", admin_routes.api_users, methods=["GET"]),
-        Route("/admin/api/users/{user_id:int}/status", admin_routes.api_update_user_status, methods=["POST"]),
-        Route("/admin/api/users/{user_id:int}/superuser", admin_routes.api_make_superuser, methods=["POST"]),
+        Route("/admin/api/users", admin_routes.api_create_user, methods=["POST"]),
+        Route("/admin/api/users/{user_id:int}/status", admin_routes.api_update_user_status, methods=["PATCH"]),
+        Route("/admin/api/users/{user_id:int}/superuser", admin_routes.api_make_superuser, methods=["PATCH"]),
+        Route("/admin/api/users/{user_id:int}", admin_routes.api_delete_user, methods=["DELETE"]),
         Route("/admin/api/mcp-servers", admin_routes.api_list_mcp_servers, methods=["GET"]),
         Route("/admin/api/mcp-servers", admin_routes.api_create_mcp_server, methods=["POST"]),
         Route("/admin/api/mcp-servers/{server_id:int}", admin_routes.api_delete_mcp_server, methods=["DELETE"]),
+        Route("/admin/api/mcp-servers/{server_id:int}", admin_routes.api_update_mcp_server, methods=["PATCH"]),
         Route("/admin/api/mcp-servers/{server_id:int}/test", admin_routes.api_test_mcp_server, methods=["POST"]),
         Route("/admin/api/mcp-servers/{server_id:int}/tools", admin_routes.api_get_mcp_server_tools, methods=["GET"]),
         Route("/admin/api/logs", admin_routes.api_logs, methods=["GET"]),
@@ -226,11 +300,6 @@ app.add_middleware(
     oauth_scopes="openid profile email",
 )
 app.add_middleware(AdminAuthMiddleware, config=config)
-
-# Health checker will start automatically when server runs
-# (Lifecycle events are handled by uvicorn)
-# health_checker.start()
-# logger.info("✓ Health checker started (interval=60s)")
 
 logger.info("✓ Application configured")
 logger.info("  - Auth endpoints: /auth/register, /auth/login, /auth/refresh, /auth/logout, /auth/me")

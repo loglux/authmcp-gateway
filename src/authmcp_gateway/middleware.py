@@ -1,4 +1,4 @@
-"""HTTP middleware for RAG MCP Server authentication and content handling."""
+"""HTTP middleware for AuthMCP Gateway authentication and content handling."""
 
 import json
 import logging

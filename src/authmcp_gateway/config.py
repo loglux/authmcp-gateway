@@ -1,4 +1,4 @@
-"""Configuration management for RAG MCP Server authentication."""
+"""Configuration management for AuthMCP Gateway authentication."""
 
 import os
 from dataclasses import dataclass, field
@@ -79,6 +79,18 @@ class AuthConfig:
 
 
 @dataclass
+class RateLimitConfig:
+    """Rate limiting configuration."""
+
+    enabled: bool = True
+    login_limit: int = 5  # Max login attempts
+    login_window: int = 60  # Seconds
+    register_limit: int = 3  # Max registrations
+    register_window: int = 300  # 5 minutes
+    cleanup_interval: int = 3600  # Cleanup old entries every hour
+
+
+@dataclass
 class AppConfig:
     """Complete application configuration."""
 
@@ -87,6 +99,9 @@ class AppConfig:
 
     # Auth settings
     auth: AuthConfig
+
+    # Rate limiting settings
+    rate_limit: RateLimitConfig
 
     # MCP public URL
     mcp_public_url: str
@@ -203,12 +218,23 @@ def load_config() -> AppConfig:
         password_require_special=_env_bool("PASSWORD_REQUIRE_SPECIAL", True),
     )
 
+    # Rate Limiting Configuration
+    rate_limit_config = RateLimitConfig(
+        enabled=_env_bool("RATE_LIMIT_ENABLED", True),
+        login_limit=_env_int("RATE_LIMIT_LOGIN_MAX", 5),
+        login_window=_env_int("RATE_LIMIT_LOGIN_WINDOW", 60),
+        register_limit=_env_int("RATE_LIMIT_REGISTER_MAX", 3),
+        register_window=_env_int("RATE_LIMIT_REGISTER_WINDOW", 300),
+        cleanup_interval=_env_int("RATE_LIMIT_CLEANUP_INTERVAL", 3600),
+    )
+
     # Application Configuration
     mcp_public_url = os.getenv("MCP_PUBLIC_URL", "http://localhost:8000").rstrip("/")
 
     app_config = AppConfig(
         jwt=jwt_config,
         auth=auth_config,
+        rate_limit=rate_limit_config,
         mcp_public_url=mcp_public_url,
         auth_required=_env_bool("AUTH_REQUIRED", True),
         static_bearer_tokens=_env_list("STATIC_BEARER_TOKENS"),

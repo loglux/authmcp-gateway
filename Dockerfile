@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
 COPY src ./src
+COPY templates ./templates
 COPY pyproject.toml ./
 
 # Install package
@@ -24,4 +25,4 @@ EXPOSE 8000
 ENV PYTHONUNBUFFERED=1
 
 # Run application
-CMD ["fastmcp-auth", "start", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["authmcp-gateway", "start", "--host", "0.0.0.0", "--port", "8000"]

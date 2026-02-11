@@ -1,0 +1,279 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Users - MCP Auth Admin{% endblock %}
+
+{% block extra_styles %}
+.badge-superuser {
+    background: linear-gradient(135deg, #ff9a56 0%, #ff6a00 100%);
+    color: white;
+}
+.badge-inactive {
+    background: #8b0000;
+    color: white;
+}
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1>Users Management</h1>
+    <button class="btn btn-primary" onclick="showCreateUserModal()">
+        <i class="bi bi-plus-circle"></i> Create User
+    </button>
+</div>
+
+<!-- Users Table -->
+<div class="card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover" id="usersTable">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Username</th>
+                        <th>Email</th>
+                        <th>Status</th>
+                        <th>Role</th>
+                        <th>Last Login</th>
+                        <th>Created</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="usersTableBody">
+                    <tr>
+                        <td colspan="8" class="text-center">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Create User Modal -->
+<div class="modal fade" id="createUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Create New User</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createUserForm">
+                    <div class="mb-3">
+                        <label class="form-label">Username</label>
+                        <input type="text" class="form-control" id="username" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" class="form-control" id="email" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Password</label>
+                        <input type="password" class="form-control" id="password" required>
+                        <small class="text-muted">Min 8 characters (uppercase, lowercase, digit required)</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Confirm Password</label>
+                        <input type="password" class="form-control" id="confirmPassword" required>
+                        <small id="passwordMatchUser" class="d-none"></small>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input type="checkbox" class="form-check-input" id="isSuperuser">
+                        <label class="form-check-label" for="isSuperuser">Make Superuser</label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="createUser()">Create</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let createUserModalInstance;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        createUserModalInstance = new bootstrap.Modal(document.getElementById('createUserModal'));
+        loadUsers();
+    });
+
+    function showCreateUserModal() {
+        document.getElementById('createUserForm').reset();
+        createUserModalInstance.show();
+    }
+
+    async function loadUsers() {
+        try {
+            const response = await fetch('/admin/api/users');
+            const users = await response.json();
+
+            const tbody = document.getElementById('usersTableBody');
+            tbody.innerHTML = users.map(user => `
+                <tr>
+                    <td>${user.id}</td>
+                    <td><strong>${user.username}</strong></td>
+                    <td>${user.email || 'N/A'}</td>
+                    <td>
+                        <span class="badge ${user.is_active ? 'bg-success' : 'badge-inactive'}">
+                            ${user.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                    </td>
+                    <td>
+                        ${user.is_superuser ? '<span class="badge badge-superuser">Superuser</span>' : '<span class="badge bg-primary">User</span>'}
+                    </td>
+                    <td>${user.last_login_at ? new Date(user.last_login_at).toLocaleString() : 'Never'}</td>
+                    <td>${new Date(user.created_at).toLocaleDateString()}</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary" onclick="toggleUserStatus(${user.id}, ${user.is_active})" title="Toggle Status">
+                            <i class="bi bi-power"></i>
+                        </button>
+                        ${!user.is_superuser ? `
+                            <button class="btn btn-sm btn-outline-warning" onclick="makeSuperuser(${user.id})" title="Make Superuser">
+                                <i class="bi bi-star"></i>
+                            </button>
+                        ` : ''}
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteUser(${user.id}, '${user.username}')" title="Delete User">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        } catch (error) {
+            console.error('Failed to load users:', error);
+            document.getElementById('usersTableBody').innerHTML = '<tr><td colspan="8" class="text-center text-danger">Failed to load users</td></tr>';
+        }
+    }
+
+    async function createUser() {
+        const username = document.getElementById('username').value;
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        const confirmPassword = document.getElementById('confirmPassword').value;
+        const is_superuser = document.getElementById('isSuperuser').checked;
+
+        // Check passwords match
+        if (password !== confirmPassword) {
+            alert('Passwords do not match!');
+            return;
+        }
+
+        try {
+            const response = await fetch('/admin/api/users', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username, email, password, is_superuser})
+            });
+
+            if (response.ok) {
+                createUserModalInstance.hide();
+                document.getElementById('createUserForm').reset();
+                document.getElementById('passwordMatchUser').classList.add('d-none');
+                loadUsers();
+                alert('User created successfully!');
+            } else {
+                const error = await response.json();
+                alert('Error: ' + (error.error || error.detail || 'Failed to create user'));
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+    async function toggleUserStatus(userId, currentStatus) {
+        if (!confirm(`Are you sure you want to ${currentStatus ? 'deactivate' : 'activate'} this user?`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/admin/api/users/${userId}/status`, {
+                method: 'PATCH',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({is_active: !currentStatus})
+            });
+
+            if (response.ok) {
+                loadUsers();
+            } else {
+                const error = await response.json();
+                alert(error.error || error.detail || 'Failed to update user status');
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+    async function makeSuperuser(userId) {
+        if (!confirm('Are you sure you want to make this user a superuser?')) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/admin/api/users/${userId}/superuser`, {
+                method: 'PATCH'
+            });
+
+            if (response.ok) {
+                loadUsers();
+            } else {
+                alert('Failed to make user superuser');
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+    async function deleteUser(userId, username) {
+        if (!confirm(`Are you sure you want to delete user "${username}"?\n\nThis action cannot be undone!`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/admin/api/users/${userId}`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                loadUsers();
+            } else {
+                const error = await response.json();
+                alert(error.error || error.detail || 'Failed to delete user');
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+    // Live password match validation for create user form
+    function checkPasswordMatchUser() {
+        const password = document.getElementById('password').value;
+        const confirmPassword = document.getElementById('confirmPassword').value;
+        const matchElement = document.getElementById('passwordMatchUser');
+
+        if (confirmPassword === '') {
+            matchElement.classList.add('d-none');
+            return;
+        }
+
+        if (password === confirmPassword) {
+            matchElement.textContent = '✅ Passwords match';
+            matchElement.className = 'text-success d-block';
+        } else {
+            matchElement.textContent = '❌ Passwords do not match';
+            matchElement.className = 'text-danger d-block';
+        }
+    }
+
+    // Add event listeners when modal is shown
+    document.getElementById('createUserModal').addEventListener('shown.bs.modal', function() {
+        document.getElementById('password').addEventListener('input', checkPasswordMatchUser);
+        document.getElementById('confirmPassword').addEventListener('input', checkPasswordMatchUser);
+    });
+</script>
+{% endblock %}

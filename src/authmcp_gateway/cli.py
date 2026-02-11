@@ -1,4 +1,4 @@
-"""CLI for FastMCP Auth Gateway."""
+"""CLI for AuthMCP Gateway."""
 
 import os
 import sys
@@ -10,7 +10,7 @@ from pathlib import Path
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
-        prog="fastmcp-auth",
+        prog="authmcp-gateway",
         description="Universal Authentication Gateway for MCP Servers",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
@@ -134,7 +134,7 @@ def start_server(args):
 
     print(f"""
 ╔══════════════════════════════════════════════════════════╗
-║           FastMCP Auth Gateway                           ║
+║           AuthMCP Gateway                           ║
 ║   Universal Authentication for MCP Servers               ║
 ╚══════════════════════════════════════════════════════════╝
 
@@ -148,7 +148,7 @@ Press CTRL+C to stop
 """)
 
     # Import app here to ensure environment is loaded first
-    from fastmcp_auth.app import app
+    from authmcp_gateway.app import app
 
     uvicorn.run(
         app,
@@ -161,8 +161,8 @@ Press CTRL+C to stop
 
 def init_database(args):
     """Initialize the SQLite database."""
-    from fastmcp_auth.auth.user_store import init_database as init_db
-    from fastmcp_auth.auth.oauth_code_flow import create_authorization_code_table
+    from authmcp_gateway.auth.user_store import init_database as init_db
+    from authmcp_gateway.auth.oauth_code_flow import create_authorization_code_table
 
     db_path = str(args.db_path)
 
@@ -183,8 +183,8 @@ def init_database(args):
 def create_admin_user(args):
     """Create an admin user."""
     import getpass
-    from fastmcp_auth.auth.user_store import create_user, get_user_by_username
-    from fastmcp_auth.auth.password import hash_password
+    from authmcp_gateway.auth.user_store import create_user, get_user_by_username
+    from authmcp_gateway.auth.password import hash_password
 
     db_path = str(args.db_path)
 
@@ -233,12 +233,12 @@ def show_version():
     """Show version information."""
     try:
         from importlib.metadata import version
-        pkg_version = version("fastmcp-auth")
+        pkg_version = version("authmcp-gateway")
     except Exception:
         pkg_version = "unknown"
 
     print(f"""
-FastMCP Auth Gateway
+AuthMCP Gateway
 Version: {pkg_version}
 Python: {sys.version.split()[0]}
 

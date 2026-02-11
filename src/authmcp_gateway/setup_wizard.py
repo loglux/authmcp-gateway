@@ -3,9 +3,9 @@ import logging
 from typing import Optional
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
-from fastmcp_auth.auth.user_store import get_all_users, create_user
-from fastmcp_auth.auth.password import hash_password, validate_password_strength
-from fastmcp_auth.config import AppConfig
+from authmcp_gateway.auth.user_store import get_all_users, create_user
+from authmcp_gateway.auth.password import hash_password, validate_password_strength
+from authmcp_gateway.config import AppConfig
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,7 @@ async def setup_page(_: Request) -> HTMLResponse:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Initial Setup - RAG MCP Server</title>
+    <title>Initial Setup - AuthMCP Gateway</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <style>
@@ -102,7 +102,7 @@ async def setup_page(_: Request) -> HTMLResponse:
     <div class="setup-card">
         <div class="setup-header">
             <i class="bi bi-shield-lock" style="font-size: 3rem; margin-bottom: 1rem;"></i>
-            <h1 class="h3 mb-2">Welcome to RAG MCP Server</h1>
+            <h1 class="h3 mb-2">Welcome to AuthMCP Gateway</h1>
             <p class="mb-0">Initial Setup - Create Administrator Account</p>
         </div>
         
@@ -135,15 +135,15 @@ async def setup_page(_: Request) -> HTMLResponse:
                     <label class="form-label">
                         <i class="bi bi-key"></i> Password
                     </label>
+                    <ul class="password-requirements mb-2" style="font-size: 0.875rem;">
+                        <li>📏 At least 8 characters</li>
+                        <li>🔠 Contains uppercase letter</li>
+                        <li>🔡 Contains lowercase letter</li>
+                        <li>🔢 Contains number</li>
+                        <li>✅ Special characters allowed</li>
+                    </ul>
                     <input type="password" class="form-control" id="password" required
                            minlength="8" placeholder="••••••••">
-                    <ul class="password-requirements mt-2">
-                        <li>At least 8 characters</li>
-                        <li>Contains uppercase letter</li>
-                        <li>Contains lowercase letter</li>
-                        <li>Contains number</li>
-                        <li class="text-warning">⚠️ Avoid special characters (!, @, #) due to known issue</li>
-                    </ul>
                 </div>
                 
                 <div class="mb-3">
@@ -152,6 +152,7 @@ async def setup_page(_: Request) -> HTMLResponse:
                     </label>
                     <input type="password" class="form-control" id="confirmPassword" required
                            minlength="8" placeholder="••••••••">
+                    <small id="passwordMatch" class="d-none"></small>
                 </div>
                 
                 <div class="mb-3">
@@ -228,6 +229,30 @@ async def setup_page(_: Request) -> HTMLResponse:
             document.getElementById('errorMessage').textContent = message;
             document.getElementById('errorAlert').classList.remove('d-none');
         }
+
+        // Live password match validation
+        function checkPasswordMatch() {
+            const password = document.getElementById('password').value;
+            const confirmPassword = document.getElementById('confirmPassword').value;
+            const matchElement = document.getElementById('passwordMatch');
+
+            if (confirmPassword === '') {
+                matchElement.classList.add('d-none');
+                return;
+            }
+
+            if (password === confirmPassword) {
+                matchElement.textContent = '✅ Passwords match';
+                matchElement.className = 'text-success d-block';
+            } else {
+                matchElement.textContent = '❌ Passwords do not match';
+                matchElement.className = 'text-danger d-block';
+            }
+        }
+
+        // Add event listeners
+        document.getElementById('password').addEventListener('input', checkPasswordMatch);
+        document.getElementById('confirmPassword').addEventListener('input', checkPasswordMatch);
     </script>
 </body>
 </html>

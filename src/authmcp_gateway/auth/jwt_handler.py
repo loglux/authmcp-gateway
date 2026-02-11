@@ -6,7 +6,7 @@ from typing import Any, Dict
 
 import jwt
 
-from fastmcp_auth.config import JWTConfig
+from authmcp_gateway.config import JWTConfig
 
 
 def create_access_token(

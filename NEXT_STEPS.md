@@ -1,4 +1,4 @@
-# Next Steps for FastMCP Auth Gateway
+# Next Steps for AuthMCP Gateway
 
 ## ✅ What's Done
 
@@ -209,7 +209,7 @@ docker buildx build --platform linux/amd64,linux/arm64 \
 
 ### 1. Create GitHub Release
 - Tag: v1.0.0
-- Title: FastMCP Auth Gateway v1.0.0
+- Title: AuthMCP Gateway v1.0.0
 - Description: Copy from README.md features section
 - Attach: Pre-built binaries (if any)
 

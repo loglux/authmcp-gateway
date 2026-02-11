@@ -3,14 +3,14 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "fastmcp-auth"
+name = "authmcp-gateway"
 version = "1.0.0"
 description = "Universal Authentication Gateway for MCP (Model Context Protocol) Servers"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
-    {name = "FastMCP Auth Contributors"}
+    {name = "AuthMCP Gateway Contributors"}
 ]
 keywords = [
     "mcp",
@@ -57,20 +57,20 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/loglux/fastmcp-auth"
-Documentation = "https://github.com/loglux/fastmcp-auth#readme"
-Repository = "https://github.com/loglux/fastmcp-auth"
-Issues = "https://github.com/loglux/fastmcp-auth/issues"
+Homepage = "https://github.com/loglux/authmcp-gateway"
+Documentation = "https://github.com/loglux/authmcp-gateway#readme"
+Repository = "https://github.com/loglux/authmcp-gateway"
+Issues = "https://github.com/loglux/authmcp-gateway/issues"
 
 [project.scripts]
-fastmcp-auth = "fastmcp_auth.cli:main"
+authmcp-gateway = "authmcp_gateway.cli:main"
 
 [tool.setuptools]
-packages = ["fastmcp_auth"]
+packages = ["authmcp_gateway"]
 package-dir = {"" = "src"}
 
 [tool.setuptools.package-data]
-fastmcp_auth = ["py.typed"]
+authmcp_gateway = ["py.typed"]
 
 [tool.black]
 line-length = 100
@@ -92,4 +92,4 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --cov=fastmcp_auth --cov-report=term-missing"
+addopts = "-v --cov=authmcp_gateway --cov-report=term-missing"

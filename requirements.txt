@@ -5,6 +5,7 @@ uvicorn>=0.30.0
 httpx>=0.27.0
 pyjwt[crypto]>=2.8.0
 python-dotenv>=1.0.1
+jinja2>=3.1.0
 
 # Authentication
 passlib[bcrypt]>=1.7.4

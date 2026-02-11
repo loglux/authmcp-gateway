@@ -1,12 +1,12 @@
 # Connecting RAG MCP Server to FastMCP Auth
 
-This example shows how to connect a RAG (Retrieval-Augmented Generation) MCP server to FastMCP Auth Gateway.
+This example shows how to connect a RAG (Retrieval-Augmented Generation) MCP server to AuthMCP Gateway.
 
 ## Architecture
 
 ```
 ┌─────────────────────────┐        ┌──────────────────────┐
-│  FastMCP Auth Gateway   │        │  RAG MCP Server      │
+│  AuthMCP Gateway   │        │  RAG MCP Server      │
 │  Port: 8000             │───────>│  Port: 8001          │
 │  /mcp (authenticated)   │        │  /mcp (internal)     │
 └─────────────────────────┘        └──────────────────────┘
