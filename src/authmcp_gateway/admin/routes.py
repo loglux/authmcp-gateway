@@ -137,6 +137,7 @@ def _get_sidebar_nav(active_page: str = "") -> str:
         ("mcp-servers", "/admin/mcp-servers", '<i class="bi bi-hdd-network"></i> MCP Servers'),
         ("settings", "/admin/settings", '<i class="bi bi-gear"></i> Settings'),
         ("logs", "/admin/logs", '<i class="bi bi-clock-history"></i> Auth Logs'),
+        ("mcp-audit", "/admin/mcp-audit", '<i class="bi bi-shield-check"></i> Security Audit'),
         ("api-test", "/admin/api-test", '<i class="bi bi-code-square"></i> API Test'),
     ]
 
@@ -930,3 +931,57 @@ async def admin_mcp_requests_api(request: Request) -> Response:
     )
     
     return JSONResponse({"requests": requests})
+
+
+# ============================================================================
+# MCP SECURITY AUDIT
+# ============================================================================
+
+@requires_admin
+async def admin_mcp_audit(request: Request) -> HTMLResponse:
+    """MCP Security Audit page - audit any MCP server security."""
+    return render_template("admin/mcp_audit.html", active_page="mcp-audit")
+
+
+@requires_admin
+@api_error_handler
+async def api_run_mcp_audit(request: Request) -> JSONResponse:
+    """API: Run security audit on an MCP server."""
+    from authmcp_gateway.security.mcp_auditor import MCPSecurityAuditor
+    
+    body = await request.json()
+    url = body.get("url")
+    bearer_token = body.get("bearer_token")
+    
+    if not url:
+        return JSONResponse({"error": "URL is required"}, status_code=400)
+    
+    # Validate URL format
+    if not url.startswith(("http://", "https://")):
+        return JSONResponse({"error": "URL must start with http:// or https://"}, status_code=400)
+    
+    # Run security audit
+    auditor = MCPSecurityAuditor(url, bearer_token)
+    results = auditor.run_all_tests()
+    
+    return JSONResponse(results)
+
+
+@requires_admin
+@api_error_handler  
+async def api_export_mcp_audit(request: Request) -> JSONResponse:
+    """API: Export MCP security audit results as JSON."""
+    from authmcp_gateway.security.mcp_auditor import MCPSecurityAuditor
+    
+    body = await request.json()
+    url = body.get("url")
+    bearer_token = body.get("bearer_token")
+    
+    if not url:
+        return JSONResponse({"error": "URL is required"}, status_code=400)
+    
+    # Run audit and export
+    auditor = MCPSecurityAuditor(url, bearer_token)
+    export_data = auditor.export_json()
+    
+    return JSONResponse(export_data)

@@ -101,6 +101,14 @@ AuthMCP Gateway provides centralized authentication, authorization, and monitori
 *Track security events, rate limiting, suspicious payloads, and unauthorized access attempts*
 </details>
 
+<details>
+<summary><b>🔒 MCP Security Audit - Vulnerability Scanner</b></summary>
+
+![MCP Security Audit](https://raw.githubusercontent.com/loglux/authmcp-gateway/main/docs/screenshots/05-mcp-security-audit.png)
+
+*Test any MCP server for security vulnerabilities with comprehensive automated checks*
+</details>
+
 ---
 
 ## 🚀 Quick Start

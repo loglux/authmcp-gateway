@@ -306,6 +306,11 @@ app = Starlette(
         Route("/admin/api/logs/cleanup", admin_routes.api_cleanup_logs, methods=["POST"]),
         Route("/admin/api/settings", admin_routes.api_get_settings, methods=["GET"]),
         Route("/admin/api/settings", admin_routes.api_save_settings, methods=["PUT"]),
+        
+        # MCP Security Audit
+        Route("/admin/mcp-audit", admin_routes.admin_mcp_audit, methods=["GET"]),
+        Route("/admin/api/run-mcp-audit", admin_routes.api_run_mcp_audit, methods=["POST"]),
+        Route("/admin/api/export-mcp-audit", admin_routes.api_export_mcp_audit, methods=["POST"]),
 
         # Discovery endpoints
         Route("/.well-known/oauth-protected-resource", oauth_protected_resource, methods=["GET"]),

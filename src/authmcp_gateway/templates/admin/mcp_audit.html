@@ -1,0 +1,263 @@
+{% extends "admin/base.html" %}
+
+{% block title %}MCP Security Audit - Auth MCP Admin{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="mb-8">
+    <h1 class="text-3xl font-bold text-gray-900 flex items-center gap-3">
+        <i data-lucide="shield-check" class="w-8 h-8 text-red-600"></i>
+        MCP Security Audit
+    </h1>
+    <p class="text-gray-600 mt-1">Audit any MCP server for security vulnerabilities</p>
+</div>
+
+<!-- Audit Form -->
+<div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+    <form id="auditForm" class="space-y-4" autocomplete="off">
+        <div>
+            <label for="mcp_url" class="block text-sm font-medium text-gray-700 mb-2">
+                MCP Server URL <span class="text-red-500">*</span>
+            </label>
+            <input type="text" id="mcp_url" name="mcp_server_url" required 
+                   autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                   placeholder="https://mcp-server.example.com/mcp/v1"
+                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500">
+            <p class="text-sm text-gray-500 mt-1">Full URL to the MCP endpoint</p>
+        </div>
+        
+        <div>
+            <label for="bearer_token" class="block text-sm font-medium text-gray-700 mb-2">
+                Bearer Token <span class="text-gray-400">(optional)</span>
+            </label>
+            <input type="text" id="bearer_token" name="api_bearer_token"
+                   autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false"
+                   placeholder="Optional authentication token"
+                   class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500 font-mono">
+            <p class="text-sm text-gray-500 mt-1">Provide only if server requires authentication</p>
+        </div>
+        
+        <div class="flex gap-3">
+            <button type="button" onclick="runAudit()"
+                    class="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex items-center gap-2">
+                <i data-lucide="play" class="w-4 h-4"></i>
+                Run Audit
+            </button>
+            <button type="button" onclick="exportResults()" id="exportBtn" disabled
+                    class="px-6 py-2 bg-gray-400 text-white rounded-lg cursor-not-allowed flex items-center gap-2">
+                <i data-lucide="download" class="w-4 h-4"></i>
+                Export JSON
+            </button>
+        </div>
+    </form>
+</div>
+
+<!-- Results -->
+<div id="resultsContainer" class="hidden">
+    <!-- Summary -->
+    <div id="summary" class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <!-- Will be populated by JS -->
+    </div>
+    
+    <!-- Test Results -->
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="bg-gradient-to-r from-red-600 to-rose-600 px-6 py-4 flex items-center gap-2 text-white">
+            <i data-lucide="shield-alert" class="w-5 h-5"></i>
+            <h3 class="font-semibold">Audit Results</h3>
+        </div>
+        <div id="testResults" class="p-6 space-y-4">
+            <!-- Will be populated by JS -->
+        </div>
+    </div>
+</div>
+
+<!-- Loading Spinner -->
+<div id="loadingSpinner" class="hidden text-center py-12">
+    <div class="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-red-600"></div>
+    <p class="text-gray-600 mt-4">Running security audit...</p>
+</div>
+
+<script>
+let currentResults = null;
+
+// Prevent browser autofill
+document.addEventListener('DOMContentLoaded', function() {
+    // Clear fields on page load
+    setTimeout(() => {
+        document.getElementById('mcp_url').value = '';
+        document.getElementById('bearer_token').value = '';
+    }, 100);
+});
+
+async function runAudit() {
+    const url = document.getElementById('mcp_url').value.trim();
+    const bearerToken = document.getElementById('bearer_token').value.trim();
+    
+    if (!url) {
+        alert('Please enter an MCP server URL');
+        return;
+    }
+    
+    // Show loading
+    document.getElementById('resultsContainer').classList.add('hidden');
+    document.getElementById('loadingSpinner').classList.remove('hidden');
+    document.getElementById('exportBtn').disabled = true;
+    document.getElementById('exportBtn').classList.add('bg-gray-400', 'cursor-not-allowed');
+    document.getElementById('exportBtn').classList.remove('bg-blue-600', 'hover:bg-blue-700');
+    
+    try {
+        const response = await fetch('/admin/api/run-mcp-audit', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                url: url,
+                bearer_token: bearerToken || null
+            })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Audit failed');
+        }
+        
+        currentResults = await response.json();
+        displayResults(currentResults);
+        
+        // Enable export button
+        document.getElementById('exportBtn').disabled = false;
+        document.getElementById('exportBtn').classList.remove('bg-gray-400', 'cursor-not-allowed');
+        document.getElementById('exportBtn').classList.add('bg-blue-600', 'hover:bg-blue-700');
+        
+    } catch (error) {
+        alert('Error: ' + error.message);
+    } finally {
+        document.getElementById('loadingSpinner').classList.add('hidden');
+    }
+}
+
+function displayResults(data) {
+    // Show results container
+    document.getElementById('resultsContainer').classList.remove('hidden');
+    
+    // Display summary
+    const summaryHtml = `
+        <div class="bg-white rounded-lg shadow-sm p-4">
+            <div class="text-sm text-gray-500">Total Tests</div>
+            <div class="text-2xl font-bold text-gray-900">${data.summary.total}</div>
+        </div>
+        <div class="bg-green-50 rounded-lg shadow-sm p-4">
+            <div class="text-sm text-green-600">Passed</div>
+            <div class="text-2xl font-bold text-green-700">${data.summary.passed}</div>
+        </div>
+        <div class="bg-red-50 rounded-lg shadow-sm p-4">
+            <div class="text-sm text-red-600">Failed</div>
+            <div class="text-2xl font-bold text-red-700">${data.summary.failed}</div>
+        </div>
+        <div class="bg-yellow-50 rounded-lg shadow-sm p-4">
+            <div class="text-sm text-yellow-600">Warnings</div>
+            <div class="text-2xl font-bold text-yellow-700">${data.summary.warned}</div>
+        </div>
+    `;
+    document.getElementById('summary').innerHTML = summaryHtml;
+    
+    // Display test results
+    const testsHtml = data.tests.map(test => {
+        const statusColors = {
+            'pass': 'bg-green-50 border-green-200',
+            'fail': 'bg-red-50 border-red-200',
+            'warn': 'bg-yellow-50 border-yellow-200',
+            'skip': 'bg-gray-50 border-gray-200',
+            'info': 'bg-blue-50 border-blue-200',
+            'error': 'bg-red-50 border-red-200'
+        };
+        
+        const statusIcons = {
+            'pass': '✓',
+            'fail': '✗',
+            'warn': '⚠',
+            'skip': '○',
+            'info': 'ℹ',
+            'error': '✗'
+        };
+        
+        const statusTextColors = {
+            'pass': 'text-green-700',
+            'fail': 'text-red-700',
+            'warn': 'text-yellow-700',
+            'skip': 'text-gray-700',
+            'info': 'text-blue-700',
+            'error': 'text-red-700'
+        };
+        
+        return `
+            <div class="border rounded-lg p-4 ${statusColors[test.status]}">
+                <div class="flex items-start gap-3">
+                    <span class="text-2xl ${statusTextColors[test.status]}">${statusIcons[test.status]}</span>
+                    <div class="flex-1">
+                        <h4 class="font-semibold ${statusTextColors[test.status]}">${test.name}</h4>
+                        <p class="text-sm text-gray-700 mt-1">${test.message}</p>
+                        ${test.details ? `<p class="text-xs text-gray-600 mt-2 font-mono">${test.details}</p>` : ''}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    document.getElementById('testResults').innerHTML = testsHtml;
+}
+
+async function exportResults() {
+    if (!currentResults) {
+        alert('No audit results to export');
+        return;
+    }
+    
+    const url = document.getElementById('mcp_url').value.trim();
+    const bearerToken = document.getElementById('bearer_token').value.trim();
+    
+    try {
+        const response = await fetch('/admin/api/export-mcp-audit', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                url: url,
+                bearer_token: bearerToken || null
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Export failed');
+        }
+        
+        const data = await response.json();
+        
+        // Download as JSON file
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const downloadUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        
+        // Generate filename from timestamp or use current date
+        const timestamp = data.metadata?.timestamp || new Date().toISOString();
+        const filename = `mcp-audit-${timestamp.replace(/[:.]/g, '-')}.json`;
+        a.download = filename;
+        
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(downloadUrl);
+        
+    } catch (error) {
+        alert('Error exporting results: ' + error.message);
+    }
+}
+
+// Initialize Lucide icons
+lucide.createIcons();
+</script>
+
+{% endblock %}
