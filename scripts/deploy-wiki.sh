@@ -90,6 +90,10 @@ if [ "$1" = "deploy" ]; then
     
     # Commit and push
     cd "$WIKI_REPO"
+    
+    # Set correct git email for wiki commits
+    git config user.email "37578325+loglux@users.noreply.github.com"
+    
     git add .
     
     if git diff --cached --quiet; then
