@@ -289,7 +289,7 @@ async def admin_login_api(request: Request) -> Response:
             httponly=True,
             secure=is_https,  # Based on current request, not config
             samesite="lax",
-            max_age=_config.jwt.access_token_expire_minutes * 60
+            max_age=_config.jwt.admin_token_expire_minutes * 60
         )
         
         return response

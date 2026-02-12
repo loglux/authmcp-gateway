@@ -5,6 +5,25 @@ import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
+from pathlib import Path
+
+# File-based logging setup
+from authmcp_gateway.logging_config import (
+    setup_file_logger,
+    log_auth_event_to_file,
+)
+
+# Global loggers (initialized on first use)
+_auth_logger = None
+
+
+def get_auth_logger():
+    """Get or create auth logger."""
+    global _auth_logger
+    if _auth_logger is None:
+        log_file = Path("data/logs/auth.log")
+        _auth_logger = setup_file_logger("auth_events", log_file)
+    return _auth_logger
 
 
 @contextmanager
@@ -418,10 +437,10 @@ def log_auth_event(
     success: bool = True,
     details: Optional[str] = None
 ):
-    """Log authentication event to audit table.
+    """Log authentication event to file (no longer uses database).
 
     Args:
-        db_path: Path to SQLite database file
+        db_path: Ignored (kept for backward compatibility)
         event_type: Type of event (e.g., "login", "logout", "token_refresh", "failed_login")
         user_id: Optional user ID
         username: Optional username (useful when user_id not available)
@@ -430,16 +449,17 @@ def log_auth_event(
         success: Whether the event was successful
         details: Optional additional details
     """
-    with get_db_connection(db_path) as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            INSERT INTO auth_audit_log
-            (event_type, user_id, username, ip_address, user_agent, success, details)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (event_type, user_id, username, ip_address, user_agent, success, details)
-        )
+    logger = get_auth_logger()
+    log_auth_event_to_file(
+        logger=logger,
+        event_type=event_type,
+        user_id=user_id,
+        username=username,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        success=success,
+        details=details
+    )
 
 
 def hash_token(token: str) -> str:

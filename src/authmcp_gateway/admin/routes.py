@@ -2,10 +2,11 @@
 import logging
 import sqlite3
 import jwt
+import json
 from pathlib import Path
 from typing import Optional, Callable, Any
 from functools import wraps
-from datetime import datetime
+from datetime import datetime, timedelta
 from jinja2 import Environment, FileSystemLoader
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, Response
@@ -300,12 +301,91 @@ async def api_create_user(request: Request) -> JSONResponse:
 
 @api_error_handler
 async def api_logs(request: Request) -> JSONResponse:
-    """Get auth logs."""
+    """Get auth logs from file with pagination."""
     event_type = request.query_params.get("event_type")
-    limit = int(request.query_params.get("limit", "100"))
+    limit = int(request.query_params.get("limit", "50"))
+    offset = int(request.query_params.get("offset", "0"))
+    days = request.query_params.get("days")  # Filter by days (e.g., "1", "7", "30")
 
-    logs = get_auth_logs(_config.auth.sqlite_path, event_type=event_type, limit=limit)
-    return JSONResponse(logs)
+    log_file = Path("data/logs/auth.log")
+    
+    if not log_file.exists():
+        return JSONResponse({"logs": [], "total": 0, "limit": limit, "offset": offset})
+    
+    # Read and parse log file
+    logs = []
+    cutoff_date = None
+    if days:
+        cutoff_date = datetime.utcnow() - timedelta(days=int(days))
+    
+    try:
+        with open(log_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                try:
+                    log_entry = json.loads(line.strip())
+                    
+                    # Filter by event type
+                    if event_type and log_entry.get("event_type") != event_type:
+                        continue
+                    
+                    # Filter by date
+                    if cutoff_date:
+                        log_time = datetime.fromisoformat(log_entry["timestamp"].replace("Z", "+00:00"))
+                        if log_time < cutoff_date:
+                            continue
+                    
+                    logs.append(log_entry)
+                except (json.JSONDecodeError, KeyError):
+                    continue
+    except Exception as e:
+        logger.error(f"Failed to read auth logs: {e}")
+        return JSONResponse({"error": "Failed to read logs"}, status_code=500)
+    
+    # Sort by timestamp descending (newest first)
+    logs.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+    
+    total = len(logs)
+    paginated_logs = logs[offset:offset + limit]
+    
+    return JSONResponse({"logs": paginated_logs, "total": total, "limit": limit, "offset": offset})
+
+
+@api_error_handler
+async def api_cleanup_logs(request: Request) -> JSONResponse:
+    """Cleanup old auth logs (older than 30 days)."""
+    log_file = Path("data/logs/auth.log")
+    
+    if not log_file.exists():
+        return JSONResponse({"success": True, "deleted": 0})
+    
+    cutoff_date = datetime.utcnow() - timedelta(days=30)
+    kept_logs = []
+    deleted_count = 0
+    
+    try:
+        with open(log_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                try:
+                    log_entry = json.loads(line.strip())
+                    log_time = datetime.fromisoformat(log_entry["timestamp"].replace("Z", "+00:00"))
+                    
+                    if log_time >= cutoff_date:
+                        kept_logs.append(line)
+                    else:
+                        deleted_count += 1
+                except (json.JSONDecodeError, KeyError, ValueError):
+                    # Keep malformed entries to avoid data loss
+                    kept_logs.append(line)
+        
+        # Write back only recent logs
+        with open(log_file, 'w', encoding='utf-8') as f:
+            f.writelines(kept_logs)
+    
+    except Exception as e:
+        logger.error(f"Failed to cleanup logs: {e}")
+        return JSONResponse({"error": "Failed to cleanup logs"}, status_code=500)
+    
+    return JSONResponse({"success": True, "deleted": deleted_count})
 
 
 @api_error_handler

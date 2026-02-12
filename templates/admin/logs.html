@@ -3,66 +3,127 @@
 {% block title %}Auth Logs - MCP Auth Admin{% endblock %}
 
 {% block content %}
-<!-- Header -->
-<div class="flex items-center justify-between mb-8">
-    <div>
-        <h1 class="text-3xl font-bold text-gray-900 flex items-center gap-3">
-            <i data-lucide="clock" class="w-8 h-8 text-blue-600"></i>
-            Authentication Logs
-        </h1>
-        <p class="text-gray-600 mt-1">Monitor authentication events</p>
-    </div>
-    <button 
-        onclick="loadLogs()"
-        class="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg shadow-sm transition-colors flex items-center gap-2"
-    >
-        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-        Refresh
-    </button>
-</div>
-
-<!-- Filters -->
-<div class="bg-white rounded-xl shadow-sm p-6 mb-6">
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+<div x-data="logsManager()">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8">
         <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Event Type</label>
-            <select 
-                id="eventTypeFilter" 
-                onchange="loadLogs()"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            >
-                <option value="">All Events</option>
-                <option value="login">Login</option>
-                <option value="register">Register</option>
-                <option value="logout">Logout</option>
-                <option value="failed_login">Failed Login</option>
-            </select>
+            <h1 class="text-3xl font-bold text-gray-900 flex items-center gap-3">
+                <i data-lucide="clock" class="w-8 h-8 text-blue-600"></i>
+                Authentication Logs
+            </h1>
+            <p class="text-gray-600 mt-1">Monitor authentication events</p>
         </div>
-        <div>
-            <label class="block text-sm font-medium text-gray-700 mb-2">Limit</label>
-            <select 
-                id="limitFilter" 
-                onchange="loadLogs()"
-                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        <div class="flex gap-2">
+            <button 
+                @click="cleanupOldLogs()"
+                class="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg shadow-sm transition-colors flex items-center gap-2"
             >
-                <option value="50">Last 50</option>
-                <option value="100">Last 100</option>
-                <option value="500">Last 500</option>
-            </select>
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                Cleanup (30d+)
+            </button>
+            <button 
+                @click="loadLogs()"
+                class="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg shadow-sm transition-colors flex items-center gap-2"
+            >
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                Refresh
+            </button>
         </div>
     </div>
-</div>
 
-<!-- Logs Container -->
-<div class="bg-white rounded-xl shadow-sm overflow-hidden">
-    <div class="bg-gradient-to-r from-blue-600 to-cyan-600 px-6 py-4 flex items-center gap-2 text-white">
-        <i data-lucide="list" class="w-5 h-5"></i>
-        <h2 class="text-lg font-semibold">Recent Events</h2>
+    <!-- Filters -->
+    <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Event Type</label>
+                <select 
+                    x-model="filters.eventType" 
+                    @change="loadLogs(true)"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                    <option value="">All Events</option>
+                    <option value="login">Login</option>
+                    <option value="register">Register</option>
+                    <option value="logout">Logout</option>
+                    <option value="failed_login">Failed Login</option>
+                    <option value="admin_login">Admin Login</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Time Range</label>
+                <select 
+                    x-model="filters.days" 
+                    @change="loadLogs(true)"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                    <option value="">All Time</option>
+                    <option value="1">Last 24 hours</option>
+                    <option value="7">Last 7 days</option>
+                    <option value="30">Last 30 days</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Per Page</label>
+                <select 
+                    x-model.number="filters.limit" 
+                    @change="loadLogs(true)"
+                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                </select>
+            </div>
+        </div>
     </div>
-    <div class="p-6" id="logsContainer">
-        <div class="text-center py-8">
-            <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
-            <p class="text-gray-500 mt-2">Loading logs...</p>
+
+    <!-- Stats -->
+    <div class="bg-blue-50 border-l-4 border-blue-500 rounded-lg p-4 mb-6" x-show="total > 0">
+        <p class="text-sm text-blue-800">
+            Showing <span class="font-semibold" x-text="logs.length"></span> of 
+            <span class="font-semibold" x-text="total"></span> total logs
+        </p>
+    </div>
+
+    <!-- Logs Container -->
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="bg-gradient-to-r from-blue-600 to-cyan-600 px-6 py-4 flex items-center gap-2 text-white">
+            <i data-lucide="list" class="w-5 h-5"></i>
+            <h2 class="text-lg font-semibold">Recent Events</h2>
+        </div>
+        <div class="p-6" id="logsContainer">
+            <div class="text-center py-8">
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
+                <p class="text-gray-500 mt-2">Loading logs...</p>
+            </div>
+        </div>
+        
+        <!-- Pagination -->
+        <div x-show="total > filters.limit" class="border-t border-gray-200 px-6 py-4 flex items-center justify-between">
+            <button 
+                @click="prevPage()" 
+                :disabled="page === 1"
+                :class="page === 1 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'"
+                class="px-4 py-2 border border-gray-300 rounded-lg transition-colors flex items-center gap-2"
+            >
+                <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                Previous
+            </button>
+            
+            <span class="text-sm text-gray-600">
+                Page <span class="font-semibold" x-text="page"></span> of 
+                <span class="font-semibold" x-text="Math.ceil(total / filters.limit)"></span>
+            </span>
+            
+            <button 
+                @click="nextPage()" 
+                :disabled="page >= Math.ceil(total / filters.limit)"
+                :class="page >= Math.ceil(total / filters.limit) ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'"
+                class="px-4 py-2 border border-gray-300 rounded-lg transition-colors flex items-center gap-2"
+            >
+                Next
+                <i data-lucide="chevron-right" class="w-4 h-4"></i>
+            </button>
         </div>
     </div>
 </div>
@@ -70,88 +131,141 @@
 
 {% block extra_scripts %}
 <script>
-    document.addEventListener('DOMContentLoaded', loadLogs);
+    function logsManager() {
+        return {
+            logs: [],
+            total: 0,
+            page: 1,
+            filters: {
+                eventType: '',
+                days: '7',
+                limit: 50
+            },
+            
+            init() {
+                this.loadLogs();
+            },
+            
+            async loadLogs(resetPage = false) {
+                if (resetPage) this.page = 1;
+                
+                const offset = (this.page - 1) * this.filters.limit;
+                const params = new URLSearchParams({
+                    limit: this.filters.limit,
+                    offset: offset
+                });
+                
+                if (this.filters.eventType) params.append('event_type', this.filters.eventType);
+                if (this.filters.days) params.append('days', this.filters.days);
 
-    async function loadLogs() {
-        const eventType = document.getElementById('eventTypeFilter').value;
-        const limit = document.getElementById('limitFilter').value;
+                try {
+                    const response = await fetch(`/admin/api/logs?${params}`);
+                    const data = await response.json();
+                    
+                    this.logs = data.logs;
+                    this.total = data.total;
+                    this.renderLogs();
+                } catch (error) {
+                    console.error('Failed to load logs:', error);
+                    document.getElementById('logsContainer').innerHTML = `
+                        <div class="text-center py-8 text-red-600">
+                            <i data-lucide="alert-circle" class="w-12 h-12 mx-auto mb-2"></i>
+                            <p>Failed to load logs</p>
+                        </div>
+                    `;
+                    lucide.createIcons();
+                }
+            },
+            
+            renderLogs() {
+                const container = document.getElementById('logsContainer');
+                
+                if (this.logs.length === 0) {
+                    container.innerHTML = '<p class="text-center text-gray-500 py-8">No logs found</p>';
+                    return;
+                }
 
-        try {
-            const params = new URLSearchParams();
-            if (eventType) params.append('event_type', eventType);
-            if (limit) params.append('limit', limit);
+                container.innerHTML = this.logs.map(log => {
+                    const success = log.success;
+                    const borderColor = success ? 'border-emerald-500' : 'border-red-500';
+                    const badgeClass = this.getEventBadgeClass(log.event_type);
+                    const iconClass = success ? 'text-emerald-600' : 'text-red-600';
+                    const icon = success ? 'check-circle' : 'x-circle';
 
-            const response = await fetch(`/admin/api/logs?${params}`);
-            const logs = await response.json();
-
-            const container = document.getElementById('logsContainer');
-            if (logs.length === 0) {
-                container.innerHTML = '<p class="text-center text-gray-500 py-8">No logs found</p>';
-                return;
-            }
-
-            container.innerHTML = logs.map(log => {
-                const success = log.success;
-                const borderColor = success ? 'border-emerald-500' : 'border-red-500';
-                const badgeClass = getEventBadgeClass(log.event_type);
-                const iconClass = success ? 'text-emerald-600' : 'text-red-600';
-                const icon = success ? 'check-circle' : 'x-circle';
-
-                return `
-                    <div class="border-l-4 ${borderColor} bg-gray-50 hover:bg-gray-100 p-4 mb-3 rounded-r-lg transition-colors">
-                        <div class="flex justify-content-between items-start">
-                            <div class="flex-1">
-                                <div class="flex items-center gap-2 mb-2">
-                                    <span class="${badgeClass} px-2 py-1 rounded text-xs font-semibold">${log.event_type}</span>
-                                    <span class="font-semibold text-gray-900">${log.username || 'Unknown'}</span>
-                                    <i data-lucide="${icon}" class="w-5 h-5 ${iconClass}"></i>
-                                </div>
-                                <div class="text-sm text-gray-600 space-y-1">
-                                    <div class="flex items-center gap-2">
-                                        <i data-lucide="clock" class="w-4 h-4"></i>
-                                        <span>${new Date(log.created_at).toLocaleString()}</span>
+                    return `
+                        <div class="border-l-4 ${borderColor} bg-gray-50 hover:bg-gray-100 p-4 mb-3 rounded-r-lg transition-colors">
+                            <div class="flex justify-content-between items-start">
+                                <div class="flex-1">
+                                    <div class="flex items-center gap-2 mb-2">
+                                        <span class="${badgeClass} px-2 py-1 rounded text-xs font-semibold">${log.event_type}</span>
+                                        <span class="font-semibold text-gray-900">${log.username || 'Unknown'}</span>
+                                        <i data-lucide="${icon}" class="w-5 h-5 ${iconClass}"></i>
                                     </div>
-                                    ${log.ip_address ? `
+                                    <div class="text-sm text-gray-600 space-y-1">
                                         <div class="flex items-center gap-2">
-                                            <i data-lucide="map-pin" class="w-4 h-4"></i>
-                                            <span>${log.ip_address}</span>
+                                            <i data-lucide="clock" class="w-4 h-4"></i>
+                                            <span>${new Date(log.timestamp).toLocaleString()}</span>
                                         </div>
-                                    ` : ''}
-                                    ${log.details ? `
-                                        <div class="mt-2 text-gray-500">${log.details}</div>
-                                    ` : ''}
+                                        ${log.ip_address ? `
+                                            <div class="flex items-center gap-2">
+                                                <i data-lucide="map-pin" class="w-4 h-4"></i>
+                                                <span>${log.ip_address}</span>
+                                            </div>
+                                        ` : ''}
+                                        ${log.details ? `
+                                            <div class="mt-2 text-gray-500">${log.details}</div>
+                                        ` : ''}
+                                    </div>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                `;
-            }).join('');
+                    `;
+                }).join('');
 
-            lucide.createIcons();
-        } catch (error) {
-            console.error('Failed to load logs:', error);
-            document.getElementById('logsContainer').innerHTML = `
-                <div class="text-center py-8 text-red-600">
-                    <i data-lucide="alert-circle" class="w-12 h-12 mx-auto mb-2"></i>
-                    <p>Failed to load logs</p>
-                </div>
-            `;
-            lucide.createIcons();
+                lucide.createIcons();
+            },
+            
+            getEventBadgeClass(eventType) {
+                const classes = {
+                    'login': 'bg-emerald-100 text-emerald-700',
+                    'register': 'bg-blue-100 text-blue-700',
+                    'logout': 'bg-gray-100 text-gray-700',
+                    'failed_login': 'bg-red-100 text-red-700',
+                    'admin_login': 'bg-cyan-100 text-cyan-700'
+                };
+                return classes[eventType] || 'bg-gray-100 text-gray-700';
+            },
+            
+            async cleanupOldLogs() {
+                if (!confirm('Delete all logs older than 30 days?\n\nThis action cannot be undone!')) {
+                    return;
+                }
+                
+                try {
+                    const response = await fetch('/admin/api/logs/cleanup', { method: 'POST' });
+                    const data = await response.json();
+                    
+                    alert(`Cleanup complete! Deleted ${data.deleted} old log entries.`);
+                    this.loadLogs(true);
+                } catch (error) {
+                    alert('Failed to cleanup logs: ' + error.message);
+                }
+            },
+            
+            nextPage() {
+                if (this.page < Math.ceil(this.total / this.filters.limit)) {
+                    this.page++;
+                    this.loadLogs();
+                }
+            },
+            
+            prevPage() {
+                if (this.page > 1) {
+                    this.page--;
+                    this.loadLogs();
+                }
+            }
         }
     }
-
-    function getEventBadgeClass(eventType) {
-        const classes = {
-            'login': 'bg-emerald-100 text-emerald-700',
-            'register': 'bg-blue-100 text-blue-700',
-            'logout': 'bg-gray-100 text-gray-700',
-            'failed_login': 'bg-red-100 text-red-700',
-            'admin_login': 'bg-cyan-100 text-cyan-700'
-        };
-        return classes[eventType] || 'bg-gray-100 text-gray-700';
-    }
-
-    // Auto-refresh every 30 seconds
-    setInterval(loadLogs, 30000);
 </script>
 {% endblock %}

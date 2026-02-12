@@ -279,7 +279,6 @@ app = Starlette(
         Route("/admin/security-logs", admin_routes.admin_security_logs, methods=["GET"]),
         Route("/admin/mcp-activity", admin_routes.admin_mcp_activity, methods=["GET"]),
         Route("/admin/api-test", admin_routes.admin_api_test, methods=["GET"]),
-        Route("/admin/mcp-activity", admin_routes.admin_mcp_activity, methods=["GET"]),
 
         # Admin API
         Route("/admin/api/stats", admin_routes.api_stats, methods=["GET"]),
@@ -303,6 +302,7 @@ app = Starlette(
         Route("/admin/api/mcp-servers/token-audit-logs", admin_routes.api_get_token_audit_logs, methods=["GET"]),
         Route("/admin/api/mcp-servers/{server_id:int}/refresh-token", admin_routes.api_refresh_server_token, methods=["POST"]),
         Route("/admin/api/logs", admin_routes.api_logs, methods=["GET"]),
+        Route("/admin/api/logs/cleanup", admin_routes.api_cleanup_logs, methods=["POST"]),
         Route("/admin/api/settings", admin_routes.api_get_settings, methods=["GET"]),
         Route("/admin/api/settings", admin_routes.api_save_settings, methods=["PUT"]),
 

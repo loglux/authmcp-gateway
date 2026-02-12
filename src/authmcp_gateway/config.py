@@ -50,8 +50,9 @@ class JWTConfig:
     secret_key: Optional[str] = None
     private_key: Optional[str] = None
     public_key: Optional[str] = None
-    access_token_expire_minutes: int = 30
+    access_token_expire_minutes: int = 30  # For MCP client access tokens
     refresh_token_expire_days: int = 7
+    admin_token_expire_minutes: int = 480  # 8 hours for admin panel
 
     def __post_init__(self):
         """Validate JWT configuration."""
@@ -203,8 +204,9 @@ def load_config() -> AppConfig:
         secret_key=jwt_secret_key,
         private_key=jwt_private_key,
         public_key=jwt_public_key,
-        access_token_expire_minutes=_env_int("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", 30),
+        access_token_expire_minutes=_env_int("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", 10080),  # 7 days for MCP clients
         refresh_token_expire_days=_env_int("JWT_REFRESH_TOKEN_EXPIRE_DAYS", 7),
+        admin_token_expire_minutes=_env_int("ADMIN_TOKEN_EXPIRE_MINUTES", 480),  # 8 hours for admin panel
     )
 
     # Auth Configuration
