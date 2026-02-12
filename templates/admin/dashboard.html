@@ -3,150 +3,259 @@
 {% block title %}Dashboard - Auth MCP Admin{% endblock %}
 
 {% block content %}
-<!-- Header -->
-<div class="flex items-center justify-between mb-8">
-    <div>
-        <h1 class="text-3xl font-bold text-gray-900 flex items-center gap-3">
-            <i data-lucide="gauge" class="w-8 h-8 text-blue-600"></i>
-            Dashboard
-        </h1>
-        <p class="text-gray-600 mt-1">Overview of your Auth MCP Gateway</p>
+<div x-data="dashboardManager()" x-init="init()">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900 flex items-center gap-3">
+                <i data-lucide="gauge" class="w-8 h-8 text-blue-600"></i>
+                Dashboard
+            </h1>
+            <p class="text-gray-600 mt-1">Real-time overview of your Auth MCP Gateway</p>
+        </div>
+        <div class="flex gap-2">
+            <button 
+                @click="loadAll()"
+                class="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg shadow-sm transition-colors flex items-center gap-2"
+            >
+                <i data-lucide="refresh-cw" class="w-4 h-4" :class="{ 'animate-spin': loading }"></i>
+                Refresh
+            </button>
+        </div>
     </div>
-    <button 
-        onclick="loadStats()"
-        class="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg shadow-sm transition-colors flex items-center gap-2"
-    >
-        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-        Refresh
-    </button>
-</div>
 
-<!-- Stats Cards -->
-<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-    <!-- Total Users -->
-    <div class="bg-white rounded-xl shadow-sm p-6 border-l-4 border-blue-500 hover:shadow-md transition-shadow">
-        <div class="flex items-center justify-between">
-            <div>
-                <p class="text-sm font-medium text-gray-600">Total Users</p>
-                <p class="text-3xl font-bold text-gray-900 mt-2" id="totalUsers">-</p>
+    <!-- Quick Actions -->
+    <div class="bg-gradient-to-r from-blue-600 to-cyan-600 rounded-xl shadow-lg p-6 mb-8">
+        <h3 class="text-white text-lg font-semibold mb-4 flex items-center gap-2">
+            <i data-lucide="zap" class="w-5 h-5"></i>
+            Quick Actions
+        </h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <a href="/admin/mcp-servers" class="bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white rounded-lg p-4 transition-all hover:scale-105 flex items-center gap-3">
+                <i data-lucide="server" class="w-6 h-6"></i>
+                <div>
+                    <div class="font-semibold">Add MCP Server</div>
+                    <div class="text-xs text-white/80">Configure backend</div>
+                </div>
+            </a>
+            <a href="/admin/users" class="bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white rounded-lg p-4 transition-all hover:scale-105 flex items-center gap-3">
+                <i data-lucide="user-plus" class="w-6 h-6"></i>
+                <div>
+                    <div class="font-semibold">Create User</div>
+                    <div class="text-xs text-white/80">Add new user</div>
+                </div>
+            </a>
+            <a href="/admin/mcp-activity" class="bg-white/10 hover:bg-white/20 backdrop-blur-sm text-white rounded-lg p-4 transition-all hover:scale-105 flex items-center gap-3">
+                <i data-lucide="activity" class="w-6 h-6"></i>
+                <div>
+                    <div class="font-semibold">View Activity</div>
+                    <div class="text-xs text-white/80">Real-time logs</div>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <!-- MCP Stats Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <!-- MCP Requests (24h) -->
+        <div class="bg-white rounded-xl shadow-sm p-6 border-l-4 border-blue-500 hover:shadow-md transition-shadow">
+            <div class="flex items-center justify-between">
+                <div class="flex-1">
+                    <p class="text-sm font-medium text-gray-600">MCP Requests (24h)</p>
+                    <p class="text-3xl font-bold text-gray-900 mt-2" x-text="mcpStats.requests24h || 0"></p>
+                    <p class="text-xs text-gray-500 mt-1" x-text="mcpStats.requestsTrend || 'Loading...'"></p>
+                </div>
+                <div class="p-3 bg-blue-100 rounded-lg">
+                    <i data-lucide="send" class="w-6 h-6 text-blue-600"></i>
+                </div>
             </div>
-            <div class="p-3 bg-blue-100 rounded-lg">
-                <i data-lucide="users" class="w-6 h-6 text-blue-600"></i>
+        </div>
+
+        <!-- Active Servers -->
+        <div class="bg-white rounded-xl shadow-sm p-6 border-l-4 border-emerald-500 hover:shadow-md transition-shadow">
+            <div class="flex items-center justify-between">
+                <div class="flex-1">
+                    <p class="text-sm font-medium text-gray-600">MCP Servers</p>
+                    <p class="text-3xl font-bold text-gray-900 mt-2">
+                        <span x-text="mcpStats.activeServers || 0" class="text-emerald-600"></span>
+                        <span class="text-xl text-gray-400">/</span>
+                        <span x-text="mcpStats.totalServers || 0" class="text-gray-400"></span>
+                    </p>
+                    <p class="text-xs text-gray-500 mt-1">Online / Total</p>
+                </div>
+                <div class="p-3 bg-emerald-100 rounded-lg">
+                    <i data-lucide="server" class="w-6 h-6 text-emerald-600"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Success Rate -->
+        <div class="bg-white rounded-xl shadow-sm p-6 border-l-4 border-cyan-500 hover:shadow-md transition-shadow">
+            <div class="flex items-center justify-between">
+                <div class="flex-1">
+                    <p class="text-sm font-medium text-gray-600">Success Rate</p>
+                    <p class="text-3xl font-bold text-gray-900 mt-2" x-text="mcpStats.successRate || '0%'"></p>
+                    <p class="text-xs text-gray-500 mt-1">Last 24 hours</p>
+                </div>
+                <div class="p-3 bg-cyan-100 rounded-lg">
+                    <i data-lucide="check-circle" class="w-6 h-6 text-cyan-600"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Avg Response Time -->
+        <div class="bg-white rounded-xl shadow-sm p-6 border-l-4 border-orange-500 hover:shadow-md transition-shadow">
+            <div class="flex items-center justify-between">
+                <div class="flex-1">
+                    <p class="text-sm font-medium text-gray-600">Avg Response</p>
+                    <p class="text-3xl font-bold text-gray-900 mt-2" x-text="mcpStats.avgResponseTime || '0ms'"></p>
+                    <p class="text-xs text-gray-500 mt-1">MCP requests</p>
+                </div>
+                <div class="p-3 bg-orange-100 rounded-lg">
+                    <i data-lucide="timer" class="w-6 h-6 text-orange-600"></i>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Active Users -->
-    <div class="bg-white rounded-xl shadow-sm p-6 border-l-4 border-cyan-500 hover:shadow-md transition-shadow">
-        <div class="flex items-center justify-between">
-            <div>
-                <p class="text-sm font-medium text-gray-600">Active Users</p>
-                <p class="text-3xl font-bold text-gray-900 mt-2" id="activeUsers">-</p>
-            </div>
-            <div class="p-3 bg-cyan-100 rounded-lg">
-                <i data-lucide="user-check" class="w-6 h-6 text-cyan-600"></i>
-            </div>
-        </div>
-    </div>
-
-    <!-- Superusers -->
-    <div class="bg-white rounded-xl shadow-sm p-6 border-l-4 border-emerald-500 hover:shadow-md transition-shadow">
-        <div class="flex items-center justify-between">
-            <div>
-                <p class="text-sm font-medium text-gray-600">Superusers</p>
-                <p class="text-3xl font-bold text-gray-900 mt-2" id="superUsers">-</p>
-            </div>
-            <div class="p-3 bg-emerald-100 rounded-lg">
-                <i data-lucide="shield-check" class="w-6 h-6 text-emerald-600"></i>
-            </div>
-        </div>
-    </div>
-
-    <!-- Recent Logins -->
-    <div class="bg-white rounded-xl shadow-sm p-6 border-l-4 border-orange-500 hover:shadow-md transition-shadow">
-        <div class="flex items-center justify-between">
-            <div>
-                <p class="text-sm font-medium text-gray-600">Recent Logins (24h)</p>
-                <p class="text-3xl font-bold text-gray-900 mt-2" id="recentLogins">-</p>
-            </div>
-            <div class="p-3 bg-orange-100 rounded-lg">
-                <i data-lucide="activity" class="w-6 h-6 text-orange-600"></i>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Token Expiration Warnings -->
-<div id="tokenWarnings" class="mb-6" style="display: none;">
-    <div class="bg-gradient-to-r from-yellow-50 to-orange-50 border-l-4 border-yellow-400 rounded-lg shadow-sm p-5">
-        <div class="flex items-start gap-3">
-            <div class="flex-shrink-0 mt-0.5">
+    <!-- Token Warnings (if any) -->
+    <div x-show="tokenWarnings.length > 0" class="mb-6">
+        <div class="bg-gradient-to-r from-yellow-50 to-orange-50 border-l-4 border-yellow-400 rounded-lg shadow-sm p-5">
+            <div class="flex items-start gap-3">
                 <i data-lucide="alert-triangle" class="w-6 h-6 text-yellow-600"></i>
-            </div>
-            <div class="flex-1">
-                <h3 class="text-lg font-bold text-yellow-900 mb-2">Token Expiration Warnings</h3>
-                <div id="warningsList" class="space-y-2">
-                    <!-- Warnings will be inserted here -->
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Info Panels -->
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-    <!-- System Info -->
-    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-        <div class="bg-gradient-to-r from-blue-600 to-cyan-600 px-6 py-4 flex items-center gap-2 text-white">
-            <i data-lucide="info" class="w-5 h-5"></i>
-            <h2 class="text-lg font-semibold">System Info</h2>
-        </div>
-        <div class="p-6">
-            <div class="space-y-4">
-                <div class="flex justify-between py-3 border-b border-gray-100">
-                    <span class="font-medium text-gray-700">JWT Algorithm:</span>
-                    <span class="text-gray-900 font-mono text-sm" id="jwtAlgorithm">-</span>
-                </div>
-                <div class="flex justify-between py-3 border-b border-gray-100">
-                    <span class="font-medium text-gray-700">Access Token TTL:</span>
-                    <span class="text-gray-900 font-mono text-sm" id="accessTokenTtl">-</span>
-                </div>
-                <div class="flex justify-between py-3 border-b border-gray-100">
-                    <span class="font-medium text-gray-700">Refresh Token TTL:</span>
-                    <span class="text-gray-900 font-mono text-sm" id="refreshTokenTtl">-</span>
-                </div>
-                <div class="flex justify-between py-3">
-                    <span class="font-medium text-gray-700">Public URL:</span>
-                    <span class="text-gray-900 font-mono text-sm truncate max-w-xs" id="publicUrl">-</span>
+                <div class="flex-1">
+                    <h3 class="text-lg font-bold text-yellow-900 mb-2">Token Expiration Warnings</h3>
+                    <div class="space-y-2">
+                        <template x-for="warning in tokenWarnings" :key="warning.id">
+                            <div class="text-sm text-yellow-800">
+                                <strong x-text="warning.name"></strong> - 
+                                <span x-text="warning.message"></span>
+                            </div>
+                        </template>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- API Endpoints -->
-    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-        <div class="bg-gradient-to-r from-cyan-600 to-blue-600 px-6 py-4 flex items-center gap-2 text-white">
-            <i data-lucide="link" class="w-5 h-5"></i>
-            <h2 class="text-lg font-semibold">API Endpoints</h2>
+    <!-- Main Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <!-- MCP Servers Health -->
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div class="bg-gradient-to-r from-emerald-600 to-cyan-600 px-6 py-4 flex items-center gap-2 text-white">
+                <i data-lucide="server" class="w-5 h-5"></i>
+                <h2 class="text-lg font-semibold">MCP Servers Health</h2>
+            </div>
+            <div class="p-6">
+                <div class="space-y-3" x-show="servers.length > 0">
+                    <template x-for="server in servers" :key="server.id">
+                        <div class="p-4 bg-gray-50 rounded-lg border-l-4" 
+                             :class="{
+                                 'border-emerald-500': server.status === 'online',
+                                 'border-red-500': server.status === 'error',
+                                 'border-gray-400': server.status === 'offline'
+                             }">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-3">
+                                    <i data-lucide="server" class="w-5 h-5" 
+                                       :class="{
+                                           'text-emerald-600': server.status === 'online',
+                                           'text-red-600': server.status === 'error',
+                                           'text-gray-400': server.status === 'offline'
+                                       }"></i>
+                                    <div>
+                                        <div class="font-semibold text-gray-900" x-text="server.name"></div>
+                                        <div class="text-xs text-gray-500" x-text="server.endpoint"></div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2">
+                                    <span class="px-2 py-1 rounded text-xs font-semibold"
+                                          :class="{
+                                              'bg-emerald-100 text-emerald-700': server.status === 'online',
+                                              'bg-red-100 text-red-700': server.status === 'error',
+                                              'bg-gray-100 text-gray-700': server.status === 'offline'
+                                          }"
+                                          x-text="server.status.toUpperCase()"></span>
+                                    <span class="text-xs text-gray-500" x-show="server.tools_count" x-text="server.tools_count + ' tools'"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+                <div x-show="servers.length === 0" class="text-center py-8 text-gray-500">
+                    <i data-lucide="inbox" class="w-12 h-12 mx-auto mb-2 text-gray-300"></i>
+                    <p>No MCP servers configured</p>
+                    <a href="/admin/mcp-servers" class="text-blue-600 hover:underline text-sm mt-2 inline-block">Add your first server</a>
+                </div>
+            </div>
         </div>
-        <div class="p-6">
-            <div class="space-y-3">
-                <div class="p-4 bg-gray-50 rounded-lg border border-gray-200 hover:border-blue-300 transition-colors">
-                    <code class="text-sm font-mono text-blue-600">POST /auth/register</code>
-                    <p class="text-xs text-gray-600 mt-1">User registration</p>
+
+        <!-- Top Tools -->
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div class="bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-4 flex items-center gap-2 text-white">
+                <i data-lucide="wrench" class="w-5 h-5"></i>
+                <h2 class="text-lg font-semibold">Top 5 Tools (24h)</h2>
+            </div>
+            <div class="p-6">
+                <div class="space-y-3" x-show="topTools.length > 0">
+                    <template x-for="(tool, index) in topTools" :key="tool.name">
+                        <div class="flex items-center gap-3">
+                            <div class="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center text-white font-bold text-sm"
+                                 x-text="index + 1"></div>
+                            <div class="flex-1 min-w-0">
+                                <div class="font-medium text-gray-900 truncate" x-text="tool.name"></div>
+                                <div class="text-xs text-gray-500" x-text="tool.server"></div>
+                            </div>
+                            <div class="text-right">
+                                <div class="font-semibold text-gray-900" x-text="tool.count"></div>
+                                <div class="text-xs text-gray-500">calls</div>
+                            </div>
+                        </div>
+                    </template>
                 </div>
-                <div class="p-4 bg-gray-50 rounded-lg border border-gray-200 hover:border-blue-300 transition-colors">
-                    <code class="text-sm font-mono text-blue-600">POST /auth/login</code>
-                    <p class="text-xs text-gray-600 mt-1">User login (JWT tokens)</p>
+                <div x-show="topTools.length === 0" class="text-center py-8 text-gray-500">
+                    <i data-lucide="wrench" class="w-12 h-12 mx-auto mb-2 text-gray-300"></i>
+                    <p>No tool usage yet</p>
                 </div>
-                <div class="p-4 bg-gray-50 rounded-lg border border-gray-200 hover:border-blue-300 transition-colors">
-                    <code class="text-sm font-mono text-blue-600">GET /auth/me</code>
-                    <p class="text-xs text-gray-600 mt-1">Current user profile</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent MCP Activity -->
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="bg-gradient-to-r from-blue-600 to-cyan-600 px-6 py-4 flex items-center justify-between text-white">
+            <div class="flex items-center gap-2">
+                <i data-lucide="activity" class="w-5 h-5"></i>
+                <h2 class="text-lg font-semibold">Recent Activity</h2>
+            </div>
+            <a href="/admin/mcp-activity" class="text-xs text-white/80 hover:text-white">View all →</a>
+        </div>
+        <div class="divide-y divide-gray-100">
+            <template x-for="request in recentRequests" :key="request.timestamp">
+                <div class="p-4 hover:bg-gray-50 transition-colors">
+                    <div class="flex items-start justify-between gap-4">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 mb-1">
+                                <i data-lucide="check-circle" class="w-4 h-4" 
+                                   :class="request.success ? 'text-green-600' : 'text-red-600'"></i>
+                                <span class="font-medium text-gray-900" x-text="request.method"></span>
+                                <span class="text-xs text-gray-500" x-show="request.tool_name">
+                                    → <span x-text="request.tool_name"></span>
+                                </span>
+                            </div>
+                            <div class="text-xs text-gray-600 space-x-3">
+                                <span x-text="request.username"></span>
+                                <span x-show="request.server_name" x-text="'• ' + request.server_name"></span>
+                                <span x-show="request.response_time_ms" x-text="'• ' + request.response_time_ms + 'ms'"></span>
+                            </div>
+                        </div>
+                        <div class="text-xs text-gray-500 whitespace-nowrap" x-text="formatTime(request.timestamp)"></div>
+                    </div>
                 </div>
-                <div class="p-4 bg-gray-50 rounded-lg border border-gray-200 hover:border-blue-300 transition-colors">
-                    <code class="text-sm font-mono text-blue-600">POST /mcp</code>
-                    <p class="text-xs text-gray-600 mt-1">MCP protocol endpoint</p>
-                </div>
+            </template>
+            <div x-show="recentRequests.length === 0" class="p-8 text-center text-gray-500">
+                <i data-lucide="inbox" class="w-12 h-12 mx-auto mb-2 text-gray-300"></i>
+                <p>No recent activity</p>
             </div>
         </div>
     </div>
@@ -155,93 +264,124 @@
 
 {% block extra_scripts %}
 <script>
-    async function loadStats() {
-        try {
-            const response = await fetch('/admin/api/stats');
-            const data = await response.json();
-
-            // Update stats
-            document.getElementById('totalUsers').textContent = data.total_users;
-            document.getElementById('activeUsers').textContent = data.active_users;
-            document.getElementById('superUsers').textContent = data.superusers;
-            document.getElementById('recentLogins').textContent = data.recent_logins;
-
-            // Update system info
-            if (data.system) {
-                document.getElementById('jwtAlgorithm').textContent = data.system.jwt_algorithm;
-                document.getElementById('accessTokenTtl').textContent = data.system.access_token_ttl;
-                document.getElementById('refreshTokenTtl').textContent = data.system.refresh_token_ttl;
-                document.getElementById('publicUrl').textContent = data.system.public_url;
-            }
+    function dashboardManager() {
+        return {
+            loading: false,
+            mcpStats: {
+                requests24h: 0,
+                requestsTrend: '',
+                activeServers: 0,
+                totalServers: 0,
+                successRate: '0%',
+                avgResponseTime: '0ms'
+            },
+            servers: [],
+            topTools: [],
+            recentRequests: [],
+            tokenWarnings: [],
+            autoRefreshInterval: null,
             
-            // Re-initialize icons after DOM update
-            lucide.createIcons();
-        } catch (error) {
-            console.error('Failed to load stats:', error);
-            document.getElementById('totalUsers').textContent = 'Error';
-            document.getElementById('activeUsers').textContent = 'Error';
-            document.getElementById('superUsers').textContent = 'Error';
-            document.getElementById('recentLogins').textContent = 'Error';
-        }
-    }
-
-    async function loadTokenWarnings() {
-        try {
-            const response = await fetch('/admin/api/mcp-servers/token-status');
-            const data = await response.json();
+            init() {
+                this.loadAll();
+                // Auto-refresh every 5 seconds
+                this.autoRefreshInterval = setInterval(() => {
+                    this.loadAll();
+                }, 5000);
+            },
             
-            // Filter servers with warnings or expired tokens
-            const warnings = data.servers.filter(s => 
-                s.token_status.status === 'warning' || s.token_status.status === 'expired'
-            );
+            async loadAll() {
+                this.loading = true;
+                await Promise.all([
+                    this.loadMCPStats(),
+                    this.loadServers(),
+                    this.loadTopTools(),
+                    this.loadRecentRequests(),
+                    this.loadTokenWarnings()
+                ]);
+                this.loading = false;
+                lucide.createIcons();
+            },
             
-            const warningsContainer = document.getElementById('tokenWarnings');
-            const warningsList = document.getElementById('warningsList');
-            
-            if (warnings.length > 0) {
-                // Sort: expired first, then by days_left
-                warnings.sort((a, b) => {
-                    if (a.token_status.status === 'expired' && b.token_status.status !== 'expired') return -1;
-                    if (a.token_status.status !== 'expired' && b.token_status.status === 'expired') return 1;
-                    return (a.token_status.days_left || 0) - (b.token_status.days_left || 0);
-                });
-                
-                warningsList.innerHTML = warnings.map(server => {
-                    const isExpired = server.token_status.status === 'expired';
-                    const daysLeft = server.token_status.days_left;
-                    const expiresAt = server.token_status.expires_at_formatted;
-                    const icon = isExpired ? '🔴' : '🟡';
-                    const text = isExpired 
-                        ? `<strong>${server.name}</strong> - Token expired ${Math.abs(daysLeft)} day(s) ago (${expiresAt})`
-                        : `<strong>${server.name}</strong> - Token expires in ${daysLeft} day(s) (${expiresAt})`;
+            async loadMCPStats() {
+                try {
+                    const response = await fetch('/admin/api/mcp-stats');
+                    const data = await response.json();
                     
-                    return `
-                        <div class="flex items-center gap-2 text-sm ${isExpired ? 'text-red-700' : 'text-yellow-700'}">
-                            <span>${icon}</span>
-                            <span>${text}</span>
-                            <a href="/admin/mcp-servers" class="ml-auto text-blue-600 hover:text-blue-800 underline">Update</a>
-                        </div>
-                    `;
-                }).join('');
-                
-                warningsContainer.style.display = 'block';
-            } else {
-                warningsContainer.style.display = 'none';
-            }
+                    this.mcpStats.requests24h = data.requests_24h || 0;
+                    this.mcpStats.requestsTrend = data.trend || '';
+                    this.mcpStats.activeServers = data.active_servers || 0;
+                    this.mcpStats.totalServers = data.total_servers || 0;
+                    
+                    const successRate = data.success_rate || 0;
+                    this.mcpStats.successRate = successRate.toFixed(1) + '%';
+                    
+                    const avgTime = data.avg_response_time || 0;
+                    this.mcpStats.avgResponseTime = Math.round(avgTime) + 'ms';
+                } catch (error) {
+                    console.error('Failed to load MCP stats:', error);
+                }
+            },
             
-            lucide.createIcons();
-        } catch (error) {
-            console.error('Failed to load token warnings:', error);
-        }
+            async loadServers() {
+                try {
+                    const response = await fetch('/admin/api/mcp-servers');
+                    this.servers = await response.json();
+                } catch (error) {
+                    console.error('Failed to load servers:', error);
+                }
+            },
+            
+            async loadTopTools() {
+                try {
+                    const response = await fetch('/admin/api/mcp-stats?include_top_tools=true');
+                    const data = await response.json();
+                    this.topTools = (data.top_tools || []).slice(0, 5);
+                } catch (error) {
+                    console.error('Failed to load top tools:', error);
+                }
+            },
+            
+            async loadRecentRequests() {
+                try {
+                    const response = await fetch('/admin/api/mcp-requests?limit=10');
+                    const data = await response.json();
+                    this.recentRequests = data.requests || [];
+                } catch (error) {
+                    console.error('Failed to load recent requests:', error);
+                }
+            },
+            
+            async loadTokenWarnings() {
+                try {
+                    const response = await fetch('/admin/api/mcp-servers/token-status');
+                    const servers = await response.json();
+                    
+                    this.tokenWarnings = servers.filter(s => {
+                        const status = s.token_status?.status;
+                        return status === 'warning' || status === 'expired';
+                    }).map(s => ({
+                        id: s.id,
+                        name: s.name,
+                        message: s.token_status?.status === 'expired' 
+                            ? 'Token expired!' 
+                            : `Token expires in ${s.token_status?.days_left} days`
+                    }));
+                } catch (error) {
+                    console.error('Failed to load token warnings:', error);
+                }
+            },
+            
+            formatTime(timestamp) {
+                const date = new Date(timestamp);
+                const now = new Date();
+                const diff = Math.floor((now - date) / 1000);
+                
+                if (diff < 60) return diff + 's ago';
+                if (diff < 3600) return Math.floor(diff / 60) + 'm ago';
+                if (diff < 86400) return Math.floor(diff / 3600) + 'h ago';
+                return date.toLocaleDateString();
+            }
+        };
     }
-
-    // Load stats on page load
-    document.addEventListener('DOMContentLoaded', function() {
-        loadStats();
-        loadTokenWarnings();
-        // Refresh every 30 seconds
-        setInterval(loadStats, 30000);
-        setInterval(loadTokenWarnings, 60000); // Check tokens every minute
-    });
 </script>
 {% endblock %}

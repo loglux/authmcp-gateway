@@ -151,3 +151,4 @@ JINJA2_MIGRATION_CHECKLIST.md
 NEXT_STEPS.md
 scripts/migrate_*.py
 authmcp-gateway.wiki/
+templates/admin/dashboard_old.html
