@@ -2,6 +2,11 @@
 
 **Secure authentication proxy for Model Context Protocol (MCP) servers**
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)](https://hub.docker.com/)
+[![MCP](https://img.shields.io/badge/MCP-compatible-purple.svg)](https://modelcontextprotocol.io)
+
 AuthMCP Gateway provides centralized authentication, authorization, and monitoring for MCP servers. It acts as a secure proxy between clients and your MCP backends, adding JWT-based authentication, rate limiting, real-time monitoring, and comprehensive security logging.
 
 ## Features
@@ -27,10 +32,22 @@ AuthMCP Gateway provides centralized authentication, authorization, and monitori
 
 ### 🛡️ **Security**
 - JWT token-based authentication with refresh tokens
-- Secure credential storage in SQLite
+- Secure credential storage with encrypted database support
 - CORS protection and request validation
 - Security event logging and monitoring
+- **File-based logging** - No database bloat, 30-day rotation
 - Built-in security testing guide
+
+## Documentation
+
+📚 **[Complete Documentation](docs/README.md)** - Full documentation index
+
+**Quick Links:**
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Production setup with HTTPS, Docker, cloud platforms
+- **[Logging Architecture](docs/LOGGING.md)** - File-based logging, log formats, analysis
+- **[API Reference](docs/API.md)** - REST API documentation with examples
+- **[Security Testing](docs/SECURITY_TESTING.md)** - Security verification and testing
+- **[Publishing Guide](docs/PUBLISHING.md)** - Publishing to PyPI
 
 ## Quick Start
 
