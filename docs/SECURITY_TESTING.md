@@ -2,6 +2,40 @@
 
 This guide helps you verify that your AuthMCP Gateway installation is properly secured.
 
+## 🚀 Quick Start - Automated Testing
+
+We provide ready-to-use security testing scripts:
+
+**Python script** (recommended - detailed output):
+```bash
+# Install httpx if needed
+pip install httpx
+
+# Test any MCP server
+python scripts/test_mcp_security.py http://localhost:9105/mcp
+
+# Test with authentication
+python scripts/test_mcp_security.py https://mcp.example.com/mcp --bearer YOUR_TOKEN
+```
+
+**Bash script** (lightweight - no dependencies):
+```bash
+# Test any MCP server  
+./scripts/test_mcp_security.sh http://localhost:9105/mcp
+
+# Test with authentication
+./scripts/test_mcp_security.sh https://mcp.example.com/mcp --token YOUR_TOKEN
+```
+
+Both scripts test:
+- ✅ Unauthenticated access rejection
+- ✅ Invalid token rejection  
+- ✅ Tool execution authorization
+- ✅ Information disclosure in errors
+- ✅ Named server endpoints security
+
+---
+
 ## Quick Security Checklist
 
 After deploying AuthMCP Gateway, verify these essential security features:
