@@ -86,13 +86,13 @@
                     ('dashboard', '/admin', 'gauge', 'Dashboard'),
                     ('users', '/admin/users', 'users', 'Users'),
                     ('mcp-servers', '/admin/mcp-servers', 'server', 'MCP Servers'),
-                    {# ('mcp-tokens', '/admin/mcp-tokens', 'key', 'Backend Tokens'), #}
                     ('settings', '/admin/settings', 'settings', 'Settings'),
                     ('mcp-activity', '/admin/mcp-activity', 'activity', 'MCP Activity'),
                     ('logs', '/admin/logs', 'clock', 'Auth Logs'),
                     ('security-logs', '/admin/security-logs', 'shield-alert', 'Security Events'),
                     ('api-test', '/admin/api-test', 'code-2', 'API Test')
                 ] %}
+                {# Hidden: ('mcp-tokens', '/admin/mcp-tokens', 'key', 'Backend Tokens') - investigating OAuth2 refresh #}
                 
                 {% for page_id, url, icon, label in menu_items %}
                 <a 
