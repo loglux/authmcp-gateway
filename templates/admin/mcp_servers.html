@@ -2,321 +2,497 @@
 
 {% block title %}MCP Servers - MCP Auth Admin{% endblock %}
 
-{% block extra_styles %}
-.server-card {
-    border-left: 4px solid #dee2e6;
-    transition: all 0.3s;
-}
-.server-card:hover {
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
-.server-card.online { border-left-color: #28a745; }
-.server-card.offline { border-left-color: #dc3545; }
-.server-card.error { border-left-color: #ffc107; }
-.tool-badge {
-    font-size: 0.85rem;
-    padding: 0.25rem 0.5rem;
-    margin: 0.15rem;
-    display: inline-block;
-}
-{% endblock %}
-
 {% block content %}
-<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
-    <h1 class="h2"><i class="bi bi-hdd-network"></i> MCP Servers</h1>
-    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addServerModal">
-        <i class="bi bi-plus-circle"></i> Add Server
-    </button>
-</div>
+<div x-data="mcpServersManager()">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900 flex items-center gap-3">
+                <i data-lucide="server" class="w-8 h-8 text-blue-600"></i>
+                MCP Servers
+            </h1>
+            <p class="text-gray-600 mt-1">Manage backend MCP server connections</p>
+        </div>
+        <button 
+            @click="showAddModal = true"
+            class="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg shadow-sm transition-colors flex items-center gap-2"
+        >
+            <i data-lucide="plus-circle" class="w-4 h-4"></i>
+            Add Server
+        </button>
+    </div>
 
-<!-- Gateway Endpoints Info -->
-<div class="alert alert-info">
-    <div class="d-flex align-items-center">
-        <i class="bi bi-info-circle me-2"></i>
-        <div class="flex-grow-1">
-            <strong>Gateway Endpoints:</strong>
-            <div class="mt-1">
-                <div class="d-flex align-items-center mb-1">
-                    <code class="bg-white px-2 py-1 rounded" id="aggregatedEndpoint">http://192.168.10.32:9105/mcp</code>
-                    <button class="btn btn-sm btn-outline-secondary ms-2 py-0 px-2" onclick="copyToClipboard(document.getElementById('aggregatedEndpoint').textContent, this)" title="Copy URL">
-                        <i class="bi bi-clipboard"></i>
-                    </button>
-                    <small class="text-muted ms-2">All servers aggregated (with prefixes)</small>
+    <!-- Gateway Endpoints Info -->
+    <div class="bg-blue-50 border-l-4 border-blue-500 rounded-lg p-4 mb-6">
+        <div class="flex items-start gap-3">
+            <i data-lucide="info" class="w-5 h-5 text-blue-600 mt-0.5"></i>
+            <div class="flex-1">
+                <p class="font-semibold text-blue-900 mb-2">Gateway Endpoints:</p>
+                <div class="space-y-2">
+                    <div class="flex items-center gap-2">
+                        <code class="px-3 py-1 bg-white rounded border border-blue-200 text-blue-700 text-sm" id="aggregatedEndpoint">Loading...</code>
+                        <button onclick="copyToClipboard(document.getElementById('aggregatedEndpoint').textContent, this)" 
+                                class="p-1.5 text-blue-600 hover:bg-blue-100 rounded transition-colors" title="Copy URL">
+                            <i data-lucide="clipboard" class="w-4 h-4"></i>
+                        </button>
+                        <span class="text-sm text-blue-700">All servers aggregated (with prefixes)</span>
+                    </div>
+                    <p class="text-sm text-blue-700">Each server below also has its own dedicated endpoint for individual access.</p>
                 </div>
-                <small class="text-muted">Each server below also has its own dedicated endpoint for individual access.</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Servers Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6" id="serversList">
+        <!-- Populated by JavaScript -->
+    </div>
+
+    <!-- Add Server Modal -->
+    <div x-show="showAddModal" x-cloak class="fixed inset-0 z-50 overflow-y-auto" @keydown.escape.window="showAddModal = false">
+        <div class="flex items-end sm:items-center justify-center min-h-screen">
+            <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" @click="showAddModal = false"></div>
+            
+            <div class="bg-white sm:rounded-xl rounded-t-2xl shadow-2xl z-10 w-full sm:max-w-lg relative sm:my-8 max-h-[95vh] sm:max-h-[90vh] overflow-hidden border-t-2 sm:border-2 border-blue-100 animate-slide-up">
+                <!-- Modal Header with Gradient -->
+                <div class="bg-gradient-to-r from-blue-600 via-cyan-600 to-cyan-700 px-4 sm:px-6 py-4 sm:py-4 flex items-center justify-between sticky top-0 z-10">
+                    <h3 class="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+                        <i data-lucide="server" class="w-5 sm:w-6 h-5 sm:h-6"></i>
+                        Add MCP Server
+                    </h3>
+                    <button @click="showAddModal = false" class="text-white/80 hover:text-white hover:bg-white/10 rounded-lg p-2 transition-all touch-manipulation">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+                
+                <!-- Modal Body -->
+                <div class="p-4 sm:p-6 overflow-y-auto" style="max-height: calc(95vh - 140px);">
+                    <form id="addServerForm" @submit.prevent="addServer">
+                        <div class="space-y-4 sm:space-y-4">
+                            <div>
+                                <label class="block text-sm sm:text-sm font-bold text-gray-800 mb-2">Name <span class="text-red-600">*</span></label>
+                                <input type="text" id="serverName" required
+                                       class="w-full px-3 sm:px-4 py-3 sm:py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium text-base">
+                            </div>
+                            <div>
+                                <label class="block text-sm sm:text-sm font-bold text-gray-800 mb-2">Description</label>
+                                <textarea id="serverDescription" rows="3"
+                                          class="w-full px-3 sm:px-4 py-3 sm:py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium text-base resize-none"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-sm sm:text-sm font-bold text-gray-800 mb-2">URL <span class="text-red-600">*</span></label>
+                                <input type="url" id="serverUrl" placeholder="http://localhost:8080/mcp" required
+                                       class="w-full px-3 sm:px-4 py-3 sm:py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-mono text-sm break-all">
+                                <p class="text-xs text-gray-600 mt-2 flex items-start gap-1.5 leading-relaxed">
+                                    <i data-lucide="info" class="w-3.5 h-3.5 mt-0.5 flex-shrink-0"></i>
+                                    <span>Full MCP endpoint URL</span>
+                                </p>
+                            </div>
+                            <div>
+                                <label class="block text-sm sm:text-sm font-bold text-gray-800 mb-2">Tool Prefix</label>
+                                <input type="text" id="serverPrefix" placeholder="myserver_"
+                                       class="w-full px-3 sm:px-4 py-3 sm:py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-mono text-sm">
+                                <p class="text-xs text-gray-600 mt-2 flex items-start gap-1.5 leading-relaxed">
+                                    <i data-lucide="info" class="w-3.5 h-3.5 mt-0.5 flex-shrink-0"></i>
+                                    <span>Prefix for tool names (e.g., myserver_tool1)</span>
+                                </p>
+                            </div>
+                            <div>
+                                <label class="block text-sm sm:text-sm font-bold text-gray-800 mb-2">Auth Type</label>
+                                <select id="serverAuthType" x-model="authType"
+                                        class="w-full px-3 sm:px-4 py-3 sm:py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-medium text-base">
+                                    <option value="none">None</option>
+                                    <option value="bearer">Bearer Token</option>
+                                    <option value="basic">Basic Auth</option>
+                                </select>
+                            </div>
+                            <div x-show="authType !== 'none'">
+                                <label class="block text-sm sm:text-sm font-bold text-gray-800 mb-2">Auth Token</label>
+                                <input type="text" id="serverAuthToken"
+                                       class="w-full px-3 sm:px-4 py-3 sm:py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-mono text-sm break-all">
+                                <p class="text-xs text-gray-600 mt-2 flex items-start gap-1.5 leading-relaxed">
+                                    <i data-lucide="info" class="w-3.5 h-3.5 mt-0.5 flex-shrink-0"></i>
+                                    <span x-text="authType === 'bearer' ? 'JWT or API token' : 'Username:Password (base64 encoded)'"></span>
+                                </p>
+                            </div>
+                            <div class="flex items-center bg-blue-50 p-3 sm:p-3 rounded-lg border border-blue-200 gap-3">
+                                <input type="checkbox" id="serverEnabled" checked
+                                       class="w-5 h-5 sm:w-5 sm:h-5 text-blue-600 border-gray-400 rounded focus:ring-blue-500 flex-shrink-0">
+                                <label for="serverEnabled" class="text-sm sm:text-sm font-bold text-gray-800 leading-tight">Enabled</label>
+                            </div>
+                        </div>
+                        
+                        <div class="flex gap-3 mt-6 pt-4 border-t border-gray-200 sticky bottom-0 bg-white -mx-4 sm:-mx-0 px-4 sm:px-0 pb-4 sm:pb-0">
+                            <button type="button" @click="showAddModal = false"
+                                    class="flex-1 px-4 py-3 sm:py-2.5 border-2 border-gray-400 text-gray-700 font-bold rounded-lg hover:bg-gray-100 hover:border-gray-600 transition-all touch-manipulation">
+                                Cancel
+                            </button>
+                            <button type="submit"
+                                    class="flex-1 px-4 py-3 sm:py-2.5 bg-gradient-to-r from-blue-600 via-cyan-600 to-cyan-700 hover:from-blue-700 hover:via-cyan-700 hover:to-cyan-800 text-white font-bold rounded-lg shadow-lg hover:shadow-xl transition-all touch-manipulation">
+                                <span class="flex items-center justify-center gap-2">
+                                    <i data-lucide="plus-circle" class="w-4 h-4"></i>
+                                    Add Server
+                                </span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Server Modal -->
+    <div x-show="showEditModal" x-cloak class="fixed inset-0 z-50 overflow-y-auto" @keydown.escape.window="showEditModal = false">
+        <div class="flex items-end sm:items-center justify-center min-h-screen">
+            <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" @click="showEditModal = false"></div>
+            
+            <div class="bg-white sm:rounded-xl rounded-t-2xl shadow-2xl z-10 w-full sm:max-w-lg relative sm:my-8 max-h-[95vh] sm:max-h-[90vh] overflow-hidden border-t-2 sm:border-2 border-orange-100 animate-slide-up">
+                <!-- Modal Header with Gradient -->
+                <div class="bg-gradient-to-r from-orange-600 via-red-600 to-red-700 px-4 sm:px-6 py-4 sm:py-4 flex items-center justify-between sticky top-0 z-10">
+                    <h3 class="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
+                        <i data-lucide="edit" class="w-5 sm:w-6 h-5 sm:h-6"></i>
+                        Edit MCP Server
+                    </h3>
+                    <button @click="showEditModal = false" class="text-white/80 hover:text-white hover:bg-white/10 rounded-lg p-2 transition-all touch-manipulation">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+                
+                <!-- Modal Body -->
+                <div class="p-4 sm:p-6 overflow-y-auto" style="max-height: calc(95vh - 140px);">
+                    <form id="editServerForm" @submit.prevent="updateServer">
+                        <input type="hidden" id="editServerId">
+                        <div class="space-y-4 sm:space-y-4">
+                            <div>
+                                <label class="block text-sm sm:text-sm font-bold text-gray-800 mb-2">Name <span class="text-red-600">*</span></label>
+                                <input type="text" id="editServerName" required
+                                       class="w-full px-3 sm:px-4 py-3 sm:py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all font-medium text-base">
+                            </div>
+                            <div>
+                                <label class="block text-sm sm:text-sm font-bold text-gray-800 mb-2">Description</label>
+                                <textarea id="editServerDescription" rows="3"
+                                          class="w-full px-3 sm:px-4 py-3 sm:py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all font-medium text-base resize-none"></textarea>
+                            </div>
+                            <div>
+                                <label class="block text-sm sm:text-sm font-bold text-gray-800 mb-2">URL <span class="text-red-600">*</span></label>
+                                <input type="url" id="editServerUrl" placeholder="http://localhost:8080/mcp" required
+                                       class="w-full px-3 sm:px-4 py-3 sm:py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all font-mono text-sm break-all">
+                                <p class="text-xs text-gray-600 mt-2 flex items-start gap-1.5 leading-relaxed">
+                                    <i data-lucide="info" class="w-3.5 h-3.5 mt-0.5 flex-shrink-0"></i>
+                                    <span>Full MCP endpoint URL</span>
+                                </p>
+                            </div>
+                            <div>
+                                <label class="block text-sm sm:text-sm font-bold text-gray-800 mb-2">Tool Prefix</label>
+                                <input type="text" id="editServerPrefix" placeholder="myserver_"
+                                       class="w-full px-3 sm:px-4 py-3 sm:py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all font-mono text-sm">
+                                <p class="text-xs text-gray-600 mt-2 flex items-start gap-1.5 leading-relaxed">
+                                    <i data-lucide="info" class="w-3.5 h-3.5 mt-0.5 flex-shrink-0"></i>
+                                    <span>Prefix for tool names (e.g., myserver_tool1)</span>
+                                </p>
+                            </div>
+                            <div>
+                                <label class="block text-sm sm:text-sm font-bold text-gray-800 mb-2">Auth Type</label>
+                                <select id="editServerAuthType" x-model="editAuthType"
+                                        class="w-full px-3 sm:px-4 py-3 sm:py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all font-medium text-base">
+                                    <option value="none">None</option>
+                                    <option value="bearer">Bearer Token</option>
+                                    <option value="basic">Basic Auth</option>
+                                </select>
+                            </div>
+                            <div x-show="editAuthType !== 'none'">
+                                <label class="block text-sm sm:text-sm font-bold text-gray-800 mb-2">Auth Token</label>
+                                <input type="text" id="editServerAuthToken"
+                                       class="w-full px-3 sm:px-4 py-3 sm:py-2.5 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-all font-mono text-sm break-all">
+                                <p class="text-xs text-amber-800 bg-amber-50 p-2.5 rounded mt-2 flex items-start gap-1.5 leading-relaxed">
+                                    <i data-lucide="alert-triangle" class="w-3.5 h-3.5 mt-0.5 flex-shrink-0"></i>
+                                    <span>Leave empty to keep existing token</span>
+                                </p>
+                            </div>
+                            <div class="flex items-center bg-orange-50 p-3 sm:p-3 rounded-lg border border-orange-200 gap-3">
+                                <input type="checkbox" id="editServerEnabled" class="w-5 h-5 sm:w-5 sm:h-5 text-orange-600 border-gray-400 rounded focus:ring-orange-500 flex-shrink-0">
+                                <label for="editServerEnabled" class="text-sm sm:text-sm font-bold text-gray-800 leading-tight">Enabled</label>
+                            </div>
+                        </div>
+                        
+                        <div class="flex gap-3 mt-6 pt-4 border-t border-gray-200 sticky bottom-0 bg-white -mx-4 sm:-mx-0 px-4 sm:px-0 pb-4 sm:pb-0">
+                            <button type="button" @click="showEditModal = false"
+                                    class="flex-1 px-4 py-3 sm:py-2.5 border-2 border-gray-400 text-gray-700 font-bold rounded-lg hover:bg-gray-100 hover:border-gray-600 transition-all touch-manipulation">
+                                Cancel
+                            </button>
+                            <button type="submit"
+                                    class="flex-1 px-4 py-3 sm:py-2.5 bg-gradient-to-r from-orange-600 via-red-600 to-red-700 hover:from-orange-700 hover:via-red-700 hover:to-red-800 text-white font-bold rounded-lg shadow-lg hover:shadow-xl transition-all touch-manipulation">
+                                <span class="flex items-center justify-center gap-2">
+                                    <i data-lucide="save" class="w-4 h-4"></i>
+                                    Update Server
+                                </span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
         </div>
     </div>
 </div>
-<script>
-    // Set aggregated endpoint dynamically
-    document.addEventListener('DOMContentLoaded', function() {
-        const baseUrl = window.location.origin;
-        document.getElementById('aggregatedEndpoint').textContent = baseUrl + '/mcp';
-    });
-</script>
+<!-- End of mcpServersManager -->
 
-<!-- Servers List -->
-<div class="row" id="serversList">
-    <!-- Populated by JavaScript -->
-</div>
-
-<!-- Add Server Modal -->
-<div class="modal fade" id="addServerModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Add MCP Server</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form id="addServerForm">
-                    <div class="mb-3">
-                        <label class="form-label">Name <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="serverName" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Description</label>
-                        <textarea class="form-control" id="serverDescription" rows="2"></textarea>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">URL <span class="text-danger">*</span></label>
-                        <input type="url" class="form-control" id="serverUrl" placeholder="http://localhost:8080/mcp" required>
-                        <small class="text-muted">Full MCP endpoint URL</small>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Tool Prefix</label>
-                        <input type="text" class="form-control" id="serverPrefix" placeholder="myserver_">
-                        <small class="text-muted">Prefix for tool names (e.g., myserver_tool1)</small>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Auth Type</label>
-                        <select class="form-select" id="serverAuthType">
-                            <option value="none">None</option>
-                            <option value="bearer">Bearer Token</option>
-                            <option value="basic">Basic Auth</option>
-                        </select>
-                    </div>
-                    <div class="mb-3" id="authTokenField" style="display:none;">
-                        <label class="form-label">Auth Token</label>
-                        <input type="text" class="form-control" id="serverAuthToken">
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="serverEnabled" checked>
-                        <label class="form-check-label" for="serverEnabled">
-                            Enabled
-                        </label>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="addServer()">Add Server</button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Edit Server Modal -->
-<div class="modal fade" id="editServerModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Edit MCP Server</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form id="editServerForm">
-                    <input type="hidden" id="editServerId">
-                    <div class="mb-3">
-                        <label class="form-label">Name <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="editServerName" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Description</label>
-                        <textarea class="form-control" id="editServerDescription" rows="2"></textarea>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">URL <span class="text-danger">*</span></label>
-                        <input type="url" class="form-control" id="editServerUrl" placeholder="http://localhost:8080/mcp" required>
-                        <small class="text-muted">Full MCP endpoint URL</small>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Tool Prefix</label>
-                        <input type="text" class="form-control" id="editServerPrefix" placeholder="myserver_">
-                        <small class="text-muted">Prefix for tool names (e.g., myserver_tool1)</small>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Auth Type</label>
-                        <select class="form-select" id="editServerAuthType">
-                            <option value="none">None</option>
-                            <option value="bearer">Bearer Token</option>
-                            <option value="basic">Basic Auth</option>
-                        </select>
-                    </div>
-                    <div class="mb-3" id="editAuthTokenField" style="display:none;">
-                        <label class="form-label">Auth Token</label>
-                        <input type="text" class="form-control" id="editServerAuthToken">
-                        <small class="text-muted">Leave empty to keep existing token</small>
-                    </div>
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="editServerEnabled">
-                        <label class="form-check-label" for="editServerEnabled">
-                            Enabled
-                        </label>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-warning" onclick="updateServer()">Update Server</button>
-            </div>
-        </div>
-    </div>
-</div>
+<style>
+    [x-cloak] { display: none !important; }
+</style>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
-    // Show/hide auth token field for Add modal
-    document.getElementById('serverAuthType').addEventListener('change', function() {
-        document.getElementById('authTokenField').style.display =
-            this.value !== 'none' ? 'block' : 'none';
+    function mcpServersManager() {
+        return {
+            showAddModal: false,
+            showEditModal: false,
+            authType: 'none',
+            editAuthType: 'none',
+            init() {
+                // Listen for custom events to open/close modals
+                document.addEventListener('open-edit-modal', () => {
+                    this.showEditModal = true;
+                });
+                document.addEventListener('close-edit-modal', () => {
+                    this.showEditModal = false;
+                });
+                document.addEventListener('close-add-modal', () => {
+                    this.showAddModal = false;
+                });
+            }
+        }
+    }
+
+    // Set aggregated endpoint dynamically
+    document.addEventListener('DOMContentLoaded', function() {
+        const baseUrl = window.location.origin;
+        document.getElementById('aggregatedEndpoint').textContent = baseUrl + '/mcp';
+        
+        // Show/hide auth token field for Edit modal
+        document.getElementById('editServerAuthType').addEventListener('change', function() {
+            document.getElementById('editAuthTokenField').style.display =
+                this.value !== 'none' ? 'block' : 'none';
+        });
+        
+        loadServers();
     });
 
-    // Show/hide auth token field for Edit modal
-    document.getElementById('editServerAuthType').addEventListener('change', function() {
-        document.getElementById('editAuthTokenField').style.display =
-            this.value !== 'none' ? 'block' : 'none';
-    });
+    // Global state for servers
+    let currentServers = [];
 
     async function loadServers() {
         try {
-            const response = await fetch('/admin/api/mcp-servers');
-            const data = await response.json();
-            const servers = data.servers || [];
+            // Load both servers and token status
+            const [serversResponse, tokenStatusResponse] = await Promise.all([
+                fetch('/admin/api/mcp-servers'),
+                fetch('/admin/api/mcp-servers/token-status')
+            ]);
+            
+            const serversData = await serversResponse.json();
+            const tokenData = await tokenStatusResponse.json();
+            
+            currentServers = serversData.servers || [];
+            
+            // Create a map of token statuses by server ID
+            const tokenStatusMap = {};
+            tokenData.servers.forEach(s => {
+                tokenStatusMap[s.id] = s.token_status;
+            });
 
             const container = document.getElementById('serversList');
             container.innerHTML = '';
 
-            if (servers.length === 0) {
-                container.innerHTML = '<div class="col-12"><div class="alert alert-info"><i class="bi bi-info-circle"></i> No MCP servers configured yet. Click "Add Server" to get started!</div></div>';
+            if (currentServers.length === 0) {
+                container.innerHTML = '<div class="col-span-2"><div class="bg-blue-50 border border-blue-200 rounded-lg p-6 text-center"><i data-lucide="info" class="w-8 h-8 text-blue-600 mx-auto mb-2"></i><p class="text-blue-800">No MCP servers configured yet. Click "Add Server" to get started!</p></div></div>';
+                setTimeout(() => lucide.createIcons(), 100);
                 return;
             }
 
-            servers.forEach(server => {
+            currentServers.forEach(server => {
+                // Attach token status to server object
+                server.token_status = tokenStatusMap[server.id] || { status: 'none' };
                 const card = createServerCard(server);
-                container.appendChild(card);
-
-                // Load tools when collapse is expanded
-                const collapseElement = document.getElementById(`tools-${server.id}`);
-                if (collapseElement) {
-                    collapseElement.addEventListener('shown.bs.collapse', () => {
-                        loadTools(server.id);
-                    }, { once: true });  // Only load once
-                }
+                container.innerHTML += card;
             });
+            
+            setTimeout(() => lucide.createIcons(), 100);
         } catch (error) {
             console.error('Failed to load servers:', error);
-            document.getElementById('serversList').innerHTML =
-                '<div class="alert alert-danger">Failed to load servers</div>';
+            document.getElementById('serversList').innerHTML = 
+                '<div class="col-span-2 bg-red-50 border border-red-200 rounded-lg p-4 text-red-800">Failed to load servers</div>';
         }
     }
 
     function createServerCard(server) {
-        const wrapper = document.createElement('div');
-        wrapper.className = 'col-md-6 mb-3';
+        const statusColors = {
+            'online': 'border-green-600 bg-gradient-to-br from-green-50 to-emerald-50',
+            'offline': 'border-red-600 bg-gradient-to-br from-red-50 to-orange-50',
+            'error': 'border-amber-600 bg-gradient-to-br from-amber-50 to-yellow-50',
+            'unknown': 'border-gray-400 bg-gradient-to-br from-gray-50 to-slate-50'
+        };
+        
+        const statusIcons = {
+            'online': '<i data-lucide="check-circle" class="w-5 h-5 text-green-600"></i>',
+            'offline': '<i data-lucide="x-circle" class="w-5 h-5 text-red-600"></i>',
+            'error': '<i data-lucide="alert-triangle" class="w-5 h-5 text-amber-600"></i>',
+            'unknown': '<i data-lucide="help-circle" class="w-5 h-5 text-gray-600"></i>'
+        };
+        
+        const statusBadgeColors = {
+            'online': 'bg-green-600 text-white shadow-sm',
+            'offline': 'bg-red-600 text-white shadow-sm',
+            'error': 'bg-amber-600 text-white shadow-sm',
+            'unknown': 'bg-gray-600 text-white shadow-sm'
+        };
 
-        const div = document.createElement('div');
-        div.className = `card server-card ${server.status} h-100`;
+        return `
+            <div class="bg-white rounded-lg shadow-md border-l-4 ${statusColors[server.status] || statusColors.unknown} overflow-hidden hover:shadow-lg transition-all duration-200">
+                <div class="p-4">
+                    <div class="flex justify-between items-start gap-3">
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 mb-2">
+                                ${statusIcons[server.status] || statusIcons.unknown}
+                                <h3 class="text-lg font-bold text-gray-900 truncate">
+                                    ${server.name}
+                                </h3>
+                                ${!server.enabled ? '<span class="px-2 py-0.5 text-xs font-bold rounded-full bg-gray-600 text-white">Disabled</span>' : ''}
+                            </div>
+                            ${server.description ? `<p class="text-gray-700 text-sm mb-2 line-clamp-2">${server.description}</p>` : ''}
+                            
+                            <div class="space-y-1.5 text-sm">
+                                <p class="text-gray-700 flex items-center gap-1.5">
+                                    <i data-lucide="link" class="w-3.5 h-3.5 text-gray-500"></i>
+                                    <code class="text-xs bg-gray-200 px-1.5 py-0.5 rounded font-mono text-gray-800">${server.url}</code>
+                                </p>
+                                ${server.tool_prefix ? `
+                                    <p class="text-gray-700 flex items-center gap-1.5">
+                                        <i data-lucide="tag" class="w-3.5 h-3.5 text-gray-500"></i>
+                                        <code class="text-xs bg-blue-100 px-1.5 py-0.5 rounded font-mono text-blue-800">${server.tool_prefix}</code>
+                                    </p>
+                                ` : ''}
+                            </div>
 
-        div.innerHTML = `
-            <div class="card-body">
-                <div class="d-flex justify-content-between align-items-start">
-                    <div class="flex-grow-1">
-                        <h5 class="card-title">
-                            ${getStatusIcon(server.status)} ${server.name}
-                            ${server.enabled ? '' : '<span class="badge bg-secondary">Disabled</span>'}
-                        </h5>
-                        ${server.description ? `<p class="text-muted mb-2">${server.description}</p>` : ''}
-                        <p class="mb-1"><small class="text-muted"><i class="bi bi-link"></i> Backend: ${server.url}</small></p>
-                        ${server.tool_prefix ? `<p class="mb-1"><small class="text-muted"><i class="bi bi-tag"></i> Prefix: <code>${server.tool_prefix}</code></small></p>` : ''}
-
-                        <!-- Gateway Endpoints -->
-                        <div class="card bg-light mt-2 mb-2">
-                            <div class="card-body py-2 px-3">
-                                <small class="text-muted d-block mb-1"><strong><i class="bi bi-arrow-right-circle"></i> Gateway Endpoint:</strong></small>
-                                <div class="d-flex align-items-center mb-1">
-                                    <code class="flex-grow-1 text-primary" style="font-size: 0.85em;" data-path="/mcp/${server.name.toLowerCase().replace(/\s+/g, '')}">/mcp/${server.name.toLowerCase().replace(/\s+/g, '')}</code>
-                                    <button class="btn btn-sm btn-outline-secondary ms-2 py-0 px-2" onclick="copyServerEndpoint(this.previousElementSibling)" title="Copy full URL">
-                                        <i class="bi bi-clipboard"></i>
+                            <!-- Gateway Endpoint -->
+                            <div class="mt-3 p-2.5 bg-gradient-to-r from-blue-100 to-cyan-100 border-l-2 border-blue-600 rounded">
+                                <p class="text-xs font-bold text-blue-900 mb-1 flex items-center gap-1">
+                                    <i data-lucide="arrow-right-circle" class="w-3.5 h-3.5"></i>
+                                    Gateway Endpoint
+                                </p>
+                                <div class="flex items-center gap-1.5">
+                                    <code class="flex-1 text-xs text-blue-800 font-mono font-semibold" data-path="/mcp/${server.name.toLowerCase().replace(/\s+/g, '')}">/mcp/${server.name.toLowerCase().replace(/\s+/g, '')}</code>
+                                    <button onclick="copyServerEndpoint(this.previousElementSibling)" 
+                                            class="p-1 text-blue-700 hover:bg-blue-200 rounded transition-colors" title="Copy full URL">
+                                        <i data-lucide="clipboard" class="w-3.5 h-3.5"></i>
                                     </button>
                                 </div>
-                                <small class="text-muted" style="font-size: 0.75em;">Use this in MCP connectors for ${server.name} only</small>
                             </div>
-                        </div>
 
-                        <div class="mt-2">
-                            <span class="badge bg-${getStatusColor(server.status)}">${server.status}</span>
-                            <span class="badge bg-info">${server.tools_count || 0} tools</span>
-                        </div>
-
-                        ${server.last_error ? `
-                            <div class="alert alert-warning mt-2 mb-0">
-                                <small><i class="bi bi-exclamation-triangle"></i> ${server.last_error}</small>
+                            <div class="flex items-center gap-2 mt-3 flex-wrap">
+                                <span class="px-2.5 py-1 text-xs font-bold rounded-full ${statusBadgeColors[server.status] || statusBadgeColors.unknown}">
+                                    ${server.status.toUpperCase()}
+                                </span>
+                                <span class="px-2.5 py-1 text-xs font-bold rounded-full bg-cyan-600 text-white shadow-sm">
+                                    ${server.tools_count || 0} tools
+                                </span>
+                                ${server.token_status && server.token_status.status === 'warning' ? `
+                                    <span class="px-2.5 py-1 text-xs font-bold rounded-full bg-yellow-500 text-white shadow-sm flex items-center gap-1" title="Expires: ${server.token_status.expires_at_formatted}">
+                                        <i data-lucide="clock" class="w-3 h-3"></i>
+                                        Expires in ${server.token_status.days_left}d
+                                    </span>
+                                ` : ''}
+                                ${server.token_status && server.token_status.status === 'expired' ? `
+                                    <span class="px-2.5 py-1 text-xs font-bold rounded-full bg-red-500 text-white shadow-sm flex items-center gap-1" title="Expired: ${server.token_status.expires_at_formatted}">
+                                        <i data-lucide="alert-circle" class="w-3 h-3"></i>
+                                        Expired ${Math.abs(server.token_status.days_left)}d ago
+                                    </span>
+                                ` : ''}
+                                ${server.token_status && server.token_status.status === 'ok' ? `
+                                    <span class="px-2.5 py-1 text-xs font-bold rounded-full bg-emerald-600 text-white shadow-sm flex items-center gap-1" title="Expires: ${server.token_status.expires_at_formatted}">
+                                        <i data-lucide="check-circle" class="w-3 h-3"></i>
+                                        Valid (${server.token_status.days_left}d left)
+                                    </span>
+                                ` : ''}
+                                ${server.token_status && server.token_status.status === 'never' ? `
+                                    <span class="px-2.5 py-1 text-xs font-bold rounded-full bg-blue-600 text-white shadow-sm flex items-center gap-1" title="Token never expires">
+                                        <i data-lucide="infinity" class="w-3 h-3"></i>
+                                        Never expires
+                                    </span>
+                                ` : ''}
+                                ${server.token_status && server.token_status.status === 'unknown' ? `
+                                    <span class="px-2.5 py-1 text-xs font-bold rounded-full bg-gray-500 text-white shadow-sm flex items-center gap-1" title="${server.token_status.message || 'Not a JWT token'}">
+                                        <i data-lucide="help-circle" class="w-3 h-3"></i>
+                                        Unknown expiration
+                                    </span>
+                                ` : ''}
                             </div>
-                        ` : ''}
 
-                        <!-- Tools List (collapsible) -->
-                        <div class="mt-3">
-                            <button class="btn btn-sm btn-outline-secondary" type="button"
-                                    data-bs-toggle="collapse" data-bs-target="#tools-${server.id}">
-                                <i class="bi bi-tools"></i> Show Tools (${server.tools_count || 0})
-                            </button>
-                            <div class="collapse mt-2" id="tools-${server.id}">
-                                <div id="tools-list-${server.id}">
-                                    <small class="text-muted">Loading tools...</small>
+                            ${server.last_error ? `
+                                <div class="mt-2 p-2 bg-amber-100 border-l-2 border-amber-600 rounded">
+                                    <p class="text-xs text-amber-900 flex items-start gap-1.5 font-medium">
+                                        <i data-lucide="alert-triangle" class="w-3.5 h-3.5 mt-0.5 flex-shrink-0"></i>
+                                        <span class="line-clamp-2">${server.last_error}</span>
+                                    </p>
+                                </div>
+                            ` : ''}
+
+                            <div class="mt-2">
+                                <button onclick="toggleTools(${server.id})" id="toolsBtn${server.id}"
+                                        class="text-xs px-2.5 py-1.5 border-2 border-gray-400 text-gray-800 font-semibold rounded-lg hover:bg-gray-100 hover:border-gray-600 transition-all flex items-center gap-1.5">
+                                    <i data-lucide="wrench" class="w-3.5 h-3.5"></i>
+                                    Show Tools (${server.tools_count || 0})
+                                </button>
+                                <div id="tools${server.id}" class="hidden mt-2 p-2 bg-gray-100 rounded border border-gray-300">
+                                    <p class="text-sm text-gray-600">Loading tools...</p>
                                 </div>
                             </div>
                         </div>
-                    </div>
-                    <div class="btn-group-vertical">
-                        <button class="btn btn-sm btn-outline-primary" onclick="testServer(${server.id})">
-                            <i class="bi bi-activity"></i> Test
-                        </button>
-                        <button class="btn btn-sm btn-outline-warning" onclick="editServer(${server.id})">
-                            <i class="bi bi-pencil"></i> Edit
-                        </button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="deleteServer(${server.id}, '${server.name}')">
-                            <i class="bi bi-trash"></i> Delete
-                        </button>
+                        
+                        <div class="flex lg:flex-col flex-row gap-1.5 ml-3 lg:ml-0">
+                            <button onclick="editServer(${server.id})"
+                                    class="p-2.5 lg:p-2 text-blue-700 hover:bg-blue-100 rounded-lg transition-colors border border-blue-300 hover:border-blue-500 touch-manipulation" title="Edit">
+                                <i data-lucide="edit" class="w-5 h-5 lg:w-4 lg:h-4"></i>
+                            </button>
+                            <button onclick="testServer(${server.id})"
+                                    class="p-2.5 lg:p-2 text-cyan-700 hover:bg-cyan-100 rounded-lg transition-colors border border-cyan-300 hover:border-cyan-500 touch-manipulation" title="Test">
+                                <i data-lucide="activity" class="w-5 h-5 lg:w-4 lg:h-4"></i>
+                            </button>
+                            <button onclick="deleteServer(${server.id}, '${server.name}')"
+                                    class="p-2.5 lg:p-2 text-red-700 hover:bg-red-100 rounded-lg transition-colors border border-red-300 hover:border-red-500 touch-manipulation" title="Delete">
+                                <i data-lucide="trash-2" class="w-5 h-5 lg:w-4 lg:h-4"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
         `;
-
-        wrapper.appendChild(div);
-        return wrapper;
     }
 
-    function getStatusIcon(status) {
-        const icons = {
-            'online': '<i class="bi bi-check-circle-fill text-success"></i>',
-            'offline': '<i class="bi bi-x-circle-fill text-danger"></i>',
-            'error': '<i class="bi bi-exclamation-triangle-fill text-warning"></i>',
-            'unknown': '<i class="bi bi-question-circle text-secondary"></i>'
-        };
-        return icons[status] || icons.unknown;
-    }
+    async function toggleTools(serverId) {
+        const toolsDiv = document.getElementById(`tools${serverId}`);
+        const btn = document.getElementById(`toolsBtn${serverId}`);
+        
+        if (!toolsDiv.classList.contains('hidden')) {
+            toolsDiv.classList.add('hidden');
+            return;
+        }
+        
+        toolsDiv.classList.remove('hidden');
+        
+        try {
+            const response = await fetch(`/admin/api/mcp-servers/${serverId}/tools`);
+            const tools = await response.json();
 
-    function getStatusColor(status) {
-        const colors = {
-            'online': 'success',
-            'offline': 'danger',
-            'error': 'warning',
-            'unknown': 'secondary'
-        };
-        return colors[status] || 'secondary';
+            if (tools.length === 0) {
+                toolsDiv.innerHTML = '<p class="text-sm text-gray-500">No tools available</p>';
+            } else {
+                toolsDiv.innerHTML = `<div class="flex flex-wrap gap-2">${tools.map(tool =>
+                    `<span class="px-2 py-1 text-xs bg-white border border-gray-300 text-gray-700 rounded">${tool}</span>`
+                ).join('')}</div>`;
+            }
+        } catch (error) {
+            toolsDiv.innerHTML = '<p class="text-sm text-red-600">Failed to load tools</p>';
+        }
     }
 
     async function addServer() {
@@ -338,9 +514,20 @@
             });
 
             if (response.ok) {
-                bootstrap.Modal.getInstance(document.getElementById('addServerModal')).hide();
+                // Reset form
                 document.getElementById('addServerForm').reset();
-                loadServers();
+                
+                // Reset Alpine authType
+                const alpineComponent = Alpine.$data(document.querySelector('[x-data]'));
+                if (alpineComponent) {
+                    alpineComponent.authType = 'none';
+                }
+                
+                // Close modal via custom event
+                document.dispatchEvent(new CustomEvent('close-add-modal'));
+                
+                // Reload servers
+                await loadServers();
             } else {
                 const error = await response.json();
                 alert('Failed to add server: ' + (error.detail || 'Unknown error'));
@@ -363,45 +550,42 @@
                 alert(`Server check failed:\n${result.error || 'Unknown error'}`);
             }
 
-            loadServers();
+            await loadServers();
         } catch (error) {
             alert('Error testing server: ' + error.message);
         }
     }
 
-    async function loadTools(serverId) {
-        const container = document.getElementById(`tools-list-${serverId}`);
+    async function deleteServer(serverId, serverName) {
+        if (!confirm(`Are you sure you want to delete server "${serverName}"?`)) {
+            return;
+        }
 
         try {
-            const response = await fetch(`/admin/api/mcp-servers/${serverId}/tools`);
-            const tools = await response.json();
+            const response = await fetch(`/admin/api/mcp-servers/${serverId}`, {
+                method: 'DELETE'
+            });
 
-            if (tools.length === 0) {
-                container.innerHTML = '<small class="text-muted">No tools available</small>';
+            if (response.ok) {
+                await loadServers();
             } else {
-                container.innerHTML = tools.map(tool =>
-                    `<span class="badge tool-badge bg-light text-dark">${tool}</span>`
-                ).join('');
+                alert('Failed to delete server');
             }
         } catch (error) {
-            console.error('Failed to load tools:', error);
-            container.innerHTML = '<small class="text-danger">Failed to load tools</small>';
+            alert('Error: ' + error.message);
         }
     }
 
     async function editServer(serverId) {
         try {
-            // Fetch server details
-            const response = await fetch('/admin/api/mcp-servers');
-            const data = await response.json();
-            const server = data.servers.find(s => s.id === serverId);
-
+            // Find server in current list
+            const server = currentServers.find(s => s.id === serverId);
             if (!server) {
                 alert('Server not found');
                 return;
             }
 
-            // Populate form fields
+            // Populate form fields directly from server object
             document.getElementById('editServerId').value = server.id;
             document.getElementById('editServerName').value = server.name;
             document.getElementById('editServerDescription').value = server.description || '';
@@ -410,16 +594,18 @@
             document.getElementById('editServerAuthType').value = server.auth_type || 'none';
             document.getElementById('editServerEnabled').checked = server.enabled;
 
-            // Show/hide auth token field
-            const authTokenField = document.getElementById('editAuthTokenField');
-            authTokenField.style.display = server.auth_type !== 'none' ? 'block' : 'none';
+            // Update Alpine editAuthType to trigger reactivity
+            const alpineComponent = Alpine.$data(document.querySelector('[x-data]'));
+            if (alpineComponent) {
+                alpineComponent.editAuthType = server.auth_type || 'none';
+            }
 
             // Clear auth token field (don't show existing token for security)
             document.getElementById('editServerAuthToken').value = '';
 
-            // Show modal
-            const modal = new bootstrap.Modal(document.getElementById('editServerModal'));
-            modal.show();
+            // Trigger Alpine to show modal
+            document.dispatchEvent(new CustomEvent('open-edit-modal'));
+            setTimeout(() => lucide.createIcons(), 100);
         } catch (error) {
             console.error('Failed to load server details:', error);
             alert('Error loading server details: ' + error.message);
@@ -451,8 +637,8 @@
             });
 
             if (response.ok) {
-                bootstrap.Modal.getInstance(document.getElementById('editServerModal')).hide();
-                loadServers();
+                document.dispatchEvent(new CustomEvent('close-edit-modal'));
+                await loadServers();
             } else {
                 const error = await response.json();
                 alert('Failed to update server: ' + (error.detail || error.error || 'Unknown error'));
@@ -462,53 +648,27 @@
         }
     }
 
-    async function deleteServer(serverId, serverName) {
-        if (!confirm(`Are you sure you want to delete server "${serverName}"?`)) {
-            return;
-        }
-
-        try {
-            const response = await fetch(`/admin/api/mcp-servers/${serverId}`, {
-                method: 'DELETE'
-            });
-
-            if (response.ok) {
-                loadServers();
-            } else {
-                alert('Failed to delete server');
-            }
-        } catch (error) {
-            alert('Error: ' + error.message);
-        }
-    }
-
-    // Copy to clipboard function
     async function copyToClipboard(text, button) {
         try {
             await navigator.clipboard.writeText(text);
             const originalHtml = button.innerHTML;
-            button.innerHTML = '<i class="bi bi-check"></i>';
-            button.classList.add('btn-success');
-            button.classList.remove('btn-outline-secondary');
+            button.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i>';
+            button.classList.add('text-green-600');
             setTimeout(() => {
                 button.innerHTML = originalHtml;
-                button.classList.remove('btn-success');
-                button.classList.add('btn-outline-secondary');
+                button.classList.remove('text-green-600');
+                lucide.createIcons();
             }, 2000);
         } catch (error) {
             alert('Failed to copy: ' + error.message);
         }
     }
 
-    // Copy server endpoint with full URL
     async function copyServerEndpoint(codeElement) {
         const path = codeElement.getAttribute('data-path');
         const fullUrl = window.location.origin + path;
         const button = codeElement.nextElementSibling;
         await copyToClipboard(fullUrl, button);
     }
-
-    // Load servers on page load
-    loadServers();
 </script>
 {% endblock %}

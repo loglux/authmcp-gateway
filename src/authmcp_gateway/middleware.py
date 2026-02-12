@@ -206,9 +206,10 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
 
         # Only authenticate MCP endpoints
         is_gateway = path == "/mcp"
+        is_server_specific = path.startswith("/mcp/") and path != "/mcp/"  # /mcp/{server_name}
         is_internal = path == _streamable_path  # /mcp-internal
 
-        if not is_gateway and not is_internal:
+        if not is_gateway and not is_server_specific and not is_internal:
             return await call_next(request)
 
         # Parse request body to get MCP method

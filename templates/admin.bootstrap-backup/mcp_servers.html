@@ -1,0 +1,514 @@
+{% extends "admin/base.html" %}
+
+{% block title %}MCP Servers - MCP Auth Admin{% endblock %}
+
+{% block extra_styles %}
+.server-card {
+    border-left: 4px solid #dee2e6;
+    transition: all 0.3s;
+}
+.server-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.server-card.online { border-left-color: #28a745; }
+.server-card.offline { border-left-color: #dc3545; }
+.server-card.error { border-left-color: #ffc107; }
+.tool-badge {
+    font-size: 0.85rem;
+    padding: 0.25rem 0.5rem;
+    margin: 0.15rem;
+    display: inline-block;
+}
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="bi bi-hdd-network"></i> MCP Servers</h1>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addServerModal">
+        <i class="bi bi-plus-circle"></i> Add Server
+    </button>
+</div>
+
+<!-- Gateway Endpoints Info -->
+<div class="alert alert-info">
+    <div class="d-flex align-items-center">
+        <i class="bi bi-info-circle me-2"></i>
+        <div class="flex-grow-1">
+            <strong>Gateway Endpoints:</strong>
+            <div class="mt-1">
+                <div class="d-flex align-items-center mb-1">
+                    <code class="bg-white px-2 py-1 rounded" id="aggregatedEndpoint">Loading...</code>
+                    <button class="btn btn-sm btn-outline-secondary ms-2 py-0 px-2" onclick="copyToClipboard(document.getElementById('aggregatedEndpoint').textContent, this)" title="Copy URL">
+                        <i class="bi bi-clipboard"></i>
+                    </button>
+                    <small class="text-muted ms-2">All servers aggregated (with prefixes)</small>
+                </div>
+                <small class="text-muted">Each server below also has its own dedicated endpoint for individual access.</small>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+    // Set aggregated endpoint dynamically
+    document.addEventListener('DOMContentLoaded', function() {
+        const baseUrl = window.location.origin;
+        document.getElementById('aggregatedEndpoint').textContent = baseUrl + '/mcp';
+    });
+</script>
+
+<!-- Servers List -->
+<div class="row" id="serversList">
+    <!-- Populated by JavaScript -->
+</div>
+
+<!-- Add Server Modal -->
+<div class="modal fade" id="addServerModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add MCP Server</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addServerForm">
+                    <div class="mb-3">
+                        <label class="form-label">Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="serverName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea class="form-control" id="serverDescription" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">URL <span class="text-danger">*</span></label>
+                        <input type="url" class="form-control" id="serverUrl" placeholder="http://localhost:8080/mcp" required>
+                        <small class="text-muted">Full MCP endpoint URL</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tool Prefix</label>
+                        <input type="text" class="form-control" id="serverPrefix" placeholder="myserver_">
+                        <small class="text-muted">Prefix for tool names (e.g., myserver_tool1)</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Auth Type</label>
+                        <select class="form-select" id="serverAuthType">
+                            <option value="none">None</option>
+                            <option value="bearer">Bearer Token</option>
+                            <option value="basic">Basic Auth</option>
+                        </select>
+                    </div>
+                    <div class="mb-3" id="authTokenField" style="display:none;">
+                        <label class="form-label">Auth Token</label>
+                        <input type="text" class="form-control" id="serverAuthToken">
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="serverEnabled" checked>
+                        <label class="form-check-label" for="serverEnabled">
+                            Enabled
+                        </label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="addServer()">Add Server</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Server Modal -->
+<div class="modal fade" id="editServerModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit MCP Server</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editServerForm">
+                    <input type="hidden" id="editServerId">
+                    <div class="mb-3">
+                        <label class="form-label">Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="editServerName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Description</label>
+                        <textarea class="form-control" id="editServerDescription" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">URL <span class="text-danger">*</span></label>
+                        <input type="url" class="form-control" id="editServerUrl" placeholder="http://localhost:8080/mcp" required>
+                        <small class="text-muted">Full MCP endpoint URL</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tool Prefix</label>
+                        <input type="text" class="form-control" id="editServerPrefix" placeholder="myserver_">
+                        <small class="text-muted">Prefix for tool names (e.g., myserver_tool1)</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Auth Type</label>
+                        <select class="form-select" id="editServerAuthType">
+                            <option value="none">None</option>
+                            <option value="bearer">Bearer Token</option>
+                            <option value="basic">Basic Auth</option>
+                        </select>
+                    </div>
+                    <div class="mb-3" id="editAuthTokenField" style="display:none;">
+                        <label class="form-label">Auth Token</label>
+                        <input type="text" class="form-control" id="editServerAuthToken">
+                        <small class="text-muted">Leave empty to keep existing token</small>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="editServerEnabled">
+                        <label class="form-check-label" for="editServerEnabled">
+                            Enabled
+                        </label>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-warning" onclick="updateServer()">Update Server</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Show/hide auth token field for Add modal
+    document.getElementById('serverAuthType').addEventListener('change', function() {
+        document.getElementById('authTokenField').style.display =
+            this.value !== 'none' ? 'block' : 'none';
+    });
+
+    // Show/hide auth token field for Edit modal
+    document.getElementById('editServerAuthType').addEventListener('change', function() {
+        document.getElementById('editAuthTokenField').style.display =
+            this.value !== 'none' ? 'block' : 'none';
+    });
+
+    async function loadServers() {
+        try {
+            const response = await fetch('/admin/api/mcp-servers');
+            const data = await response.json();
+            const servers = data.servers || [];
+
+            const container = document.getElementById('serversList');
+            container.innerHTML = '';
+
+            if (servers.length === 0) {
+                container.innerHTML = '<div class="col-12"><div class="alert alert-info"><i class="bi bi-info-circle"></i> No MCP servers configured yet. Click "Add Server" to get started!</div></div>';
+                return;
+            }
+
+            servers.forEach(server => {
+                const card = createServerCard(server);
+                container.appendChild(card);
+
+                // Load tools when collapse is expanded
+                const collapseElement = document.getElementById(`tools-${server.id}`);
+                if (collapseElement) {
+                    collapseElement.addEventListener('shown.bs.collapse', () => {
+                        loadTools(server.id);
+                    }, { once: true });  // Only load once
+                }
+            });
+        } catch (error) {
+            console.error('Failed to load servers:', error);
+            document.getElementById('serversList').innerHTML =
+                '<div class="alert alert-danger">Failed to load servers</div>';
+        }
+    }
+
+    function createServerCard(server) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'col-md-6 mb-3';
+
+        const div = document.createElement('div');
+        div.className = `card server-card ${server.status} h-100`;
+
+        div.innerHTML = `
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                        <h5 class="card-title">
+                            ${getStatusIcon(server.status)} ${server.name}
+                            ${server.enabled ? '' : '<span class="badge bg-secondary">Disabled</span>'}
+                        </h5>
+                        ${server.description ? `<p class="text-muted mb-2">${server.description}</p>` : ''}
+                        <p class="mb-1"><small class="text-muted"><i class="bi bi-link"></i> Backend: ${server.url}</small></p>
+                        ${server.tool_prefix ? `<p class="mb-1"><small class="text-muted"><i class="bi bi-tag"></i> Prefix: <code>${server.tool_prefix}</code></small></p>` : ''}
+
+                        <!-- Gateway Endpoints -->
+                        <div class="card bg-light mt-2 mb-2">
+                            <div class="card-body py-2 px-3">
+                                <small class="text-muted d-block mb-1"><strong><i class="bi bi-arrow-right-circle"></i> Gateway Endpoint:</strong></small>
+                                <div class="d-flex align-items-center mb-1">
+                                    <code class="flex-grow-1 text-primary" style="font-size: 0.85em;" data-path="/mcp/${server.name.toLowerCase().replace(/\s+/g, '')}">/mcp/${server.name.toLowerCase().replace(/\s+/g, '')}</code>
+                                    <button class="btn btn-sm btn-outline-secondary ms-2 py-0 px-2" onclick="copyServerEndpoint(this.previousElementSibling)" title="Copy full URL">
+                                        <i class="bi bi-clipboard"></i>
+                                    </button>
+                                </div>
+                                <small class="text-muted" style="font-size: 0.75em;">Use this in MCP connectors for ${server.name} only</small>
+                            </div>
+                        </div>
+
+                        <div class="mt-2">
+                            <span class="badge bg-${getStatusColor(server.status)}">${server.status}</span>
+                            <span class="badge bg-info">${server.tools_count || 0} tools</span>
+                        </div>
+
+                        ${server.last_error ? `
+                            <div class="alert alert-warning mt-2 mb-0">
+                                <small><i class="bi bi-exclamation-triangle"></i> ${server.last_error}</small>
+                            </div>
+                        ` : ''}
+
+                        <!-- Tools List (collapsible) -->
+                        <div class="mt-3">
+                            <button class="btn btn-sm btn-outline-secondary" type="button"
+                                    data-bs-toggle="collapse" data-bs-target="#tools-${server.id}">
+                                <i class="bi bi-tools"></i> Show Tools (${server.tools_count || 0})
+                            </button>
+                            <div class="collapse mt-2" id="tools-${server.id}">
+                                <div id="tools-list-${server.id}">
+                                    <small class="text-muted">Loading tools...</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="btn-group-vertical">
+                        <button class="btn btn-sm btn-outline-primary" onclick="testServer(${server.id})">
+                            <i class="bi bi-activity"></i> Test
+                        </button>
+                        <button class="btn btn-sm btn-outline-warning" onclick="editServer(${server.id})">
+                            <i class="bi bi-pencil"></i> Edit
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteServer(${server.id}, '${server.name}')">
+                            <i class="bi bi-trash"></i> Delete
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        wrapper.appendChild(div);
+        return wrapper;
+    }
+
+    function getStatusIcon(status) {
+        const icons = {
+            'online': '<i class="bi bi-check-circle-fill text-success"></i>',
+            'offline': '<i class="bi bi-x-circle-fill text-danger"></i>',
+            'error': '<i class="bi bi-exclamation-triangle-fill text-warning"></i>',
+            'unknown': '<i class="bi bi-question-circle text-secondary"></i>'
+        };
+        return icons[status] || icons.unknown;
+    }
+
+    function getStatusColor(status) {
+        const colors = {
+            'online': 'success',
+            'offline': 'danger',
+            'error': 'warning',
+            'unknown': 'secondary'
+        };
+        return colors[status] || 'secondary';
+    }
+
+    async function addServer() {
+        const data = {
+            name: document.getElementById('serverName').value,
+            url: document.getElementById('serverUrl').value,
+            description: document.getElementById('serverDescription').value,
+            tool_prefix: document.getElementById('serverPrefix').value,
+            auth_type: document.getElementById('serverAuthType').value,
+            auth_token: document.getElementById('serverAuthToken').value,
+            enabled: document.getElementById('serverEnabled').checked
+        };
+
+        try {
+            const response = await fetch('/admin/api/mcp-servers', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+
+            if (response.ok) {
+                bootstrap.Modal.getInstance(document.getElementById('addServerModal')).hide();
+                document.getElementById('addServerForm').reset();
+                loadServers();
+            } else {
+                const error = await response.json();
+                alert('Failed to add server: ' + (error.detail || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+    async function testServer(serverId) {
+        try {
+            const response = await fetch(`/admin/api/mcp-servers/${serverId}/test`, {
+                method: 'POST'
+            });
+            const result = await response.json();
+
+            if (result.status === 'online') {
+                alert(`Server is online!\nTools found: ${result.tools_count || 0}`);
+            } else {
+                alert(`Server check failed:\n${result.error || 'Unknown error'}`);
+            }
+
+            loadServers();
+        } catch (error) {
+            alert('Error testing server: ' + error.message);
+        }
+    }
+
+    async function loadTools(serverId) {
+        const container = document.getElementById(`tools-list-${serverId}`);
+
+        try {
+            const response = await fetch(`/admin/api/mcp-servers/${serverId}/tools`);
+            const tools = await response.json();
+
+            if (tools.length === 0) {
+                container.innerHTML = '<small class="text-muted">No tools available</small>';
+            } else {
+                container.innerHTML = tools.map(tool =>
+                    `<span class="badge tool-badge bg-light text-dark">${tool}</span>`
+                ).join('');
+            }
+        } catch (error) {
+            console.error('Failed to load tools:', error);
+            container.innerHTML = '<small class="text-danger">Failed to load tools</small>';
+        }
+    }
+
+    async function editServer(serverId) {
+        try {
+            // Fetch server details
+            const response = await fetch('/admin/api/mcp-servers');
+            const data = await response.json();
+            const server = data.servers.find(s => s.id === serverId);
+
+            if (!server) {
+                alert('Server not found');
+                return;
+            }
+
+            // Populate form fields
+            document.getElementById('editServerId').value = server.id;
+            document.getElementById('editServerName').value = server.name;
+            document.getElementById('editServerDescription').value = server.description || '';
+            document.getElementById('editServerUrl').value = server.url;
+            document.getElementById('editServerPrefix').value = server.tool_prefix || '';
+            document.getElementById('editServerAuthType').value = server.auth_type || 'none';
+            document.getElementById('editServerEnabled').checked = server.enabled;
+
+            // Show/hide auth token field
+            const authTokenField = document.getElementById('editAuthTokenField');
+            authTokenField.style.display = server.auth_type !== 'none' ? 'block' : 'none';
+
+            // Clear auth token field (don't show existing token for security)
+            document.getElementById('editServerAuthToken').value = '';
+
+            // Show modal
+            const modal = new bootstrap.Modal(document.getElementById('editServerModal'));
+            modal.show();
+        } catch (error) {
+            console.error('Failed to load server details:', error);
+            alert('Error loading server details: ' + error.message);
+        }
+    }
+
+    async function updateServer() {
+        const serverId = document.getElementById('editServerId').value;
+        const data = {
+            name: document.getElementById('editServerName').value,
+            url: document.getElementById('editServerUrl').value,
+            description: document.getElementById('editServerDescription').value,
+            tool_prefix: document.getElementById('editServerPrefix').value,
+            auth_type: document.getElementById('editServerAuthType').value,
+            enabled: document.getElementById('editServerEnabled').checked
+        };
+
+        // Only include auth_token if it was changed (not empty)
+        const authToken = document.getElementById('editServerAuthToken').value;
+        if (authToken) {
+            data.auth_token = authToken;
+        }
+
+        try {
+            const response = await fetch(`/admin/api/mcp-servers/${serverId}`, {
+                method: 'PATCH',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(data)
+            });
+
+            if (response.ok) {
+                bootstrap.Modal.getInstance(document.getElementById('editServerModal')).hide();
+                loadServers();
+            } else {
+                const error = await response.json();
+                alert('Failed to update server: ' + (error.detail || error.error || 'Unknown error'));
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+    async function deleteServer(serverId, serverName) {
+        if (!confirm(`Are you sure you want to delete server "${serverName}"?`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/admin/api/mcp-servers/${serverId}`, {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                loadServers();
+            } else {
+                alert('Failed to delete server');
+            }
+        } catch (error) {
+            alert('Error: ' + error.message);
+        }
+    }
+
+    // Copy to clipboard function
+    async function copyToClipboard(text, button) {
+        try {
+            await navigator.clipboard.writeText(text);
+            const originalHtml = button.innerHTML;
+            button.innerHTML = '<i class="bi bi-check"></i>';
+            button.classList.add('btn-success');
+            button.classList.remove('btn-outline-secondary');
+            setTimeout(() => {
+                button.innerHTML = originalHtml;
+                button.classList.remove('btn-success');
+                button.classList.add('btn-outline-secondary');
+            }, 2000);
+        } catch (error) {
+            alert('Failed to copy: ' + error.message);
+        }
+    }
+
+    // Copy server endpoint with full URL
+    async function copyServerEndpoint(codeElement) {
+        const path = codeElement.getAttribute('data-path');
+        const fullUrl = window.location.origin + path;
+        const button = codeElement.nextElementSibling;
+        await copyToClipboard(fullUrl, button);
+    }
+
+    // Load servers on page load
+    loadServers();
+</script>
+{% endblock %}

@@ -3,7 +3,7 @@ services:
     build: .
     container_name: authmcp-gateway
     ports:
-      - "9105:8000"
+      - "${GATEWAY_PORT:-9105}:8000"
     env_file:
       - .env
     volumes:

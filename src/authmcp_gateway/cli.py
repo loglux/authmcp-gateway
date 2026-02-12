@@ -16,21 +16,21 @@ def main():
         epilog="""
 Examples:
   # Start gateway with default config
-  fastmcp-auth start
+  authmcp-gateway start
 
   # Start with custom config
-  fastmcp-auth start --config /path/to/config.yaml
+  authmcp-gateway start --config /path/to/config.yaml
 
   # Start with environment variables
-  fastmcp-auth start --env-file .env
+  authmcp-gateway start --env-file .env
 
   # Initialize database
-  fastmcp-auth init-db
+  authmcp-gateway init-db
 
   # Create admin user
-  fastmcp-auth create-admin --username admin --email admin@example.com
+  authmcp-gateway create-admin --username admin --email admin@example.com
 
-For more information, visit: https://github.com/loglux/fastmcp-auth
+For more information, visit: https://github.com/loglux/authmcp-gateway
         """
     )
 
@@ -191,7 +191,7 @@ def create_admin_user(args):
     # Check if database exists
     if not Path(db_path).exists():
         print(f"✗ Database not found: {db_path}")
-        print("  Run 'fastmcp-auth init-db' first")
+        print("  Run 'authmcp-gateway init-db' first")
         sys.exit(1)
 
     # Check if user already exists
@@ -242,7 +242,7 @@ AuthMCP Gateway
 Version: {pkg_version}
 Python: {sys.version.split()[0]}
 
-Homepage: https://github.com/loglux/fastmcp-auth
+Homepage: https://github.com/loglux/authmcp-gateway
 """)
 
 

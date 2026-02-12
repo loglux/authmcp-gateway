@@ -1,9 +1,11 @@
 """Admin panel routes."""
 import logging
 import sqlite3
+import jwt
 from pathlib import Path
 from typing import Optional, Callable, Any
 from functools import wraps
+from datetime import datetime
 from jinja2 import Environment, FileSystemLoader
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, Response
@@ -389,6 +391,57 @@ async def admin_mcp_servers(_: Request) -> HTMLResponse:
     return render_template("admin/mcp_servers.html", active_page="mcp-servers")
 
 
+def parse_jwt_expiration(token: str) -> dict:
+    """Parse JWT token to extract expiration info.
+    
+    Args:
+        token: JWT token string
+        
+    Returns:
+        Dict with expires_at, days_left, status or {"status": "unknown"}
+    """
+    try:
+        # Decode without signature verification (we just need exp claim)
+        decoded = jwt.decode(token, options={"verify_signature": False})
+        exp = decoded.get('exp')
+        
+        if exp:
+            exp_dt = datetime.fromtimestamp(exp)
+            now = datetime.now()
+            days_left = (exp_dt - now).days
+            
+            # Determine status
+            if days_left < 0:
+                status = "expired"
+            elif days_left < 7:
+                status = "warning"
+            else:
+                status = "ok"
+            
+            return {
+                "expires_at": exp_dt.isoformat(),
+                "expires_at_formatted": exp_dt.strftime("%Y-%m-%d %H:%M"),
+                "days_left": days_left,
+                "status": status,
+                "has_expiration": True
+            }
+        else:
+            # JWT without exp claim - never expires
+            return {
+                "status": "never",
+                "has_expiration": False,
+                "message": "No expiration"
+            }
+    except Exception as e:
+        logger.debug(f"Failed to parse JWT token: {e}")
+    
+    return {
+        "status": "unknown",
+        "has_expiration": False,
+        "message": "Not a JWT token"
+    }
+
+
 async def api_list_mcp_servers(_: Request) -> JSONResponse:
     """API: List all MCP servers."""
     from authmcp_gateway.mcp.store import list_mcp_servers
@@ -396,6 +449,30 @@ async def api_list_mcp_servers(_: Request) -> JSONResponse:
     servers = list_mcp_servers(_config.auth.sqlite_path)
 
     return JSONResponse({"servers": servers})
+
+
+async def api_mcp_servers_token_status(_: Request) -> JSONResponse:
+    """API: Get token expiration status for all MCP servers."""
+    from authmcp_gateway.mcp.store import list_mcp_servers
+
+    servers = list_mcp_servers(_config.auth.sqlite_path)
+    
+    result = []
+    for server in servers:
+        token_info = {"status": "none"}  # Default for servers without auth
+        
+        # Only check Bearer tokens
+        if server.get("auth_type") == "bearer" and server.get("auth_token"):
+            token_info = parse_jwt_expiration(server["auth_token"])
+        
+        result.append({
+            "id": server["id"],
+            "name": server["name"],
+            "auth_type": server["auth_type"],
+            "token_status": token_info
+        })
+    
+    return JSONResponse({"servers": result})
 
 
 @api_error_handler
@@ -530,3 +607,112 @@ async def api_get_mcp_server_tools(request: Request) -> JSONResponse:
     tool_names = [tool.get("name") for tool in tools if "name" in tool]
 
     return JSONResponse(tool_names)
+
+
+# ============================================================================
+# BACKEND TOKEN MANAGEMENT
+# ============================================================================
+
+async def admin_mcp_tokens(request: Request) -> HTMLResponse:
+    """Admin page: Backend MCP token management."""
+    if _config is None:
+        return HTMLResponse("<h1>Error: Config not initialized</h1>", status_code=500)
+
+    return render_template("admin/mcp_tokens.html")
+
+
+@api_error_handler
+async def api_get_token_statuses(request: Request) -> JSONResponse:
+    """API: Get token status for all MCP servers."""
+    from authmcp_gateway.mcp.store import list_mcp_servers
+    from datetime import datetime, timezone
+
+    servers = list_mcp_servers(_config.auth.sqlite_path, enabled_only=False)
+
+    token_statuses = []
+    for server in servers:
+        # Calculate token status
+        token_expires_at = server.get('token_expires_at')
+        token_expired = False
+        time_until_expiry_seconds = None
+
+        if token_expires_at:
+            if isinstance(token_expires_at, str):
+                # Parse ISO format datetime
+                try:
+                    token_expires_at = datetime.fromisoformat(token_expires_at.replace('Z', '+00:00'))
+                except:
+                    token_expires_at = None
+
+            if token_expires_at:
+                now = datetime.now(timezone.utc)
+                if token_expires_at.tzinfo is None:
+                    token_expires_at = token_expires_at.replace(tzinfo=timezone.utc)
+
+                delta = token_expires_at - now
+                time_until_expiry_seconds = int(delta.total_seconds())
+                token_expired = time_until_expiry_seconds <= 0
+
+        status = {
+            'server_id': server['id'],
+            'server_name': server['name'],
+            'auth_type': server.get('auth_type', 'none'),
+            'has_refresh_token': bool(server.get('refresh_token_hash')),
+            'token_expires_at': server.get('token_expires_at'),
+            'token_expired': token_expired,
+            'time_until_expiry_seconds': time_until_expiry_seconds,
+            'last_refreshed': server.get('token_last_refreshed'),
+            'can_auto_refresh': bool(
+                server.get('refresh_token_hash') and
+                server.get('refresh_endpoint')
+            )
+        }
+        token_statuses.append(status)
+
+    return JSONResponse(token_statuses)
+
+
+@api_error_handler
+async def api_get_token_audit_logs(request: Request) -> JSONResponse:
+    """API: Get token refresh audit logs."""
+    from authmcp_gateway.mcp.store import get_token_audit_logs
+
+    # Get limit from query params
+    limit = int(request.query_params.get('limit', 50))
+    server_id = request.query_params.get('server_id')
+
+    if server_id:
+        server_id = int(server_id)
+
+    logs = get_token_audit_logs(
+        db_path=_config.auth.sqlite_path,
+        mcp_server_id=server_id,
+        limit=limit
+    )
+
+    return JSONResponse(logs)
+
+
+@api_error_handler
+async def api_refresh_server_token(request: Request) -> JSONResponse:
+    """API: Manually refresh token for a backend MCP server."""
+    from authmcp_gateway.mcp.token_manager import get_token_manager
+
+    server_id = int(request.path_params["server_id"])
+
+    # Get token manager
+    token_mgr = get_token_manager()
+
+    # Trigger refresh
+    success, error = await token_mgr.refresh_server_token(
+        server_id,
+        triggered_by='manual'
+    )
+
+    if success:
+        return JSONResponse({"detail": "Token refreshed successfully"})
+    else:
+        return JSONResponse(
+            {"detail": f"Failed to refresh token: {error}"},
+            status_code=400
+        )

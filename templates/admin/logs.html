@@ -2,72 +2,67 @@
 
 {% block title %}Auth Logs - MCP Auth Admin{% endblock %}
 
-{% block extra_styles %}
-.log-entry {
-    border-left: 3px solid #e0e0e0;
-    transition: all 0.3s;
-}
-.log-entry:hover {
-    background: #f8f9fa;
-    border-left-color: #667eea;
-}
-.log-success { border-left-color: #28a745; }
-.log-failed { border-left-color: #dc3545; }
-.logs-card {
-    border: none;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
-.logs-card .card-header {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    font-weight: 600;
-}
-{% endblock %}
-
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-    <h1><i class="bi bi-journal-text"></i> Authentication Logs</h1>
-    <button class="btn btn-outline-secondary" onclick="loadLogs()">
-        <i class="bi bi-arrow-clockwise"></i> Refresh
+<!-- Header -->
+<div class="flex items-center justify-between mb-8">
+    <div>
+        <h1 class="text-3xl font-bold text-gray-900 flex items-center gap-3">
+            <i data-lucide="clock" class="w-8 h-8 text-blue-600"></i>
+            Authentication Logs
+        </h1>
+        <p class="text-gray-600 mt-1">Monitor authentication events</p>
+    </div>
+    <button 
+        onclick="loadLogs()"
+        class="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg shadow-sm transition-colors flex items-center gap-2"
+    >
+        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+        Refresh
     </button>
 </div>
 
 <!-- Filters -->
-<div class="card mb-4">
-    <div class="card-body">
-        <div class="row">
-            <div class="col-md-3">
-                <label class="form-label">Event Type</label>
-                <select class="form-select" id="eventTypeFilter" onchange="loadLogs()">
-                    <option value="">All Events</option>
-                    <option value="login">Login</option>
-                    <option value="register">Register</option>
-                    <option value="logout">Logout</option>
-                    <option value="failed_login">Failed Login</option>
-                </select>
-            </div>
-            <div class="col-md-3">
-                <label class="form-label">Limit</label>
-                <select class="form-select" id="limitFilter" onchange="loadLogs()">
-                    <option value="50">Last 50</option>
-                    <option value="100">Last 100</option>
-                    <option value="500">Last 500</option>
-                </select>
-            </div>
+<div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Event Type</label>
+            <select 
+                id="eventTypeFilter" 
+                onchange="loadLogs()"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+                <option value="">All Events</option>
+                <option value="login">Login</option>
+                <option value="register">Register</option>
+                <option value="logout">Logout</option>
+                <option value="failed_login">Failed Login</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Limit</label>
+            <select 
+                id="limitFilter" 
+                onchange="loadLogs()"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+                <option value="50">Last 50</option>
+                <option value="100">Last 100</option>
+                <option value="500">Last 500</option>
+            </select>
         </div>
     </div>
 </div>
 
-<!-- Logs -->
-<div class="card logs-card">
-    <div class="card-header">
-        <i class="bi bi-list-ul"></i> Recent Events
+<!-- Logs Container -->
+<div class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <div class="bg-gradient-to-r from-blue-600 to-cyan-600 px-6 py-4 flex items-center gap-2 text-white">
+        <i data-lucide="list" class="w-5 h-5"></i>
+        <h2 class="text-lg font-semibold">Recent Events</h2>
     </div>
-    <div class="card-body" id="logsContainer">
-        <div class="text-center py-5">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
+    <div class="p-6" id="logsContainer">
+        <div class="text-center py-8">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
+            <p class="text-gray-500 mt-2">Loading logs...</p>
         </div>
     </div>
 </div>
@@ -91,42 +86,69 @@
 
             const container = document.getElementById('logsContainer');
             if (logs.length === 0) {
-                container.innerHTML = '<p class="text-center text-muted py-4">No logs found</p>';
+                container.innerHTML = '<p class="text-center text-gray-500 py-8">No logs found</p>';
                 return;
             }
 
-            container.innerHTML = logs.map(log => `
-                <div class="log-entry ${log.success ? 'log-success' : 'log-failed'} p-3 mb-2">
-                    <div class="d-flex justify-content-between align-items-start">
-                        <div>
-                            <h6 class="mb-1">
-                                <span class="badge ${getEventBadgeClass(log.event_type)}">${log.event_type}</span>
-                                <strong>${log.username || 'Unknown'}</strong>
-                                ${log.success ? '<i class="bi bi-check-circle-fill text-success"></i>' : '<i class="bi bi-x-circle-fill text-danger"></i>'}
-                            </h6>
-                            <small class="text-muted">
-                                <i class="bi bi-clock"></i> ${new Date(log.created_at).toLocaleString()}
-                                ${log.ip_address ? `<i class="bi bi-geo-alt ms-3"></i> ${log.ip_address}` : ''}
-                            </small>
-                            ${log.details ? `<div class="mt-2"><small class="text-muted">${log.details}</small></div>` : ''}
+            container.innerHTML = logs.map(log => {
+                const success = log.success;
+                const borderColor = success ? 'border-emerald-500' : 'border-red-500';
+                const badgeClass = getEventBadgeClass(log.event_type);
+                const iconClass = success ? 'text-emerald-600' : 'text-red-600';
+                const icon = success ? 'check-circle' : 'x-circle';
+
+                return `
+                    <div class="border-l-4 ${borderColor} bg-gray-50 hover:bg-gray-100 p-4 mb-3 rounded-r-lg transition-colors">
+                        <div class="flex justify-content-between items-start">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-2">
+                                    <span class="${badgeClass} px-2 py-1 rounded text-xs font-semibold">${log.event_type}</span>
+                                    <span class="font-semibold text-gray-900">${log.username || 'Unknown'}</span>
+                                    <i data-lucide="${icon}" class="w-5 h-5 ${iconClass}"></i>
+                                </div>
+                                <div class="text-sm text-gray-600 space-y-1">
+                                    <div class="flex items-center gap-2">
+                                        <i data-lucide="clock" class="w-4 h-4"></i>
+                                        <span>${new Date(log.created_at).toLocaleString()}</span>
+                                    </div>
+                                    ${log.ip_address ? `
+                                        <div class="flex items-center gap-2">
+                                            <i data-lucide="map-pin" class="w-4 h-4"></i>
+                                            <span>${log.ip_address}</span>
+                                        </div>
+                                    ` : ''}
+                                    ${log.details ? `
+                                        <div class="mt-2 text-gray-500">${log.details}</div>
+                                    ` : ''}
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
-            `).join('');
+                `;
+            }).join('');
+
+            lucide.createIcons();
         } catch (error) {
             console.error('Failed to load logs:', error);
-            document.getElementById('logsContainer').innerHTML = '<p class="text-center text-danger">Failed to load logs</p>';
+            document.getElementById('logsContainer').innerHTML = `
+                <div class="text-center py-8 text-red-600">
+                    <i data-lucide="alert-circle" class="w-12 h-12 mx-auto mb-2"></i>
+                    <p>Failed to load logs</p>
+                </div>
+            `;
+            lucide.createIcons();
         }
     }
 
     function getEventBadgeClass(eventType) {
         const classes = {
-            'login': 'bg-success',
-            'register': 'bg-info',
-            'logout': 'bg-secondary',
-            'failed_login': 'bg-danger'
+            'login': 'bg-emerald-100 text-emerald-700',
+            'register': 'bg-blue-100 text-blue-700',
+            'logout': 'bg-gray-100 text-gray-700',
+            'failed_login': 'bg-red-100 text-red-700',
+            'admin_login': 'bg-cyan-100 text-cyan-700'
         };
-        return classes[eventType] || 'bg-secondary';
+        return classes[eventType] || 'bg-gray-100 text-gray-700';
     }
 
     // Auto-refresh every 30 seconds

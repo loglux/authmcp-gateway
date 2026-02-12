@@ -1,0 +1,6 @@
+include README.md
+include LICENSE
+include requirements.txt
+recursive-include templates *.html
+recursive-include scripts *.py
+include .env.example

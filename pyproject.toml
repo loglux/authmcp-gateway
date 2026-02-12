@@ -66,8 +66,12 @@ Issues = "https://github.com/loglux/authmcp-gateway/issues"
 authmcp-gateway = "authmcp_gateway.cli:main"
 
 [tool.setuptools]
-packages = ["authmcp_gateway"]
 package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["authmcp_gateway*"]
+namespaces = false
 
 [tool.setuptools.package-data]
 authmcp_gateway = ["py.typed"]

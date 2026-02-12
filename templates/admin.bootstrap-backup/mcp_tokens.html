@@ -1,0 +1,331 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Backend Tokens - AuthMCP Gateway{% endblock %}
+
+{% block extra_styles %}
+.token-status-valid { color: #198754; }
+.token-status-expiring { color: #ffc107; }
+.token-status-expired { color: #dc3545; }
+.token-status-none { color: #6c757d; }
+.refresh-btn { min-width: 100px; }
+.log-success { background-color: #d1e7dd; }
+.log-failure { background-color: #f8d7da; }
+.server-card {
+    transition: all 0.2s;
+    border-left: 4px solid #dee2e6;
+}
+.server-card:hover {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pb-2 mb-3 border-bottom">
+    <h1 class="h2"><i class="bi bi-key"></i> Backend Token Management</h1>
+</div>
+
+<!-- Info Alert -->
+<div class="alert alert-info">
+    <i class="bi bi-info-circle"></i>
+    <strong>Automatic Token Refresh:</strong>
+    Tokens are automatically refreshed 5 minutes before expiration.
+    You can also manually trigger a refresh using the buttons below.
+</div>
+
+<!-- Token Status Cards -->
+<div class="row mb-4" id="tokenStatusCards">
+    <div class="col-12">
+        <p class="text-muted">Loading token statuses...</p>
+    </div>
+</div>
+
+<!-- Audit Log -->
+<div class="card mt-4">
+    <div class="card-header">
+        <h5 class="mb-0"><i class="bi bi-clock-history"></i> Token Refresh Audit Log</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm table-hover" id="auditLogTable">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Server</th>
+                        <th>Event Type</th>
+                        <th>Triggered By</th>
+                        <th>Status</th>
+                        <th>Old Expiry</th>
+                        <th>New Expiry</th>
+                        <th>Error</th>
+                    </tr>
+                </thead>
+                <tbody id="auditLogBody">
+                    <tr><td colspan="8" class="text-center text-muted">Loading...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Toast for notifications -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 11">
+    <div id="notificationToast" class="toast" role="alert">
+        <div class="toast-header">
+            <strong class="me-auto">Notification</strong>
+            <button type="button" class="btn-close" data-bs-dismiss="toast"></button>
+        </div>
+        <div class="toast-body" id="toastBody"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let tokenStatuses = [];
+    let auditLogs = [];
+
+    // Load data on page load
+    document.addEventListener('DOMContentLoaded', async () => {
+        await loadTokenStatuses();
+        await loadAuditLogs();
+
+        // Auto-refresh every 30 seconds
+        setInterval(async () => {
+            await loadTokenStatuses();
+            await loadAuditLogs();
+        }, 30000);
+    });
+
+    async function loadTokenStatuses() {
+        try {
+            const response = await fetch('/admin/api/mcp-servers/token-statuses');
+            if (!response.ok) throw new Error('Failed to load token statuses');
+
+            tokenStatuses = await response.json();
+            renderTokenCards();
+        } catch (error) {
+            console.error('Error loading token statuses:', error);
+            showToast('Failed to load token statuses', 'danger');
+        }
+    }
+
+    async function loadAuditLogs() {
+        try {
+            const response = await fetch('/admin/api/mcp-servers/token-audit-logs?limit=50');
+            if (!response.ok) throw new Error('Failed to load audit logs');
+
+            auditLogs = await response.json();
+            renderAuditLog();
+        } catch (error) {
+            console.error('Error loading audit logs:', error);
+        }
+    }
+
+    function renderTokenCards() {
+        const container = document.getElementById('tokenStatusCards');
+        if (tokenStatuses.length === 0) {
+            container.innerHTML = '<div class="col-12"><p class="text-muted">No backend MCP servers configured.</p></div>';
+            return;
+        }
+
+        container.innerHTML = tokenStatuses.map(server => {
+            const statusInfo = getStatusInfo(server);
+            return `
+                <div class="col-md-6 col-lg-4 mb-3">
+                    <div class="card server-card h-100">
+                        <div class="card-body">
+                            <h5 class="card-title">
+                                ${server.server_name}
+                                <span class="badge bg-secondary float-end">${server.auth_type}</span>
+                            </h5>
+
+                            <div class="mt-3">
+                                <div class="mb-2">
+                                    <strong>Status:</strong>
+                                    <span class="${statusInfo.class}">
+                                        <i class="${statusInfo.icon}"></i> ${statusInfo.text}
+                                    </span>
+                                </div>
+
+                                ${server.token_expires_at ? `
+                                    <div class="mb-2">
+                                        <strong>Expires:</strong>
+                                        <small>${formatDateTime(server.token_expires_at)}</small>
+                                    </div>
+                                    <div class="mb-2">
+                                        <strong>Time left:</strong>
+                                        <small>${formatDuration(server.time_until_expiry_seconds)}</small>
+                                    </div>
+                                ` : ''}
+
+                                ${server.last_refreshed ? `
+                                    <div class="mb-2">
+                                        <strong>Last Refreshed:</strong>
+                                        <small>${formatDateTime(server.last_refreshed)}</small>
+                                    </div>
+                                ` : ''}
+
+                                <div class="mb-2">
+                                    <strong>Auto-refresh:</strong>
+                                    <span class="badge ${server.can_auto_refresh ? 'bg-success' : 'bg-warning'}">
+                                        ${server.can_auto_refresh ? 'Enabled' : 'Disabled'}
+                                    </span>
+                                </div>
+                            </div>
+
+                            ${server.can_auto_refresh ? `
+                                <button
+                                    class="btn btn-sm btn-primary refresh-btn mt-3 w-100"
+                                    onclick="refreshToken(${server.server_id}, '${server.server_name}')"
+                                    id="refreshBtn${server.server_id}">
+                                    <i class="bi bi-arrow-clockwise"></i> Refresh Now
+                                </button>
+                            ` : `
+                                <div class="alert alert-warning mt-3 mb-0 py-2 px-2" style="font-size: 0.85em;">
+                                    <i class="bi bi-exclamation-triangle"></i>
+                                    No refresh token configured. Edit server to add refresh token.
+                                </div>
+                            `}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    function getStatusInfo(server) {
+        if (!server.has_refresh_token) {
+            return {
+                class: 'token-status-none',
+                icon: 'bi bi-dash-circle',
+                text: 'Static Token'
+            };
+        }
+
+        if (server.token_expired) {
+            return {
+                class: 'token-status-expired',
+                icon: 'bi bi-x-circle-fill',
+                text: 'Expired'
+            };
+        }
+
+        // Expiring soon (< 1 hour)
+        if (server.time_until_expiry_seconds && server.time_until_expiry_seconds < 3600) {
+            return {
+                class: 'token-status-expiring',
+                icon: 'bi bi-exclamation-circle-fill',
+                text: 'Expiring Soon'
+            };
+        }
+
+        return {
+            class: 'token-status-valid',
+            icon: 'bi bi-check-circle-fill',
+            text: 'Valid'
+        };
+    }
+
+    async function refreshToken(serverId, serverName) {
+        const btn = document.getElementById(`refreshBtn${serverId}`);
+        const originalHtml = btn.innerHTML;
+
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Refreshing...';
+
+        try {
+            const response = await fetch(`/admin/api/mcp-servers/${serverId}/refresh-token`, {
+                method: 'POST'
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                showToast(`Token refreshed successfully for ${serverName}`, 'success');
+                await loadTokenStatuses();
+                await loadAuditLogs();
+            } else {
+                showToast(`Failed to refresh token: ${data.detail}`, 'danger');
+            }
+        } catch (error) {
+            console.error('Error refreshing token:', error);
+            showToast('Error refreshing token', 'danger');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalHtml;
+        }
+    }
+
+    function renderAuditLog() {
+        const tbody = document.getElementById('auditLogBody');
+
+        if (auditLogs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">No audit logs yet</td></tr>';
+            return;
+        }
+
+        tbody.innerHTML = auditLogs.map(log => {
+            const rowClass = log.success ? 'log-success' : 'log-failure';
+            return `
+                <tr class="${rowClass}">
+                    <td><small>${formatDateTime(log.timestamp)}</small></td>
+                    <td>${log.server_name}</td>
+                    <td><span class="badge bg-info">${log.event_type}</span></td>
+                    <td><span class="badge bg-secondary">${log.triggered_by}</span></td>
+                    <td>
+                        ${log.success
+                            ? '<i class="bi bi-check-circle text-success"></i> Success'
+                            : '<i class="bi bi-x-circle text-danger"></i> Failed'}
+                    </td>
+                    <td><small>${log.old_expires_at ? formatDateTime(log.old_expires_at) : '-'}</small></td>
+                    <td><small>${log.new_expires_at ? formatDateTime(log.new_expires_at) : '-'}</small></td>
+                    <td><small class="text-danger">${log.error_message || '-'}</small></td>
+                </tr>
+            `;
+        }).join('');
+    }
+
+    function formatDateTime(isoString) {
+        if (!isoString) return '-';
+        const date = new Date(isoString);
+        return date.toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    }
+
+    function formatDuration(seconds) {
+        if (!seconds || seconds < 0) return 'Expired';
+
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+
+        if (hours > 24) {
+            const days = Math.floor(hours / 24);
+            return `${days}d ${hours % 24}h`;
+        }
+
+        if (hours > 0) {
+            return `${hours}h ${minutes}m`;
+        }
+
+        return `${minutes}m`;
+    }
+
+    function showToast(message, type = 'info') {
+        const toastEl = document.getElementById('notificationToast');
+        const toast = new bootstrap.Toast(toastEl);
+        const toastBody = document.getElementById('toastBody');
+
+        toastBody.innerHTML = `
+            <div class="alert alert-${type} mb-0 py-2">
+                ${message}
+            </div>
+        `;
+
+        toast.show();
+    }
+</script>
+{% endblock %}

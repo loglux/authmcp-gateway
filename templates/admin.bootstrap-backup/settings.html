@@ -1,0 +1,247 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Settings - MCP Auth Admin{% endblock %}
+
+{% block extra_styles %}
+.settings-card {
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    margin-bottom: 1.5rem;
+}
+.settings-card .card-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    font-weight: 600;
+}
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="bi bi-gear"></i> Settings</h1>
+</div>
+
+<div id="successAlert" class="alert alert-success d-none" role="alert">
+    <i class="bi bi-check-circle"></i> Settings saved successfully!
+</div>
+
+<div id="errorAlert" class="alert alert-danger d-none" role="alert">
+    <i class="bi bi-exclamation-triangle"></i>
+    <span id="errorMessage"></span>
+</div>
+
+<!-- JWT Token Settings -->
+<div class="settings-card card">
+    <div class="card-header">
+        <i class="bi bi-key"></i> JWT Token Settings
+    </div>
+    <div class="card-body">
+        <form id="jwtSettingsForm">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Access Token Lifetime (minutes)</label>
+                    <input type="number" class="form-control" id="accessTokenTTL"
+                           min="1" max="525600" required>
+                    <small class="text-muted">
+                        Recommended: 1440 (24 hours), 10080 (7 days), 43200 (30 days)
+                    </small>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Refresh Token Lifetime (days)</label>
+                    <input type="number" class="form-control" id="refreshTokenTTL"
+                           min="1" max="365" required>
+                    <small class="text-muted">
+                        Recommended: 7, 30, or 90 days
+                    </small>
+                </div>
+            </div>
+            <div class="alert alert-info mb-0">
+                <i class="bi bi-info-circle"></i>
+                <strong>Note:</strong> For Claude Desktop MCP, longer access token lifetimes (24h - 7d) are recommended
+                since token auto-refresh is not yet supported by MCP clients.
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Password Policy -->
+<div class="settings-card card">
+    <div class="card-header">
+        <i class="bi bi-shield-check"></i> Password Policy
+    </div>
+    <div class="card-body">
+        <form id="passwordPolicyForm">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label class="form-label">Minimum Length</label>
+                    <input type="number" class="form-control" id="passwordMinLength"
+                           min="4" max="128" required>
+                </div>
+            </div>
+            <div class="row">
+                <div class="col-md-6 col-lg-3 mb-3">
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input" id="requireUppercase">
+                        <label class="form-check-label" for="requireUppercase">
+                            Require Uppercase
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-3 mb-3">
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input" id="requireLowercase">
+                        <label class="form-check-label" for="requireLowercase">
+                            Require Lowercase
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-3 mb-3">
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input" id="requireDigit">
+                        <label class="form-check-label" for="requireDigit">
+                            Require Digit
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-3 mb-3">
+                    <div class="form-check">
+                        <input type="checkbox" class="form-check-input" id="requireSpecial">
+                        <label class="form-check-label" for="requireSpecial">
+                            Require Special Char
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- System Settings -->
+<div class="settings-card card">
+    <div class="card-header">
+        <i class="bi bi-toggles"></i> System Settings
+    </div>
+    <div class="card-body">
+        <form id="systemSettingsForm">
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="allowRegistration">
+                        <label class="form-check-label" for="allowRegistration">
+                            <strong>Allow Public Registration</strong>
+                            <small class="d-block text-muted">Enable /auth/register endpoint for public user registration</small>
+                        </label>
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="authRequired">
+                        <label class="form-check-label" for="authRequired">
+                            <strong>Authentication Required</strong>
+                            <small class="d-block text-muted">Require authentication for all MCP endpoints</small>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Save Button -->
+<div class="d-flex justify-content-end gap-2 mb-4">
+    <button type="button" class="btn btn-secondary" onclick="loadSettings()">
+        <i class="bi bi-arrow-clockwise"></i> Reset
+    </button>
+    <button type="button" class="btn btn-primary" onclick="saveSettings()">
+        <i class="bi bi-save"></i> Save All Settings
+    </button>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    async function loadSettings() {
+        try {
+            const response = await fetch('/admin/api/settings');
+            const settings = await response.json();
+
+            // JWT settings
+            document.getElementById('accessTokenTTL').value = settings.jwt?.access_token_expire_minutes || 1440;
+            document.getElementById('refreshTokenTTL').value = settings.jwt?.refresh_token_expire_days || 7;
+
+            // Password policy
+            const policy = settings.password_policy || {};
+            document.getElementById('passwordMinLength').value = policy.min_length || 8;
+            document.getElementById('requireUppercase').checked = policy.require_uppercase !== false;
+            document.getElementById('requireLowercase').checked = policy.require_lowercase !== false;
+            document.getElementById('requireDigit').checked = policy.require_digit !== false;
+            document.getElementById('requireSpecial').checked = policy.require_special || false;
+
+            // System settings
+            const system = settings.system || {};
+            document.getElementById('allowRegistration').checked = system.allow_registration !== false;
+            document.getElementById('authRequired').checked = system.auth_required !== false;
+
+        } catch (error) {
+            showError('Failed to load settings: ' + error.message);
+        }
+    }
+
+    async function saveSettings() {
+        const settings = {
+            jwt: {
+                access_token_expire_minutes: parseInt(document.getElementById('accessTokenTTL').value),
+                refresh_token_expire_days: parseInt(document.getElementById('refreshTokenTTL').value)
+            },
+            password_policy: {
+                min_length: parseInt(document.getElementById('passwordMinLength').value),
+                require_uppercase: document.getElementById('requireUppercase').checked,
+                require_lowercase: document.getElementById('requireLowercase').checked,
+                require_digit: document.getElementById('requireDigit').checked,
+                require_special: document.getElementById('requireSpecial').checked
+            },
+            system: {
+                allow_registration: document.getElementById('allowRegistration').checked,
+                auth_required: document.getElementById('authRequired').checked
+            }
+        };
+
+        try {
+            const response = await fetch('/admin/api/settings', {
+                method: 'PUT',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(settings)
+            });
+
+            if (response.ok) {
+                showSuccess('Settings saved successfully!');
+            } else {
+                const error = await response.json();
+                showError(error.detail || 'Failed to save settings');
+            }
+        } catch (error) {
+            showError('Error: ' + error.message);
+        }
+    }
+
+    function showSuccess(message) {
+        const successAlert = document.getElementById('successAlert');
+        successAlert.classList.remove('d-none');
+        setTimeout(() => successAlert.classList.add('d-none'), 3000);
+
+        // Scroll to top to see the alert
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function showError(message) {
+        const errorAlert = document.getElementById('errorAlert');
+        document.getElementById('errorMessage').textContent = message;
+        errorAlert.classList.remove('d-none');
+
+        // Scroll to top to see the alert
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // Load settings on page load
+    loadSettings();
+</script>
+{% endblock %}

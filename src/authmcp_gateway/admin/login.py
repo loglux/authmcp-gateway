@@ -22,76 +22,110 @@ async def admin_login_page(request: Request) -> HTMLResponse:
     """Admin login page."""
     html = """
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Login - FastMCP Auth</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>Admin Login - MCP Auth</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
     <style>
-        body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
         }
-        .login-card {
-            max-width: 400px;
-            width: 100%;
-            background: white;
-            border-radius: 15px;
-            padding: 2rem;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
-        }
-        .login-title {
-            color: #764ba2;
-            margin-bottom: 1.5rem;
-        }
-        .btn-login {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
-            padding: 0.75rem;
-        }
-        .error-message {
-            display: none;
-            margin-top: 1rem;
-        }
+        .fade-in { animation: fadeIn 0.5s ease-out; }
     </style>
 </head>
-<body>
-    <div class="login-card">
-        <h2 class="login-title text-center">🔐 Admin Login</h2>
-        <p class="text-center text-muted mb-4">AuthMCP Gateway</p>
-        
-        <form id="loginForm">
-            <div class="mb-3">
-                <label for="username" class="form-label">Username</label>
-                <input type="text" class="form-control" id="username" required autofocus>
+<body class="h-full bg-gradient-to-br from-blue-600 via-cyan-600 to-cyan-700">
+    <div class="min-h-full flex items-center justify-center px-4 py-12">
+        <div class="max-w-md w-full bg-white rounded-2xl shadow-2xl p-8 fade-in">
+            <!-- Logo/Icon -->
+            <div class="flex justify-center mb-6">
+                <div class="p-4 bg-gradient-to-br from-blue-500 to-cyan-600 rounded-full">
+                    <i data-lucide="shield-check" class="w-12 h-12 text-white"></i>
+                </div>
             </div>
             
-            <div class="mb-3">
-                <label for="password" class="form-label">Password</label>
-                <input type="password" class="form-control" id="password" required>
+            <!-- Title -->
+            <div class="text-center mb-8">
+                <h2 class="text-3xl font-bold text-gray-900 mb-2">Admin Login</h2>
+                <p class="text-gray-600">AuthMCP Gateway</p>
             </div>
             
-            <button type="submit" class="btn btn-login btn-primary w-100 text-white">
-                Login
-            </button>
-            
-            <div class="alert alert-danger error-message" id="errorMessage"></div>
-        </form>
+            <!-- Form -->
+            <form id="loginForm" class="space-y-6">
+                <!-- Username -->
+                <div>
+                    <label for="username" class="block text-sm font-medium text-gray-700 mb-2">
+                        Username
+                    </label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i data-lucide="user" class="w-5 h-5 text-gray-400"></i>
+                        </div>
+                        <input 
+                            type="text" 
+                            id="username" 
+                            required 
+                            autofocus
+                            class="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                            placeholder="Enter your username"
+                        >
+                    </div>
+                </div>
+                
+                <!-- Password -->
+                <div>
+                    <label for="password" class="block text-sm font-medium text-gray-700 mb-2">
+                        Password
+                    </label>
+                    <div class="relative">
+                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <i data-lucide="lock" class="w-5 h-5 text-gray-400"></i>
+                        </div>
+                        <input 
+                            type="password" 
+                            id="password" 
+                            required
+                            class="block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                            placeholder="Enter your password"
+                        >
+                    </div>
+                </div>
+                
+                <!-- Submit Button -->
+                <button 
+                    type="submit" 
+                    class="w-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white py-3 px-4 rounded-lg font-semibold hover:from-blue-700 hover:to-cyan-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+                >
+                    <i data-lucide="log-in" class="w-5 h-5"></i>
+                    Login
+                </button>
+                
+                <!-- Error Message -->
+                <div id="errorMessage" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-start gap-2">
+                    <i data-lucide="alert-circle" class="w-5 h-5 mt-0.5 flex-shrink-0"></i>
+                    <span id="errorText"></span>
+                </div>
+            </form>
+        </div>
     </div>
 
     <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+        
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
             
             const username = document.getElementById('username').value;
             const password = document.getElementById('password').value;
             const errorDiv = document.getElementById('errorMessage');
+            const errorText = document.getElementById('errorText');
             
-            errorDiv.style.display = 'none';
+            // Hide error
+            errorDiv.classList.add('hidden');
             
             try {
                 const response = await fetch('/admin/api/login', {
@@ -104,12 +138,14 @@ async def admin_login_page(request: Request) -> HTMLResponse:
                     window.location.href = '/admin';
                 } else {
                     const data = await response.json();
-                    errorDiv.textContent = data.detail || 'Login failed';
-                    errorDiv.style.display = 'block';
+                    errorText.textContent = data.detail || 'Login failed';
+                    errorDiv.classList.remove('hidden');
+                    lucide.createIcons();
                 }
             } catch (err) {
-                errorDiv.textContent = 'Network error';
-                errorDiv.style.display = 'block';
+                errorText.textContent = 'Network error. Please try again.';
+                errorDiv.classList.remove('hidden');
+                lucide.createIcons();
             }
         });
     </script>

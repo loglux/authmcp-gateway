@@ -1,82 +1,147 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full bg-gray-50">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
     <title>{% block title %}MCP Auth Admin{% endblock %}</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    
     <style>
-        /* Common admin panel styles */
-        .sidebar {
-            min-height: 100vh;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        /* Custom animations */
+        @keyframes slideIn {
+            from { transform: translateX(-10px); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
         }
-        .nav-link {
-            color: rgba(255,255,255,0.8);
-            transition: all 0.3s;
-        }
-        .nav-link:hover, .nav-link.active {
-            color: white;
-            background: rgba(255,255,255,0.1);
-            border-radius: 8px;
-        }
+        .slide-in { animation: slideIn 0.3s ease-out; }
+        
         {% block extra_styles %}{% endblock %}
     </style>
 </head>
-<body>
-    <div class="container-fluid">
-        <div class="row">
-            <!-- Sidebar -->
-            <nav class="col-md-2 d-md-block sidebar p-3">
-                <div class="position-sticky">
-                    <div class="text-center mb-4">
-                        <h4 class="text-white">
-                            <i class="bi bi-shield-lock"></i>
-                            MCP Auth
-                        </h4>
-                        <p class="text-white-50 small">Admin Panel</p>
+<body class="h-full" x-data="{ sidebarOpen: true, mobileMenuOpen: false }">
+    <div class="flex h-screen bg-gray-50">
+        
+        <!-- Mobile Menu Button -->
+        <button 
+            @click="mobileMenuOpen = !mobileMenuOpen"
+            class="lg:hidden fixed top-4 left-4 z-50 p-3 bg-gradient-to-br from-blue-600 to-cyan-600 text-white rounded-lg shadow-lg hover:shadow-xl transition-all"
+        >
+            <i data-lucide="menu" class="w-6 h-6"></i>
+        </button>
+        
+        <!-- Mobile Overlay -->
+        <div 
+            x-show="mobileMenuOpen" 
+            @click="mobileMenuOpen = false"
+            x-transition:enter="transition-opacity ease-out duration-300"
+            x-transition:enter-start="opacity-0"
+            x-transition:enter-end="opacity-100"
+            x-transition:leave="transition-opacity ease-in duration-200"
+            x-transition:leave-start="opacity-100"
+            x-transition:leave-end="opacity-0"
+            class="lg:hidden fixed inset-0 bg-black/50 z-30"
+        ></div>
+        
+        <!-- Sidebar -->
+        <aside 
+            :class="sidebarOpen ? 'w-64' : 'w-20'" 
+            class="bg-gradient-to-br from-blue-600 via-cyan-600 to-cyan-700 text-white transition-all duration-300 shadow-2xl flex flex-col
+                   lg:relative fixed top-0 left-0 h-full z-40
+                   lg:translate-x-0"
+            x-bind:class="mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
+        >
+            <!-- Header -->
+            <div class="p-6 border-b border-white/10">
+                <div class="flex items-center justify-between">
+                    <div x-show="sidebarOpen" class="flex items-center space-x-3 slide-in">
+                        <i data-lucide="shield-check" class="w-8 h-8"></i>
+                        <div>
+                            <h2 class="text-xl font-bold">MCP Auth</h2>
+                            <p class="text-xs text-white/70">Admin Panel</p>
+                        </div>
                     </div>
-                    <ul class="nav flex-column">
-                        {% set menu_items = [
-                            ('dashboard', '/admin', 'bi-speedometer2', 'Dashboard'),
-                            ('users', '/admin/users', 'bi-people', 'Users'),
-                            ('mcp-servers', '/admin/mcp-servers', 'bi-hdd-network', 'MCP Servers'),
-                            ('settings', '/admin/settings', 'bi-gear', 'Settings'),
-                            ('logs', '/admin/logs', 'bi-clock-history', 'Auth Logs'),
-                            ('api-test', '/admin/api-test', 'bi-code-square', 'API Test')
-                        ] %}
-                        {% for page_id, url, icon, label in menu_items %}
-                        <li class="nav-item mb-2">
-                            <a class="nav-link {% if active_page == page_id %}active{% endif %}" href="{{ url }}">
-                                <i class="bi {{ icon }}"></i> {{ label }}
-                            </a>
-                        </li>
-                        {% endfor %}
-                        <li class="nav-item mt-4">
-                            <a class="nav-link" href="/mcp" target="_blank">
-                                <i class="bi bi-box-arrow-up-right"></i> MCP Endpoint
-                            </a>
-                        </li>
-                        <li class="nav-item">
-                            <a class="nav-link text-danger" href="/admin/logout" onclick="return confirm('Are you sure you want to logout?')">
-                                <i class="bi bi-box-arrow-right"></i> Logout
-                            </a>
-                        </li>
-                    </ul>
+                    <button 
+                        @click="sidebarOpen = !sidebarOpen"
+                        class="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                        :class="!sidebarOpen ? 'mx-auto' : ''"
+                    >
+                        <i data-lucide="panel-left" class="w-5 h-5"></i>
+                    </button>
                 </div>
+            </div>
+            
+            <!-- Navigation -->
+            <nav class="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
+                {% set menu_items = [
+                    ('dashboard', '/admin', 'gauge', 'Dashboard'),
+                    ('users', '/admin/users', 'users', 'Users'),
+                    ('mcp-servers', '/admin/mcp-servers', 'server', 'MCP Servers'),
+                    ('mcp-tokens', '/admin/mcp-tokens', 'key', 'Backend Tokens'),
+                    ('settings', '/admin/settings', 'settings', 'Settings'),
+                    ('logs', '/admin/logs', 'clock', 'Auth Logs'),
+                    ('api-test', '/admin/api-test', 'code-2', 'API Test')
+                ] %}
+                
+                {% for page_id, url, icon, label in menu_items %}
+                <a 
+                    href="{{ url }}"
+                    @click="mobileMenuOpen = false"
+                    class="flex items-center px-3 py-3 rounded-lg transition-all group
+                           {% if active_page == page_id %}
+                           bg-white/20 shadow-lg
+                           {% else %}
+                           hover:bg-white/10
+                           {% endif %}"
+                >
+                    <i data-lucide="{{ icon }}" class="w-5 h-5 min-w-[20px]"></i>
+                    <span x-show="sidebarOpen" class="ml-3 font-medium slide-in">{{ label }}</span>
+                    {% if active_page == page_id %}
+                    <span x-show="sidebarOpen" class="ml-auto w-1.5 h-1.5 bg-white rounded-full"></span>
+                    {% endif %}
+                </a>
+                {% endfor %}
             </nav>
+            
+            <!-- Logout -->
+            <div class="p-3 border-t border-white/10">
+                <a 
+                    href="/admin/logout" 
+                    @click="if (!confirm('Are you sure you want to logout?')) { $event.preventDefault(); }"
+                    class="flex items-center px-3 py-3 rounded-lg hover:bg-red-500/20 transition-all group"
+                >
+                    <i data-lucide="log-out" class="w-5 h-5 min-w-[20px]"></i>
+                    <span x-show="sidebarOpen" class="ml-3 font-medium slide-in">Logout</span>
+                </a>
+            </div>
+        </aside>
 
-            <!-- Main content -->
-            <main class="col-md-10 ms-sm-auto px-md-4">
-                <div class="py-4">
-                    {% block content %}{% endblock %}
-                </div>
-            </main>
-        </div>
+        <!-- Main Content -->
+        <main class="flex-1 overflow-y-auto">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-8 pt-20 lg:pt-8">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Initialize Lucide icons -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+        });
+        
+        // Re-initialize icons after Alpine updates
+        document.addEventListener('alpine:initialized', () => {
+            setTimeout(() => lucide.createIcons(), 100);
+        });
+    </script>
+    
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>
