@@ -353,6 +353,7 @@ NEW_TOKEN=$(curl -s -X POST https://your-domain.com/auth/refresh \
 | `GET` | `/admin/api/users` | List all users |
 | `GET` | `/admin/api/mcp-servers` | List all MCP servers |
 | `GET` | `/admin/api/mcp-servers/token-status` | Get token expiration status |
+| `GET` | `/admin/api/mcp-stats` | Get MCP request statistics (Dashboard) |
 | `GET` | `/admin/api/logs` | Get authentication logs (file-based) |
 | `DELETE` | `/admin/api/logs/cleanup` | Delete old authentication logs |
 | `GET` | `/admin/api/mcp-requests` | Get MCP request logs (live monitoring) |
@@ -494,6 +495,53 @@ Authorization: Cookie (admin session)
 - `warning` - Token expires within 7 days
 - `expired` - Token has expired
 - `unknown` - Non-JWT token or no expiration claim
+
+---
+
+### MCP Statistics API
+
+**Get MCP request statistics (for Dashboard):**
+
+```http
+GET /admin/api/mcp-stats?last_hours=24&include_top_tools=true
+Authorization: Cookie (admin session)
+```
+
+**Query Parameters:**
+- `last_hours` (optional, default: 24) - Time window in hours
+- `include_top_tools` (optional, default: false) - Include top 5 tools ranking
+
+**Response:**
+```json
+{
+  "requests_24h": 1542,
+  "active_servers": 2,
+  "total_servers": 3,
+  "success_rate": 98.5,
+  "avg_response_time": 245,
+  "trend": "",
+  "top_tools": [
+    {
+      "name": "rag_query",
+      "count": 420,
+      "server": "RAG"
+    },
+    {
+      "name": "github_search",
+      "count": 315,
+      "server": "GitHub"
+    }
+  ]
+}
+```
+
+**Response Fields:**
+- `requests_24h` - Total MCP requests in time window
+- `active_servers` - Number of online servers
+- `total_servers` - Total configured servers
+- `success_rate` - Success percentage (0-100)
+- `avg_response_time` - Average response time in milliseconds
+- `top_tools` - Top 5 most used tools (only if `include_top_tools=true`)
 
 ---
 
