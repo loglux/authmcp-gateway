@@ -29,6 +29,56 @@
         <span x-text="errorMessage"></span>
     </div>
 
+    <!-- API Access Token Section -->
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
+        <div class="bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-4 flex items-center gap-2 text-white">
+            <i data-lucide="shield-check" class="w-5 h-5"></i>
+            <h2 class="text-lg font-semibold">API Access Token</h2>
+        </div>
+        <div class="p-6 space-y-4">
+            <p class="text-sm text-gray-600">Use this token to authenticate API requests and MCP clients (GitHub Copilot, Claude Desktop, etc.)</p>
+            
+            <!-- Access Token -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">Your Access Token</label>
+                <div class="flex gap-2">
+                    <input type="text" readonly value="{{ access_token }}" 
+                           class="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 font-mono text-sm">
+                    <button onclick="copyToClipboard('{{ access_token }}', 'Token copied!')" 
+                            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2">
+                        <i data-lucide="copy" class="w-4 h-4"></i>
+                        Copy
+                    </button>
+                </div>
+                <p class="text-xs text-gray-500 mt-1">Expires in: <span class="font-medium">{{ token_expires_in }}</span></p>
+            </div>
+
+            <!-- MCP Client Format -->
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-2">For MCP Clients (GitHub Copilot, Claude)</label>
+                <div class="flex gap-2">
+                    <input type="text" readonly value='{"Authorization": "Bearer {{ access_token }}"}'
+                           class="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 font-mono text-sm">
+                    <button onclick="copyToClipboard('{\"Authorization\": \"Bearer {{ access_token }}\"}', 'MCP header copied!')" 
+                            class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2">
+                        <i data-lucide="copy" class="w-4 h-4"></i>
+                        Copy JSON
+                    </button>
+                </div>
+                <p class="text-xs text-gray-500 mt-1">Paste this in "HTTP Headers" field when connecting MCP client</p>
+            </div>
+
+            <!-- Refresh Token Button -->
+            <div class="pt-2 border-t border-gray-200">
+                <button onclick="window.location.reload()" 
+                        class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                    Refresh Page to Get New Token
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- JWT Token Settings -->
     <div class="bg-white rounded-xl shadow-sm overflow-hidden mb-6">
         <div class="bg-gradient-to-r from-blue-600 to-cyan-600 px-6 py-4 flex items-center gap-2 text-white">
@@ -240,6 +290,20 @@
                 setTimeout(() => lucide.createIcons(), 100);
             }
         }
+    }
+
+    function copyToClipboard(text, message = 'Copied!') {
+        navigator.clipboard.writeText(text).then(() => {
+            // Show temporary success message
+            const toast = document.createElement('div');
+            toast.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center gap-2';
+            toast.innerHTML = `<i data-lucide="check" class="w-5 h-5"></i><span>${message}</span>`;
+            document.body.appendChild(toast);
+            lucide.createIcons();
+            setTimeout(() => toast.remove(), 2000);
+        }).catch(() => {
+            alert('Failed to copy. Please select and copy manually.');
+        });
     }
 
     document.addEventListener('DOMContentLoaded', function() {

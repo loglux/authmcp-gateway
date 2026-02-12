@@ -458,8 +458,36 @@ async def api_delete_user(request: Request) -> JSONResponse:
 
 
 async def admin_settings(_: Request) -> HTMLResponse:
-    """Admin settings page."""
-    return render_template("admin/settings.html", active_page="settings")
+    """Admin settings page with current user's access token."""
+    from datetime import datetime, timezone
+    
+    # Get current user from session
+    user = _.state.user
+    
+    # Generate fresh access token for display
+    from authmcp_gateway.auth.jwt import create_access_token
+    access_token = create_access_token(user["username"])
+    
+    # Calculate token expiration
+    from authmcp_gateway.config import load_config
+    config = load_config()
+    expires_minutes = config.jwt.access_token_expire_minutes
+    
+    if expires_minutes >= 1440:  # >= 1 day
+        days = expires_minutes // 1440
+        token_expires_in = f"{days} day{'s' if days > 1 else ''}"
+    elif expires_minutes >= 60:
+        hours = expires_minutes // 60
+        token_expires_in = f"{hours} hour{'s' if hours > 1 else ''}"
+    else:
+        token_expires_in = f"{expires_minutes} minute{'s' if expires_minutes > 1 else ''}"
+    
+    return render_template(
+        "admin/settings.html",
+        active_page="settings",
+        access_token=access_token,
+        token_expires_in=token_expires_in,
+    )
 
 
 async def api_get_settings(_: Request) -> JSONResponse:
