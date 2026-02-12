@@ -258,7 +258,7 @@ See [docs/SECURITY_TESTING.md](docs/SECURITY_TESTING.md) for:
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/authmcp-gateway.git
+git clone https://github.com/loglux/authmcp-gateway.git
 cd authmcp-gateway
 
 # Create virtual environment
