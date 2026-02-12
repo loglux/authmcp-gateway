@@ -145,17 +145,14 @@ keys/
 .env.local
 .env.production
 
-# Demo environment (local only)
-docker-compose-demo.yml
-scripts/generate_demo_data.py
-scripts/run_demo.sh
-scripts/stop_demo.sh
-docs/screenshots/
+# Demo environment (local only - not for production)
+demo/
 
 # Development files
 examples/
 JINJA2_MIGRATION_CHECKLIST.md
 NEXT_STEPS.md
 scripts/migrate_*.py
+scripts/deploy-wiki.sh
 authmcp-gateway.wiki/
 templates/admin/dashboard_old.html
