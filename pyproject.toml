@@ -74,7 +74,11 @@ include = ["authmcp_gateway*"]
 namespaces = false
 
 [tool.setuptools.package-data]
-authmcp_gateway = ["py.typed"]
+authmcp_gateway = [
+    "py.typed",
+    "templates/**/*.html",
+    "static/**/*"
+]
 
 [tool.black]
 line-length = 100

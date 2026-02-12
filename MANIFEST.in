@@ -1,6 +1,7 @@
 include README.md
 include LICENSE
 include requirements.txt
-recursive-include templates *.html
-recursive-include scripts *.py
 include .env.example
+recursive-include src/authmcp_gateway/templates *.html
+recursive-include src/authmcp_gateway/static *
+recursive-include scripts *.py

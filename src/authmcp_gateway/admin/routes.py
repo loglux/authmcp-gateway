@@ -32,7 +32,7 @@ def requires_admin(func):
     return wrapper
 
 # Setup Jinja2 templates
-TEMPLATE_DIR = Path(__file__).parent.parent.parent.parent / "templates"
+TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
 jinja_env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
 
 # Global config instance
