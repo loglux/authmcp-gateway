@@ -2,6 +2,7 @@
 
 **Secure authentication proxy for Model Context Protocol (MCP) servers**
 
+[![PyPI version](https://badge.fury.io/py/authmcp-gateway.svg)](https://pypi.org/project/authmcp-gateway/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)](https://hub.docker.com/)
