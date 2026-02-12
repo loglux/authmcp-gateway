@@ -1,6 +1,8 @@
 """Configuration management for AuthMCP Gateway authentication."""
 
 import os
+import secrets
+import sys
 from dataclasses import dataclass, field
 from typing import List, Optional, Set
 
@@ -58,7 +60,17 @@ class JWTConfig:
         """Validate JWT configuration."""
         if self.algorithm == "HS256":
             if not self.secret_key:
-                raise ValueError("JWT_SECRET_KEY is required when using HS256 algorithm")
+                # Auto-generate secret key for development
+                self.secret_key = secrets.token_urlsafe(32)
+                print("\n" + "="*60, file=sys.stderr)
+                print("⚠️  WARNING: Auto-generated JWT_SECRET_KEY", file=sys.stderr)
+                print("="*60, file=sys.stderr)
+                print("A random JWT secret key was generated automatically.", file=sys.stderr)
+                print("\nFor PRODUCTION use, please set JWT_SECRET_KEY in .env:", file=sys.stderr)
+                print(f"  JWT_SECRET_KEY={self.secret_key}", file=sys.stderr)
+                print("\nWithout a persistent key, all tokens will be invalidated", file=sys.stderr)
+                print("on server restart!", file=sys.stderr)
+                print("="*60 + "\n", file=sys.stderr)
         elif self.algorithm == "RS256":
             if not self.private_key or not self.public_key:
                 raise ValueError("JWT_PRIVATE_KEY and JWT_PUBLIC_KEY are required when using RS256 algorithm")
