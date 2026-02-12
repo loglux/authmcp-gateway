@@ -353,8 +353,147 @@ NEW_TOKEN=$(curl -s -X POST https://your-domain.com/auth/refresh \
 | `GET` | `/admin/api/users` | List all users |
 | `GET` | `/admin/api/mcp-servers` | List all MCP servers |
 | `GET` | `/admin/api/mcp-servers/token-status` | Get token expiration status |
-| `GET` | `/admin/api/logs` | Get authentication logs |
+| `GET` | `/admin/api/logs` | Get authentication logs (file-based) |
+| `DELETE` | `/admin/api/logs/cleanup` | Delete old authentication logs |
+| `GET` | `/admin/api/mcp-requests` | Get MCP request logs (live monitoring) |
 | `GET` | `/admin/api/stats` | Get system statistics |
+
+---
+
+### Authentication Logs API
+
+**Get authentication logs:**
+
+```http
+GET /admin/api/logs?event_type=login&days=7&limit=50&page=1
+Authorization: Cookie (admin session)
+```
+
+**Query Parameters:**
+- `event_type` (optional) - Filter by event type: `login`, `admin_login`, `failed_login`, `logout`, `register`
+- `days` (optional) - Time range in days (default: 7)
+- `limit` (optional) - Results per page (default: 50)
+- `page` (optional) - Page number (default: 1)
+
+**Response:**
+```json
+{
+  "logs": [
+    {
+      "timestamp": "2026-02-12T13:01:55.725163Z",
+      "event_type": "admin_login",
+      "user_id": 1,
+      "username": "admin",
+      "ip_address": "192.168.10.1",
+      "user_agent": "Mozilla/5.0...",
+      "success": true,
+      "details": null
+    }
+  ],
+  "total": 150,
+  "page": 1,
+  "pages": 3,
+  "has_next": true,
+  "has_prev": false
+}
+```
+
+**Cleanup old logs:**
+
+```http
+DELETE /admin/api/logs/cleanup?days=30
+Authorization: Cookie (admin session)
+```
+
+**Response:**
+```json
+{
+  "message": "Deleted 1234 log entries older than 30 days"
+}
+```
+
+---
+
+### MCP Request Logs API
+
+**Get recent MCP requests:**
+
+```http
+GET /admin/api/mcp-requests?last_seconds=60&limit=50&method=tools/call
+Authorization: Cookie (admin session)
+```
+
+**Query Parameters:**
+- `last_seconds` (optional) - Time window in seconds (default: 60)
+- `limit` (optional) - Maximum results (default: 50)
+- `method` (optional) - Filter by MCP method: `tools/list`, `tools/call`, `initialize`
+- `success` (optional) - Filter by success: `true` or `false`
+
+**Response:**
+```json
+{
+  "requests": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "username": "admin",
+      "mcp_server_id": 3,
+      "server_name": "RAG",
+      "method": "tools/call",
+      "tool_name": "rag_query",
+      "success": true,
+      "error_message": null,
+      "response_time_ms": 245,
+      "ip_address": "192.168.10.1",
+      "is_suspicious": false,
+      "timestamp": "2026-02-12T13:25:45.123456Z"
+    }
+  ]
+}
+```
+
+---
+
+### Token Status API
+
+**Get token expiration status for all MCP servers:**
+
+```http
+GET /admin/api/mcp-servers/token-status
+Authorization: Cookie (admin session)
+```
+
+**Response:**
+```json
+{
+  "servers": [
+    {
+      "id": 1,
+      "name": "RAG Server",
+      "auth_type": "bearer",
+      "token_status": {
+        "expires_at": "2026-02-15T10:30:00Z",
+        "days_left": 3,
+        "status": "warning"
+      }
+    },
+    {
+      "id": 2,
+      "name": "GitHub",
+      "auth_type": "bearer",
+      "token_status": {
+        "status": "unknown"
+      }
+    }
+  ]
+}
+```
+
+**Status values:**
+- `ok` - Token valid, >7 days remaining
+- `warning` - Token expires within 7 days
+- `expired` - Token has expired
+- `unknown` - Non-JWT token or no expiration claim
 
 ---
 

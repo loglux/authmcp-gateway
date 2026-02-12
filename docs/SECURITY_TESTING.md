@@ -321,22 +321,77 @@ Before deploying to production, ensure:
 
 ## Security Event Monitoring
 
-After deployment, regularly check:
+AuthMCP Gateway logs all security-related events for audit and monitoring.
 
-1. **Admin Panel → Security Events**
-   - Look for unusual patterns
-   - Monitor failed authentication attempts
-   - Check for suspicious MCP requests
+### Event Types
 
-2. **Admin Panel → MCP Activity** (if available)
-   - Monitor request patterns
-   - Check response times for anomalies
-   - Verify expected tool usage
+| Event Type | Severity | Description |
+|------------|----------|-------------|
+| `unauthorized_access` | MEDIUM | Attempted MCP access without valid token |
+| `invalid_token` | MEDIUM | Malformed or invalid JWT token |
+| `rate_limit_exceeded` | HIGH | User exceeded request rate limit |
+| `failed_login` | LOW | Failed authentication attempt |
+| `brute_force` | CRITICAL | Multiple failed logins detected |
+| `suspicious_activity` | HIGH | Unusual request patterns |
 
-3. **Server Logs**
-   ```bash
-   docker logs authmcp-gateway --tail 100 --follow
-   ```
+### Viewing Security Events
+
+**Admin Panel:**
+1. Go to **Admin Panel → Security Events**
+2. Filter by event type, severity, time range
+3. Review details: IP address, user, timestamp, request details
+
+**API Access:**
+```bash
+curl -b cookies.txt http://localhost:9105/admin/api/security-events?severity=high
+```
+
+### Authentication Logs
+
+**File-based logging** (prevents database bloat):
+
+```bash
+# View live auth events
+tail -f data/logs/auth.log | jq .
+
+# Find failed logins
+cat data/logs/auth.log | jq 'select(.event_type == "failed_login")'
+
+# Count by event type
+cat data/logs/auth.log | jq -r '.event_type' | sort | uniq -c
+
+# Failed logins by IP
+cat data/logs/auth.log | jq -r 'select(.success == false) | .ip_address' | sort | uniq -c | sort -rn
+```
+
+**See:** [Logging Documentation](LOGGING.md) for complete details.
+
+### Monitoring Best Practices
+
+1. **Daily Reviews**
+   - Check `CRITICAL` and `HIGH` severity events
+   - Investigate brute force attempts
+   - Review unauthorized access patterns
+
+2. **Set Up Alerts**
+   - Alert on brute force detection
+   - Alert on repeated unauthorized access
+   - Monitor rate limit violations
+
+3. **Trend Analysis**
+   - Track failed login rates over time
+   - Identify suspicious IP addresses
+   - Monitor unusual request patterns
+
+4. **Regular Audits**
+   - Weekly review of all security events
+   - Monthly analysis of authentication logs
+   - Quarterly security assessment
+
+After deployment, also monitor:
+
+- **Admin Panel → MCP Activity** - Request patterns, response times, tool usage
+- **Server Logs** - `docker logs authmcp-gateway --tail 100 --follow`
 
 ---
 
