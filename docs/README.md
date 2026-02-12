@@ -13,12 +13,6 @@ Complete documentation for AuthMCP Gateway - a secure authentication proxy for M
 - **[Logging Architecture](LOGGING.md)** - File-based logging system, log formats, and analysis
 - **[Security Testing](SECURITY_TESTING.md)** - Security verification tests and best practices
 
-### Development
-- **[Publishing Guide](PUBLISHING.md)** - Publishing package to PyPI
-
-### Archives
-- **[Old README](archive/README_OLD.md)** - Previous version of main README (archived)
-
 ---
 
 ## Quick Links by Topic

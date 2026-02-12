@@ -29,6 +29,8 @@ MANIFEST
 
 # Internal documentation
 docs/internal/
+docs/archive/
+docs/PUBLISHING.md
 
 # PyInstaller
 *.manifest
