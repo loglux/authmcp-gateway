@@ -145,6 +145,13 @@ keys/
 .env.local
 .env.production
 
+# Demo environment (local only)
+docker-compose-demo.yml
+scripts/generate_demo_data.py
+scripts/run_demo.sh
+scripts/stop_demo.sh
+docs/screenshots/
+
 # Development files
 examples/
 JINJA2_MIGRATION_CHECKLIST.md

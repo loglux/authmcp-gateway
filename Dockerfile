@@ -9,15 +9,14 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
 COPY src ./src
-COPY templates ./templates
 COPY scripts ./scripts
 COPY pyproject.toml ./
 
 # Install package
 RUN pip install --no-cache-dir -e .
 
-# Create data directory
-RUN mkdir -p /app/data
+# Create data directory and logs
+RUN mkdir -p /app/data /app/data/logs
 
 # Expose port
 EXPOSE 8000
