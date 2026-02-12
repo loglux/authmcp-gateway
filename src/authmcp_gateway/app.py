@@ -189,6 +189,7 @@ async def mcp_server_endpoint(request: Request) -> JSONResponse:
 from contextlib import asynccontextmanager
 from starlette.applications import Starlette
 from starlette.routing import Route
+from starlette.staticfiles import StaticFiles
 
 
 @asynccontextmanager
@@ -323,6 +324,12 @@ app = Starlette(
 
 # Store database path in app state for authorize endpoint
 app.state.auth_db_path = config.auth.sqlite_path
+
+# Mount static files for favicon and other assets
+static_dir = os.path.join(os.path.dirname(__file__), "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+    logger.info(f"✓ Static files mounted from {static_dir}")
 
 # Add middleware (order matters: last added = first executed)
 app.add_middleware(ContentTypeFixMiddleware)

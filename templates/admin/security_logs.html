@@ -1,6 +1,6 @@
 {% extends "admin/base.html" %}
 
-{% block title %}Security Logs - MCP Auth Admin{% endblock %}
+{% block title %}Security Logs - Auth MCP Admin{% endblock %}
 
 {% block content %}
 <!-- Header -->
@@ -28,7 +28,7 @@
             <label class="block text-sm font-medium text-gray-700 mb-2">Severity</label>
             <select 
                 id="severityFilter" 
-                onchange="loadEvents()"
+                onchange="loadEvents(); savePreferences()"
                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
                 <option value="">All Severities</option>
@@ -42,7 +42,7 @@
             <label class="block text-sm font-medium text-gray-700 mb-2">Event Type</label>
             <select 
                 id="eventTypeFilter" 
-                onchange="loadEvents()"
+                onchange="loadEvents(); savePreferences()"
                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
                 <option value="">All Events</option>
@@ -56,14 +56,24 @@
             <label class="block text-sm font-medium text-gray-700 mb-2">Limit</label>
             <select 
                 id="limitFilter" 
-                onchange="loadEvents()"
+                onchange="loadEvents(); savePreferences()"
                 class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
+                <option value="25">Last 25</option>
                 <option value="50">Last 50</option>
-                <option value="100" selected>Last 100</option>
+                <option value="100">Last 100</option>
                 <option value="500">Last 500</option>
             </select>
         </div>
+    </div>
+    <div class="mt-4 flex justify-end">
+        <button 
+            onclick="savePreferences()"
+            class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-sm transition-colors flex items-center gap-2"
+        >
+            <i data-lucide="save" class="w-4 h-4"></i>
+            Save Preferences
+        </button>
     </div>
 </div>
 
@@ -84,7 +94,43 @@
 
 {% block extra_scripts %}
 <script>
-    document.addEventListener('DOMContentLoaded', loadEvents);
+    document.addEventListener('DOMContentLoaded', () => {
+        loadPreferences();
+        loadEvents();
+    });
+
+    function loadPreferences() {
+        const saved = localStorage.getItem('securityLogsPreferences');
+        if (saved) {
+            try {
+                const prefs = JSON.parse(saved);
+                if (prefs.severity) document.getElementById('severityFilter').value = prefs.severity;
+                if (prefs.eventType) document.getElementById('eventTypeFilter').value = prefs.eventType;
+                if (prefs.limit) document.getElementById('limitFilter').value = prefs.limit;
+            } catch (e) {
+                console.error('Failed to load preferences:', e);
+            }
+        }
+    }
+
+    function savePreferences() {
+        const prefs = {
+            severity: document.getElementById('severityFilter').value,
+            eventType: document.getElementById('eventTypeFilter').value,
+            limit: document.getElementById('limitFilter').value
+        };
+        localStorage.setItem('securityLogsPreferences', JSON.stringify(prefs));
+        
+        // Show success feedback
+        const btn = event.target.closest('button');
+        const originalHTML = btn.innerHTML;
+        btn.innerHTML = '<i data-lucide="check" class="w-4 h-4"></i> Saved!';
+        lucide.createIcons();
+        setTimeout(() => {
+            btn.innerHTML = originalHTML;
+            lucide.createIcons();
+        }, 1500);
+    }
 
     async function loadEvents() {
         const severity = document.getElementById('severityFilter').value;
