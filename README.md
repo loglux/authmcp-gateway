@@ -88,11 +88,22 @@ AuthMCP Gateway provides centralized authentication, authorization, and monitori
 
 ## 🚀 Quick Start
 
-### Docker Compose (Recommended)
+### Option 1: PyPI Package (Recommended)
+
+Install from PyPI and run:
+
+```bash
+pip install authmcp-gateway
+authmcp-gateway
+```
+
+Then access **http://localhost:8000/** to complete setup wizard.
+
+### Option 2: Docker Compose
 
 1. **Clone and configure:**
    ```bash
-   git clone https://github.com/yourusername/authmcp-gateway.git
+   git clone https://github.com/loglux/authmcp-gateway.git
    cd authmcp-gateway
    cp .env.example .env
    # Edit .env with your settings
@@ -107,15 +118,6 @@ AuthMCP Gateway provides centralized authentication, authorization, and monitori
    - Open http://localhost:9105/
    - Complete setup wizard to create admin user
    - Add your MCP servers
-
-### Python Package
-
-```bash
-pip install authmcp-gateway
-authmcp-gateway
-```
-
-Then access http://localhost:8000/ for setup.
 
 ## Configuration
 

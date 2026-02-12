@@ -4,12 +4,99 @@ This guide covers deploying AuthMCP Gateway in production environments with HTTP
 
 ## Table of Contents
 
+- [Installation Methods](#installation-methods)
 - [Docker Deployment](#docker-deployment)
 - [HTTPS Setup](#https-setup)
 - [Reverse Proxy Configuration](#reverse-proxy-configuration)
 - [Cloud Deployments](#cloud-deployments)
 - [Environment Configuration](#environment-configuration)
 - [Security Hardening](#security-hardening)
+
+---
+
+## Installation Methods
+
+### Option 1: PyPI Package (Recommended for Quick Start)
+
+Install directly from PyPI:
+
+```bash
+# Install package
+pip install authmcp-gateway
+
+# Run with default settings
+authmcp-gateway
+
+# Or with custom port
+GATEWAY_PORT=9105 authmcp-gateway
+
+# Or create systemd service (see Production Setup below)
+```
+
+**Pros:**
+- Fastest installation
+- Automatic dependency management
+- Easy updates with `pip install --upgrade authmcp-gateway`
+
+**Cons:**
+- Requires Python 3.11+ on host
+- Manual process management
+
+### Production Setup with PyPI Package
+
+**Create systemd service (`/etc/systemd/system/authmcp-gateway.service`):**
+
+```ini
+[Unit]
+Description=AuthMCP Gateway
+After=network.target
+
+[Service]
+Type=simple
+User=authmcp
+Group=authmcp
+WorkingDirectory=/opt/authmcp-gateway
+Environment="PATH=/opt/authmcp-gateway/venv/bin"
+Environment="GATEWAY_PORT=9105"
+Environment="JWT_SECRET_KEY=your-secret-key"
+ExecStart=/opt/authmcp-gateway/venv/bin/authmcp-gateway
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
+```
+
+**Setup:**
+```bash
+# Create user
+sudo useradd -r -s /bin/false authmcp
+
+# Create directory
+sudo mkdir -p /opt/authmcp-gateway
+sudo chown authmcp:authmcp /opt/authmcp-gateway
+
+# Install in venv
+sudo -u authmcp python3 -m venv /opt/authmcp-gateway/venv
+sudo -u authmcp /opt/authmcp-gateway/venv/bin/pip install authmcp-gateway
+
+# Start service
+sudo systemctl daemon-reload
+sudo systemctl enable authmcp-gateway
+sudo systemctl start authmcp-gateway
+
+# Check status
+sudo systemctl status authmcp-gateway
+```
+
+### Option 2: Docker (Recommended for Production)
+
+See [Docker Deployment](#docker-deployment) section below.
+
+**Pros:**
+- Isolated environment
+- Easy orchestration
+- Production-ready with Docker Compose
 
 ---
 
