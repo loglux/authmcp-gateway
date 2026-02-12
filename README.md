@@ -14,8 +14,8 @@ AuthMCP Gateway provides centralized authentication, authorization, and monitori
 
 - [Features](#features)
 - [Documentation](#documentation)
-- [Screenshots](#-screenshots)
-- [Quick Start](#-quick-start)
+- [Screenshots](#screenshots)
+- [Quick Start](#quick-start)
 - [Configuration](#configuration)
 - [Usage](#usage)
 - [Architecture](#architecture)
