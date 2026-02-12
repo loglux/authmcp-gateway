@@ -44,18 +44,21 @@ class McpHandler:
 
             # Extract user_id from request state (set by auth middleware)
             user_id = getattr(request.state, "user_id", None)
+            
+            # Get client IP
+            client_ip = request.client.host if request.client else None
 
             # Handle different MCP methods
             if method == "tools/list":
-                return await self._handle_tools_list(jsonrpc_id, user_id, server_name)
+                return await self._handle_tools_list(jsonrpc_id, user_id, server_name, request)
 
             elif method == "tools/call":
                 tool_name = params.get("name")
                 arguments = params.get("arguments", {})
-                return await self._handle_tool_call(jsonrpc_id, tool_name, arguments, user_id, server_name)
+                return await self._handle_tool_call(jsonrpc_id, tool_name, arguments, user_id, server_name, request)
 
             elif method == "initialize":
-                return await self._handle_initialize(jsonrpc_id, params, server_name)
+                return await self._handle_initialize(jsonrpc_id, params, server_name, request)
 
             else:
                 return self._error_response(
@@ -72,17 +75,23 @@ class McpHandler:
                 f"Internal error: {str(e)}"
             )
 
-    async def _handle_tools_list(self, jsonrpc_id: int, user_id: Optional[int], server_name: Optional[str] = None) -> JSONResponse:
+    async def _handle_tools_list(self, jsonrpc_id: int, user_id: Optional[int], server_name: Optional[str] = None, request: Optional[Request] = None) -> JSONResponse:
         """Handle tools/list request.
 
         Args:
             jsonrpc_id: JSON-RPC request ID
             user_id: Optional user ID for filtering
             server_name: Optional server name to filter tools
+            request: Starlette request object
 
         Returns:
             JSONResponse with tools list
         """
+        import time
+        start_time = time.time()
+        success = True
+        error_msg = None
+        
         try:
             tools = await self.proxy.list_tools(user_id=user_id, server_name=server_name)
 
@@ -105,6 +114,22 @@ class McpHandler:
                 formatted_tools.append(formatted_tool)
 
             logger.info(f"Returning {len(formatted_tools)} tools")
+            
+            # Log MCP request
+            response_time = int((time.time() - start_time) * 1000)
+            try:
+                from authmcp_gateway.security.logger import log_mcp_request
+                log_mcp_request(
+                    db_path=self.db_path,
+                    user_id=user_id,
+                    mcp_server_id=None,  # Multiple servers
+                    method="tools/list",
+                    success=True,
+                    response_time_ms=response_time,
+                    ip_address=request.client.host if request and request.client else None
+                )
+            except Exception as log_err:
+                logger.error(f"Failed to log MCP request: {log_err}")
 
             return JSONResponse({
                 "jsonrpc": "2.0",
@@ -116,6 +141,26 @@ class McpHandler:
 
         except Exception as e:
             logger.exception(f"Error in tools/list: {e}")
+            success = False
+            error_msg = str(e)
+            
+            # Log failed request
+            try:
+                from authmcp_gateway.security.logger import log_mcp_request
+                response_time = int((time.time() - start_time) * 1000)
+                log_mcp_request(
+                    db_path=self.db_path,
+                    user_id=user_id,
+                    mcp_server_id=None,
+                    method="tools/list",
+                    success=False,
+                    error_message=error_msg,
+                    response_time_ms=response_time,
+                    ip_address=request.client.host if request and request.client else None
+                )
+            except Exception as log_err:
+                logger.error(f"Failed to log MCP request: {log_err}")
+            
             return self._error_response(jsonrpc_id, -32603, str(e))
 
     async def _handle_tool_call(

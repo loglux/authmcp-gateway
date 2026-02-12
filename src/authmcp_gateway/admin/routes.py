@@ -19,6 +19,17 @@ from authmcp_gateway.config import AppConfig
 
 logger = logging.getLogger(__name__)
 
+
+# Admin authentication decorator (simplified version)
+def requires_admin(func):
+    """Decorator to require admin authentication for routes."""
+    @wraps(func)
+    async def wrapper(request: Request, *args, **kwargs):
+        # Admin auth is handled by AdminAuthMiddleware
+        # This decorator is just for marking admin routes
+        return await func(request, *args, **kwargs)
+    return wrapper
+
 # Setup Jinja2 templates
 TEMPLATE_DIR = Path(__file__).parent.parent.parent.parent / "templates"
 jinja_env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
@@ -159,11 +170,19 @@ async def admin_users(_: Request) -> HTMLResponse:
     return render_template("admin/users.html", active_page="users")
 
 
+@requires_admin
 async def admin_logs(_: Request) -> HTMLResponse:
     """Admin auth logs page."""
     return render_template("admin/logs.html", active_page="logs")
 
 
+@requires_admin
+async def admin_security_logs(_: Request) -> HTMLResponse:
+    """Admin security events page."""
+    return render_template("admin/security_logs.html", active_page="security-logs")
+
+
+@requires_admin
 async def admin_api_test(_: Request) -> HTMLResponse:
     """Admin API testing page."""
     return render_template("admin/api_test.html", active_page="api-test")
@@ -588,6 +607,58 @@ async def api_test_mcp_server(request: Request) -> JSONResponse:
 
 
 @api_error_handler
+async def api_security_events(request: Request) -> JSONResponse:
+    """Get security events with filters."""
+    from authmcp_gateway.security.logger import get_security_events
+    
+    severity = request.query_params.get("severity")
+    event_type = request.query_params.get("event_type")
+    limit = int(request.query_params.get("limit", "100"))
+    last_hours = request.query_params.get("last_hours")
+    
+    events = get_security_events(
+        db_path=_config.auth.sqlite_path,
+        severity=severity,
+        event_type=event_type,
+        limit=limit,
+        last_hours=int(last_hours) if last_hours else None
+    )
+    
+    return JSONResponse(events)
+
+
+@api_error_handler
+async def api_mcp_stats(request: Request) -> JSONResponse:
+    """Get MCP request statistics."""
+    from authmcp_gateway.security.logger import get_mcp_request_stats
+    
+    last_hours = int(request.query_params.get("last_hours", "24"))
+    
+    stats = get_mcp_request_stats(
+        db_path=_config.auth.sqlite_path,
+        last_hours=last_hours
+    )
+    
+    return JSONResponse(stats)
+
+
+@api_error_handler
+async def api_cleanup_logs(request: Request) -> JSONResponse:
+    """Cleanup old logs."""
+    from authmcp_gateway.security.logger import cleanup_old_logs
+    
+    body = await request.json()
+    days_to_keep = body.get("days_to_keep", 30)
+    
+    result = cleanup_old_logs(
+        db_path=_config.auth.sqlite_path,
+        days_to_keep=days_to_keep
+    )
+    
+    return JSONResponse(result)
+
+
+@api_error_handler
 async def api_get_mcp_server_tools(request: Request) -> JSONResponse:
     """API: Get tools from MCP server."""
     from authmcp_gateway.mcp.proxy import McpProxy
@@ -716,3 +787,35 @@ async def api_refresh_server_token(request: Request) -> JSONResponse:
             {"detail": f"Failed to refresh token: {error}"},
             status_code=400
         )
+
+
+@requires_admin
+async def admin_mcp_activity(request: Request) -> HTMLResponse:
+    """MCP Activity monitoring page - real-time view."""
+    return render_template("admin/mcp_activity.html", active_page="mcp-activity")
+
+
+@requires_admin
+async def admin_mcp_requests_api(request: Request) -> Response:
+    """API endpoint for live MCP requests."""
+    from authmcp_gateway.security.logger import get_mcp_requests
+    
+    # Get query parameters
+    limit = int(request.query_params.get("limit", "50"))
+    last_seconds = int(request.query_params.get("last_seconds", "60"))
+    method = request.query_params.get("method")
+    success_param = request.query_params.get("success")
+    
+    success = None
+    if success_param is not None:
+        success = success_param.lower() == "true"
+    
+    requests = get_mcp_requests(
+        db_path=_config.auth.sqlite_path,
+        limit=limit,
+        last_seconds=last_seconds,
+        method=method,
+        success=success,
+    )
+    
+    return JSONResponse({"requests": requests})

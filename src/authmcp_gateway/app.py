@@ -3,7 +3,7 @@
 import os
 import logging
 from starlette.requests import Request
-from starlette.responses import JSONResponse, PlainTextResponse, Response
+from starlette.responses import JSONResponse, PlainTextResponse, Response, RedirectResponse
 
 from .config import load_config
 from .middleware import (
@@ -152,18 +152,9 @@ async def health(_: Request) -> JSONResponse:
     return JSONResponse({"status": "ok"})
 
 
-async def root_endpoint(_: Request) -> JSONResponse:
-    """Root endpoint - service info."""
-    return JSONResponse({
-        "service": "AuthMCP Gateway",
-        "version": "1.0.0",
-        "endpoints": {
-            "mcp": "/mcp",
-            "auth": "/auth/*",
-            "admin": "/admin",
-            "discovery": "/.well-known/*"
-        }
-    })
+async def root_endpoint(_: Request) -> RedirectResponse:
+    """Root endpoint - redirect to admin panel."""
+    return RedirectResponse(url="/admin", status_code=302)
 
 
 async def favicon(_: Request) -> Response:
@@ -285,7 +276,10 @@ app = Starlette(
         Route("/admin/mcp-tokens", admin_routes.admin_mcp_tokens, methods=["GET"]),
         Route("/admin/settings", admin_routes.admin_settings, methods=["GET"]),
         Route("/admin/logs", admin_routes.admin_logs, methods=["GET"]),
+        Route("/admin/security-logs", admin_routes.admin_security_logs, methods=["GET"]),
+        Route("/admin/mcp-activity", admin_routes.admin_mcp_activity, methods=["GET"]),
         Route("/admin/api-test", admin_routes.admin_api_test, methods=["GET"]),
+        Route("/admin/mcp-activity", admin_routes.admin_mcp_activity, methods=["GET"]),
 
         # Admin API
         Route("/admin/api/stats", admin_routes.api_stats, methods=["GET"]),
@@ -296,6 +290,10 @@ app = Starlette(
         Route("/admin/api/users/{user_id:int}", admin_routes.api_delete_user, methods=["DELETE"]),
         Route("/admin/api/mcp-servers", admin_routes.api_list_mcp_servers, methods=["GET"]),
         Route("/admin/api/mcp-servers/token-status", admin_routes.api_mcp_servers_token_status, methods=["GET"]),
+        Route("/admin/api/security-events", admin_routes.api_security_events, methods=["GET"]),
+        Route("/admin/api/mcp-stats", admin_routes.api_mcp_stats, methods=["GET"]),
+        Route("/admin/api/mcp-requests", admin_routes.admin_mcp_requests_api, methods=["GET"]),
+        Route("/admin/api/cleanup-logs", admin_routes.api_cleanup_logs, methods=["POST"]),
         Route("/admin/api/mcp-servers", admin_routes.api_create_mcp_server, methods=["POST"]),
         Route("/admin/api/mcp-servers/{server_id:int}", admin_routes.api_delete_mcp_server, methods=["DELETE"]),
         Route("/admin/api/mcp-servers/{server_id:int}", admin_routes.api_update_mcp_server, methods=["PATCH"]),

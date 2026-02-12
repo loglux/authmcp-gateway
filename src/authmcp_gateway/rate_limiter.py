@@ -87,6 +87,28 @@ class RateLimiter:
                     f"{current_count}/{limit} in {elapsed:.1f}s, "
                     f"retry after {retry_after}s"
                 )
+                
+                # Log security event for rate limiting
+                try:
+                    from .security.logger import log_security_event
+                    from .config import get_config
+                    config = get_config()
+                    if config:
+                        log_security_event(
+                            db_path=config.auth.sqlite_path,
+                            event_type="rate_limited",
+                            severity="low",
+                            ip_address=identifier,
+                            details={
+                                "limit": limit,
+                                "window_seconds": window,
+                                "current_count": current_count,
+                                "retry_after": retry_after
+                            }
+                        )
+                except Exception:
+                    pass  # Don't fail rate limiting if logging fails
+                
                 return False, retry_after
 
             # Increment counter

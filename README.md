@@ -1,462 +1,303 @@
 # AuthMCP Gateway
 
-**Universal Authentication Gateway for MCP (Model Context Protocol) Servers**
+**Secure authentication proxy for Model Context Protocol (MCP) servers**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+AuthMCP Gateway provides centralized authentication, authorization, and monitoring for MCP servers. It acts as a secure proxy between clients and your MCP backends, adding JWT-based authentication, rate limiting, real-time monitoring, and comprehensive security logging.
 
-## 🚀 Features
+## Features
 
-- **🔐 JWT/OAuth2 Authentication** - Built-in JWT (HS256/RS256) and OAuth2 Authorization Code Flow with PKCE
-- **🌐 Multi-Server Gateway** - Aggregate and proxy multiple MCP servers through a single endpoint
-- **🔀 Dynamic Endpoints** - Each backend server gets its own dedicated endpoint (`/mcp/{server_name}`)
-- **👥 User Management** - SQLite-based user database with role-based access control
-- **🎛️ Admin Panel** - Beautiful Tailwind CSS web UI for managing users, servers, and monitoring
-- **🔍 Auto-Discovery** - Automatic tool discovery and routing from backend MCP servers
-- **💚 Health Monitoring** - Background health checker for all connected servers
-- **🔄 Token Refresh** - Automatic token refresh for both users and backend MCP servers
-- **⏰ Token Expiration Tracking** - Proactive monitoring of JWT token expiration with visual warnings
-- **🎯 Tool Aggregation** - Aggregate tools from multiple servers into single namespace with prefixes
-- **🔑 Backend Token Management** - Automatic OAuth2 token refresh for backend MCP servers
-- **📱 Mobile Responsive** - Fully responsive admin panel with drawer sidebar for mobile devices
+### 🔐 **Authentication & Authorization**
+- **OAuth 2.0 + JWT** - Industry-standard authentication flow
+- **User Management** - Multi-user support with role-based access
+- **Backend Token Management** - Secure storage and auto-refresh of MCP server credentials
+- **Rate Limiting** - Per-user request throttling with configurable limits
 
-## 📦 Installation
+### 📊 **Real-Time Monitoring**
+- **Live MCP Activity Monitor** - Real-time request feed with auto-refresh
+- **Performance Metrics** - Response times, success rates, requests/minute
+- **Security Event Logging** - Unauthorized access attempts, rate limiting, suspicious activity
+- **Health Checking** - Automatic health checks for all connected MCP servers
 
-### Using Docker (Recommended)
+### 🎛️ **Admin Dashboard**
+- **User Management** - Create, edit, and manage users
+- **MCP Server Configuration** - Add and configure backend MCP servers
+- **Token Management** - Monitor token health and manual refresh
+- **Security Events** - View and filter security events
+- **API Testing** - Built-in MCP testing interface
 
-```bash
-# Clone the repository
-git clone https://github.com/loglux/authmcp-gateway.git
-cd authmcp-gateway
+### 🛡️ **Security**
+- JWT token-based authentication with refresh tokens
+- Secure credential storage in SQLite
+- CORS protection and request validation
+- Security event logging and monitoring
+- Built-in security testing guide
 
-# Create .env file
-cp .env.example .env
-# Edit .env with your settings
+## Quick Start
 
-# Start with Docker Compose
-docker compose up -d --build
-```
+### Docker Compose (Recommended)
 
-### From Source
+1. **Clone and configure:**
+   ```bash
+   git clone https://github.com/yourusername/authmcp-gateway.git
+   cd authmcp-gateway
+   cp .env.example .env
+   # Edit .env with your settings
+   ```
 
-```bash
-# Clone repository
-git clone https://github.com/loglux/authmcp-gateway.git
-cd authmcp-gateway
+2. **Start the gateway:**
+   ```bash
+   docker-compose up -d
+   ```
 
-# Install dependencies
-pip install -e .
+3. **Access admin panel:**
+   - Open http://localhost:9105/
+   - Complete setup wizard to create admin user
+   - Add your MCP servers
 
-# Initialize database
-python -m authmcp_gateway.cli init-db
-
-# Start server
-python -m authmcp_gateway.cli start
-```
-
-## 🚀 Quick Start
-
-### 1. Configure Environment
-
-Create `.env` file:
+### Python Package
 
 ```bash
-# JWT Configuration
-JWT_ALGORITHM=HS256
-JWT_SECRET_KEY=your-secret-key-min-32-chars
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
-JWT_REFRESH_TOKEN_EXPIRE_DAYS=7
-
-# Gateway Configuration
-GATEWAY_PORT=9105                    # Docker port
-MCP_PUBLIC_URL=https://mcp.yourdomain.com  # Your HTTPS domain (required for Claude.ai)
-AUTH_REQUIRED=true
-
-# Database
-AUTH_SQLITE_PATH=/app/data/users.db
-
-# Backend Token Management
-MCP_TOKEN_REFRESH_INTERVAL=300       # Check every 5 minutes
-MCP_TOKEN_REFRESH_THRESHOLD=5        # Refresh if expires within 5 minutes
-
-# Optional: Static tokens for backward compatibility
-# STATIC_BEARER_TOKENS=token1,token2
+pip install authmcp-gateway
+authmcp-gateway
 ```
 
-### 2. Start Gateway
+Then access http://localhost:8000/ for setup.
 
-```bash
-docker compose up -d --build
-```
-
-Gateway will start on `http://0.0.0.0:9105` (mapped from container's 8000)
-
-### 3. Access Admin Panel
-
-**Local access (admin panel):**
-```
-http://192.168.1.100:9105/admin
-```
-
-**Public access (Claude.ai MCP connector):**
-```
-https://mcp.yourdomain.com  (requires reverse proxy with HTTPS)
-```
-
-Create admin user via setup wizard: `http://localhost:9105/setup`
-
-### 🔧 Changing Port
-
-Change in `.env`:
-
-```bash
-GATEWAY_PORT=8080  # Change Docker port
-```
-
-If using reverse proxy (Nginx/Traefik), also update proxy config:
-```nginx
-# Nginx example
-proxy_pass http://localhost:8080;  # Update port here
-```
-
-Restart:
-```bash
-docker compose down && docker compose up -d
-```
-
-## 🔒 HTTPS Requirement for Claude.ai
-
-**Claude.ai requires HTTPS for MCP connectors.** You need a reverse proxy:
-
-### Option 1: Nginx with Let's Encrypt (recommended)
-
-Setup Nginx with Let's Encrypt SSL certificate:
-
-```nginx
-server {
-    listen 443 ssl;
-    server_name mcp.yourdomain.com;
-
-    ssl_certificate /etc/letsencrypt/live/mcp.yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/mcp.yourdomain.com/privkey.pem;
-
-    location / {
-        proxy_pass http://localhost:9105;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-```
-
-Then set in `.env`:
-```bash
-MCP_PUBLIC_URL=https://mcp.yourdomain.com
-```
-
-### Option 2: CloudFlare Tunnel
-
-Use CloudFlare to get HTTPS without managing SSL certificates.
-
-**Note:** Local admin panel access still works via HTTP (http://192.168.1.100:9105/admin)
-
-## 🔌 Connecting MCP Servers
-
-### Via Admin Panel
-
-1. Open `http://localhost:9105/admin`
-2. Login with admin credentials
-3. Go to "MCP Servers" section
-4. Click "Add Server"
-5. Fill in server details:
-   - **Name**: `My MCP Server`
-   - **URL**: `http://localhost:8001/mcp`
-   - **Tool Prefix**: `myserver_`
-   - **Auth Type**: `none` / `bearer` / `basic`
-   - **Auth Token**: Bearer token or Basic Auth credentials (if required)
-
-## 🔀 Dynamic Server Endpoints
-
-AuthMCP Gateway provides two ways to access your backend MCP servers:
-
-### Aggregated Endpoint
-
-Access **all** backend servers through a single endpoint:
-
-```
-POST https://your-domain.com/mcp
-```
-
-Tools from all servers are aggregated with their configured prefixes (e.g., `rag_query`, `ha_turn_on_light`).
-
-**Use case**: Single MCP connector in Claude.ai that provides access to all tools.
-
-### Server-Specific Endpoints
-
-Each backend server gets its own dedicated endpoint:
-
-```
-POST https://your-domain.com/mcp/{server_name}
-```
-
-Examples:
-- `https://your-domain.com/mcp/rag` - Only RAG server tools
-- `https://your-domain.com/mcp/homeassistant` - Only Home Assistant tools
-- `https://your-domain.com/mcp/n8n` - Only N8N tools
-
-**Use case**: Multiple separate MCP connectors in Claude.ai, each accessing a specific backend server.
-
-### Claude.ai Configuration Examples
-
-**Single aggregated connector:**
-```json
-{
-  "mcpServers": {
-    "authmcp-all": {
-      "url": "https://your-domain.com/mcp",
-      "auth": {
-        "type": "oauth2",
-        "authorization_url": "https://your-domain.com/authorize",
-        "token_url": "https://your-domain.com/oauth/token",
-        "scope": "openid profile email"
-      }
-    }
-  }
-}
-```
-
-**Multiple separate connectors:**
-```json
-{
-  "mcpServers": {
-    "rag-knowledge-base": {
-      "url": "https://your-domain.com/mcp/rag",
-      "auth": {
-        "type": "oauth2",
-        "authorization_url": "https://your-domain.com/authorize",
-        "token_url": "https://your-domain.com/oauth/token",
-        "scope": "openid profile email"
-      }
-    },
-    "home-assistant": {
-      "url": "https://your-domain.com/mcp/homeassistant",
-      "auth": {
-        "type": "oauth2",
-        "authorization_url": "https://your-domain.com/authorize",
-        "token_url": "https://your-domain.com/oauth/token",
-        "scope": "openid profile email"
-      }
-    }
-  }
-}
-```
-
-**Finding endpoint URLs**: The admin panel displays the exact endpoint URL for each server with a copy button.
-
-## ⏰ Token Expiration Monitoring
-
-AuthMCP Gateway includes proactive monitoring of JWT token expiration:
-
-### Dashboard Warnings
-
-The dashboard shows warnings for tokens expiring soon (< 7 days) or already expired:
-- 🔴 **Expired tokens** - Shows how many days ago the token expired
-- 🟡 **Expiring soon** - Shows how many days until expiration
-- Displays exact expiration date and time
-
-### Server Card Badges
-
-Each MCP server card shows token status:
-- 🔴 **Expired 2d ago** - Token has expired
-- 🟡 **Expires in 3d** - Token expires within 7 days
-- 🟢 **Valid (45d left)** - Token is valid with more than 7 days remaining
-- 🔵 **Never expires** - JWT token without expiration claim
-- ⚫ **Unknown expiration** - Non-JWT token (e.g., static API key)
-
-Hover over badges to see exact expiration date and time.
-
-## 🎯 Usage Examples
-
-### Python Client
-
-```python
-import httpx
-
-# Get token
-response = httpx.post(
-    "https://your-domain.com/oauth/token",
-    json={
-        "grant_type": "password",
-        "username": "your-username",
-        "password": "your-password"
-    }
-)
-token = response.json()["access_token"]
-
-# Call MCP tools
-response = httpx.post(
-    "https://your-domain.com/mcp",
-    headers={"Authorization": f"Bearer {token}"},
-    json={
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "tools/list",
-        "params": {}
-    }
-)
-
-tools = response.json()["result"]["tools"]
-print(f"Available tools: {len(tools)}")
-```
-
-### cURL
-
-```bash
-# Get token
-TOKEN=$(curl -s -X POST https://your-domain.com/oauth/token \
-  -H "Content-Type: application/json" \
-  -d '{"grant_type":"password","username":"user","password":"pass"}' \
-  | jq -r .access_token)
-
-# List tools
-curl -H "Authorization: Bearer $TOKEN" \
-  -X POST https://your-domain.com/mcp \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}'
-```
-
-## 🏗️ Architecture
-
-```
-┌────────────────────────────────────────────┐
-│  AuthMCP Gateway (Port 9105)               │
-│  • JWT/OAuth Authentication                │
-│  • Multi-server proxy & routing            │
-│  • Admin Panel (Tailwind + Alpine.js)      │
-│  • Token expiration monitoring             │
-└────────────────────────────────────────────┘
-              ↓ Connects to:
-   ┌──────────┴─────┬──────────┬──────────┐
-   ↓                ↓          ↓          ↓
-┌────────┐    ┌──────────┐  ┌────┐   ┌────────┐
-│ RAG    │    │ Home     │  │ N8N│   │ Custom │
-│ Server │    │ Assistant│  │ AI │   │ Server │
-└────────┘    └──────────┘  └────┘   └────────┘
-```
-
-## 🔒 Security Features
-
-- **JWT Tokens** - Industry-standard JSON Web Tokens with HS256/RS256 algorithms
-- **OAuth2 PKCE** - Authorization Code Flow with Proof Key for Code Exchange
-- **Password Hashing** - Bcrypt with configurable rounds
-- **Token Blacklist** - Revoke tokens on logout
-- **Audit Logging** - Track all authentication events
-- **Token Expiration Alerts** - Proactive monitoring and warnings
-- **CORS Protection** - Configurable origin validation
-- **Rate Limiting** - Optional protection against brute-force attacks
-
-## 📊 Admin Panel
-
-Access at `http://localhost:9105/admin`
-
-Features:
-- **Dashboard** - Overview of users, servers, activity, and token warnings
-- **Users** - Manage users, roles, and permissions
-- **MCP Servers** - Add, remove, and monitor backend servers with token status
-- **Settings** - Configure JWT, password policy, and system settings
-- **Auth Logs** - View authentication history and events
-- **API Test** - Test MCP tools directly from browser
-- **Mobile Responsive** - Full mobile support with drawer sidebar
-
-## 🔧 Configuration
+## Configuration
 
 ### Environment Variables
 
 ```bash
-# JWT Settings
-JWT_ALGORITHM=HS256                          # or RS256
-JWT_SECRET_KEY=your-secret-key              # for HS256 (min 32 chars)
-JWT_PRIVATE_KEY_PATH=/path/to/key.pem       # for RS256
-JWT_PUBLIC_KEY_PATH=/path/to/key.pub        # for RS256
-JWT_ACCESS_TOKEN_EXPIRE_MINUTES=30
-JWT_REFRESH_TOKEN_EXPIRE_DAYS=7
-
 # Gateway Settings
-GATEWAY_PORT=9105                            # Docker port
-MCP_PUBLIC_URL=https://mcp.yourdomain.com    # Public HTTPS URL for Claude.ai
-AUTH_REQUIRED=true
-AUTH_SQLITE_PATH=/app/data/users.db
+GATEWAY_PORT=9105              # Gateway port (default: 8000)
+JWT_SECRET=your-secret-key     # JWT signing key (auto-generated if not set)
+REQUIRE_AUTH=true              # Enable authentication (default: true)
 
-# Password Policy
-PASSWORD_MIN_LENGTH=8
-PASSWORD_REQUIRE_UPPERCASE=true
-PASSWORD_REQUIRE_LOWERCASE=true
-PASSWORD_REQUIRE_DIGIT=true
-PASSWORD_REQUIRE_SPECIAL=true
-
-# Optional: Backward Compatibility
-STATIC_BEARER_TOKENS=token1,token2
-MCP_TRUSTED_IPS=127.0.0.1,::1
-
-# Optional: User Registration
-ALLOW_REGISTRATION=false                     # Allow public registration
-
-# Backend Token Management
-MCP_TOKEN_REFRESH_INTERVAL=300               # Check tokens every 5 minutes
-MCP_TOKEN_REFRESH_THRESHOLD=5                # Refresh if expires within 5 minutes
+# Admin Settings
+ADMIN_USERNAME=admin           # Initial admin username
+ADMIN_PASSWORD=secure-password # Initial admin password
 ```
 
-## 🤝 Compatible MCP Servers
+### Adding MCP Servers
 
-AuthMCP Gateway works with **any** MCP-compliant server:
+Via Admin Panel:
+1. Navigate to **MCP Servers** → **Add Server**
+2. Enter server details:
+   - Name (e.g., "GitHub MCP")
+   - URL (e.g., "http://github-mcp:8000/mcp")
+   - Backend token (if required)
 
-- [FastMCP](https://github.com/jlowin/fastmcp) - Python framework for MCP servers
-- [MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk) - Official MCP SDK
-- Custom MCP implementations in any language
-
-## 🐳 Docker
-
-### Docker Compose
-
-```yaml
-services:
-  authmcp-gateway:
-    build: .
-    container_name: authmcp-gateway
-    ports:
-      - "9105:8000"
-    environment:
-      - JWT_SECRET_KEY=your-secret-key-min-32-chars
-      - MCP_PUBLIC_URL=https://your-domain.com
-    volumes:
-      - ./data:/app/data
-      - ./templates:/app/templates  # For live template editing
-      - ./src:/app/src              # For live code editing in development
-    restart: unless-stopped
+Via API:
+```bash
+curl -X POST http://localhost:9105/admin/api/mcp-servers \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "GitHub MCP",
+    "url": "http://github-mcp:8000/mcp",
+    "backend_token": "optional-token"
+  }'
 ```
 
-## 🧪 Development
+## Usage
+
+### For End Users
+
+1. **Login to get access token:**
+   ```bash
+   curl -X POST http://localhost:9105/auth/login \
+     -H "Content-Type: application/json" \
+     -d '{"username":"your-username","password":"your-password"}'
+   ```
+
+2. **Use token to access MCP endpoints:**
+   ```bash
+   curl -X POST http://localhost:9105/mcp \
+     -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+   ```
+
+### For Administrators
+
+**Admin Panel Features:**
+- **Dashboard** - Overview of users, servers, and activity
+- **MCP Activity** - Real-time monitoring of all MCP requests
+- **Security Events** - View unauthorized access attempts and suspicious activity
+- **User Management** - Create and manage user accounts
+- **Token Management** - Monitor and refresh backend tokens
+
+## Architecture
+
+```
+┌─────────────┐
+│   Client    │
+│  (Claude,   │
+│   etc.)     │
+└──────┬──────┘
+       │ JWT Auth
+       ▼
+┌─────────────────────────────┐
+│   AuthMCP Gateway           │
+│                             │
+│  • Authentication           │
+│  • Rate Limiting            │
+│  • Security Logging         │
+│  • Request Routing          │
+│  • Health Monitoring        │
+└──────┬──────────────────────┘
+       │
+       ├──────────┬──────────┬──────────┐
+       ▼          ▼          ▼          ▼
+  ┌─────────┐ ┌────────┐ ┌────────┐ ┌────────┐
+  │GitHub   │ │  RAG   │ │ Home   │ │Custom  │
+  │MCP      │ │  MCP   │ │Assistant│ │ MCP    │
+  └─────────┘ └────────┘ └────────┘ └────────┘
+```
+
+## API Endpoints
+
+### Public Endpoints
+- `POST /auth/login` - User login
+- `POST /auth/register` - User registration (if enabled)
+- `POST /auth/refresh` - Refresh access token
+- `GET /.well-known/oauth-authorization-server` - OAuth discovery
+
+### Protected Endpoints
+- `POST /mcp` - Aggregated MCP endpoint (all servers)
+- `POST /mcp/{server_name}` - Specific MCP server endpoint
+- `GET /auth/me` - Current user info
+- `POST /auth/logout` - Logout
+
+### Admin Endpoints
+- `GET /admin` - Admin dashboard
+- `GET /admin/mcp-activity` - Real-time MCP monitoring
+- `GET /admin/security-logs` - Security events
+- `GET /admin/users` - User management
+- `GET /admin/mcp-servers` - MCP server configuration
+- Plus full REST API for management
+
+## Security
+
+### Testing Security
+
+See [docs/SECURITY_TESTING.md](docs/SECURITY_TESTING.md) for:
+- Manual security tests
+- Automated testing script
+- Production deployment checklist
+- Security best practices
+
+### Security Features
+- ✅ JWT-based authentication with refresh tokens
+- ✅ Rate limiting per user
+- ✅ Security event logging
+- ✅ MCP request tracking with suspicious activity detection
+- ✅ Health monitoring for backend servers
+- ✅ CORS protection
+- ✅ Secure credential storage
+
+## Development
+
+### Local Development
 
 ```bash
 # Clone repository
-git clone https://github.com/loglux/authmcp-gateway.git
+git clone https://github.com/yourusername/authmcp-gateway.git
 cd authmcp-gateway
 
-# Install dev dependencies
-pip install -e ".[dev]"
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate  # or `venv\Scripts\activate` on Windows
 
-# Run with auto-reload
-docker compose up --build
+# Install dependencies
+pip install -e .
 
-# Format code
-black src/ tests/
-isort src/ tests/
-
-# Type checking
-mypy src/
+# Run gateway
+authmcp-gateway
 ```
 
-## 📝 License
+### Running Tests
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+```bash
+pytest tests/
+```
+
+### Project Structure
+
+```
+authmcp-gateway/
+├── src/authmcp_gateway/
+│   ├── admin/           # Admin panel routes and logic
+│   ├── auth/            # Authentication & authorization
+│   ├── mcp/             # MCP proxy and handlers
+│   ├── security/        # Security logging and monitoring
+│   ├── middleware.py    # Request middleware
+│   └── app.py           # Main application
+├── templates/           # Jinja2 templates (admin UI)
+├── docs/                # Documentation
+├── tests/               # Test suite
+└── docker-compose.yml   # Docker deployment
+```
+
+## Monitoring
+
+### Real-Time Dashboard
+
+Access `/admin/mcp-activity` for:
+- Live request feed (updates every 3 seconds)
+- Requests per minute
+- Average response times
+- Success rates
+- Top tools usage
+- Per-server statistics
+
+### Logs
+
+View logs in real-time:
+```bash
+docker logs -f authmcp-gateway
+```
+
+## Troubleshooting
+
+**Cannot access admin panel:**
+- Ensure you've completed the setup wizard at `/setup`
+- Check that cookies are enabled
+- Verify JWT_SECRET is set correctly
+
+**MCP server shows as offline:**
+- Check server URL is correct and reachable
+- Verify backend token if required
+- View error details in MCP Servers page
+
+**401 Unauthorized errors:**
+- Token may have expired - use refresh token
+- Verify Authorization header format: `Bearer YOUR_TOKEN`
+- Check user has permission for the MCP server
+
+For more help, see [docs/SECURITY_TESTING.md](docs/SECURITY_TESTING.md).
+
+## License
+
+MIT License - see [LICENSE](LICENSE) file for details.
+
+## Contributing
+
+Contributions welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
+
+## Roadmap
+
+- [ ] Prometheus metrics export
+- [ ] WebSocket support for real-time updates
+- [ ] Per-tool rate limiting
+- [ ] Enhanced security testing automation
+- [ ] Multi-tenancy support
+- [ ] API key authentication option
 
 ---
 
-**Made with ❤️ for the MCP community**
+**Built with ❤️ for the MCP ecosystem**

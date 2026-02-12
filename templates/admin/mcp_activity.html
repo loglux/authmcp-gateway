@@ -1,0 +1,333 @@
+{% extends "admin/base.html" %}
+
+{% block title %}MCP Activity - AuthMCP Gateway{% endblock %}
+
+{% block content %}
+<div x-data="mcpActivity()">
+    <div class="flex justify-between items-center mb-6">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900">MCP Activity Monitor</h1>
+            <p class="text-sm text-gray-600 mt-1">Real-time monitoring of MCP requests and tool usage</p>
+        </div>
+        <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
+                <span class="relative flex h-3 w-3">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                </span>
+                <span class="text-sm text-gray-600">Live</span>
+            </div>
+            <button @click="toggleAutoRefresh()" 
+                    :class="autoRefresh ? 'bg-green-600' : 'bg-gray-400'"
+                    class="px-3 py-1.5 text-white text-sm rounded-md hover:opacity-90 transition">
+                <span x-show="autoRefresh">Auto-refresh ON</span>
+                <span x-show="!autoRefresh">Auto-refresh OFF</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Live Stats Cards -->
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+        <!-- Requests per minute -->
+        <div class="bg-white rounded-lg shadow p-4 border-l-4 border-blue-500">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-600">Requests/min</p>
+                    <p class="text-2xl font-bold text-gray-900" x-text="stats.requests_per_min || 0"></p>
+                </div>
+                <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <i data-lucide="activity" class="w-6 h-6 text-blue-600"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Average response time -->
+        <div class="bg-white rounded-lg shadow p-4 border-l-4 border-purple-500">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-600">Avg Response</p>
+                    <p class="text-2xl font-bold text-gray-900">
+                        <span x-text="stats.avg_response_time || 0"></span><span class="text-sm text-gray-500">ms</span>
+                    </p>
+                </div>
+                <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                    <i data-lucide="timer" class="w-6 h-6 text-purple-600"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Success rate -->
+        <div class="bg-white rounded-lg shadow p-4 border-l-4 border-green-500">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-600">Success Rate</p>
+                    <p class="text-2xl font-bold text-gray-900">
+                        <span x-text="stats.success_rate || 0"></span><span class="text-sm text-gray-500">%</span>
+                    </p>
+                </div>
+                <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                    <i data-lucide="check-circle" class="w-6 h-6 text-green-600"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Total requests -->
+        <div class="bg-white rounded-lg shadow p-4 border-l-4 border-orange-500">
+            <div class="flex items-center justify-between">
+                <div>
+                    <p class="text-sm text-gray-600">Total (Last hour)</p>
+                    <p class="text-2xl font-bold text-gray-900" x-text="stats.total_requests || 0"></p>
+                </div>
+                <div class="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center">
+                    <i data-lucide="database" class="w-6 h-6 text-orange-600"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Live Request Feed (2 columns) -->
+        <div class="lg:col-span-2">
+            <div class="bg-white rounded-lg shadow">
+                <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                    <h2 class="text-lg font-semibold text-gray-900">Live Request Feed</h2>
+                    <span class="text-sm text-gray-500" x-text="'Last ' + lastSeconds + 's'"></span>
+                </div>
+                <div class="p-4">
+                    <!-- Filter controls -->
+                    <div class="flex gap-2 mb-4">
+                        <select x-model="filterMethod" @change="loadRequests()" 
+                                class="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="">All Methods</option>
+                            <option value="tools/list">tools/list</option>
+                            <option value="tools/call">tools/call</option>
+                            <option value="initialize">initialize</option>
+                        </select>
+                        <select x-model="filterSuccess" @change="loadRequests()" 
+                                class="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="">All Status</option>
+                            <option value="true">Success Only</option>
+                            <option value="false">Failed Only</option>
+                        </select>
+                    </div>
+
+                    <!-- Request list -->
+                    <div class="space-y-2 max-h-[600px] overflow-y-auto">
+                        <template x-if="requests.length === 0">
+                            <div class="text-center py-8 text-gray-500">
+                                <i data-lucide="inbox" class="w-12 h-12 mx-auto mb-2 text-gray-400"></i>
+                                <p>No requests in the last <span x-text="lastSeconds"></span> seconds</p>
+                            </div>
+                        </template>
+                        
+                        <template x-for="req in requests" :key="req.id">
+                            <div class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
+                                 :class="req.is_suspicious ? 'border-l-4 border-red-500' : ''">
+                                <!-- Status icon -->
+                                <div class="flex-shrink-0">
+                                    <template x-if="req.success">
+                                        <span class="flex items-center justify-center w-8 h-8 bg-green-100 rounded-full">
+                                            <i data-lucide="check" class="w-4 h-4 text-green-600"></i>
+                                        </span>
+                                    </template>
+                                    <template x-if="!req.success">
+                                        <span class="flex items-center justify-center w-8 h-8 bg-red-100 rounded-full">
+                                            <i data-lucide="x" class="w-4 h-4 text-red-600"></i>
+                                        </span>
+                                    </template>
+                                </div>
+
+                                <!-- Request details -->
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <span class="text-sm font-medium text-gray-900" x-text="req.method"></span>
+                                        <template x-if="req.tool_name">
+                                            <span class="text-xs text-gray-500">→ <span x-text="req.tool_name"></span></span>
+                                        </template>
+                                        <template x-if="req.server_name">
+                                            <span class="px-2 py-0.5 text-xs bg-blue-100 text-blue-700 rounded" x-text="req.server_name"></span>
+                                        </template>
+                                        <template x-if="req.is_suspicious">
+                                            <span class="px-2 py-0.5 text-xs bg-red-100 text-red-700 rounded">⚠ Suspicious</span>
+                                        </template>
+                                    </div>
+                                    <div class="flex items-center gap-3 text-xs text-gray-500">
+                                        <span x-text="formatTimestamp(req.timestamp)"></span>
+                                        <span x-text="req.username || 'Unknown'"></span>
+                                        <template x-if="req.error_message">
+                                            <span class="text-red-600" x-text="req.error_message"></span>
+                                        </template>
+                                    </div>
+                                </div>
+
+                                <!-- Response time badge -->
+                                <div class="flex-shrink-0">
+                                    <span class="px-2 py-1 text-xs font-medium rounded"
+                                          :class="getResponseTimeClass(req.response_time_ms)">
+                                        <span x-text="Math.round(req.response_time_ms)"></span>ms
+                                    </span>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Top Tools (1 column) -->
+        <div class="lg:col-span-1">
+            <div class="bg-white rounded-lg shadow">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h2 class="text-lg font-semibold text-gray-900">Top Tools (1h)</h2>
+                </div>
+                <div class="p-4">
+                    <template x-if="stats.top_tools && stats.top_tools.length === 0">
+                        <div class="text-center py-8 text-gray-500">
+                            <i data-lucide="tool" class="w-12 h-12 mx-auto mb-2 text-gray-400"></i>
+                            <p class="text-sm">No tool usage yet</p>
+                        </div>
+                    </template>
+
+                    <div class="space-y-3">
+                        <template x-for="(tool, index) in (stats.top_tools || [])" :key="index">
+                            <div>
+                                <div class="flex justify-between items-center mb-1">
+                                    <span class="text-sm font-medium text-gray-700" x-text="tool.tool"></span>
+                                    <span class="text-sm text-gray-600" x-text="tool.count"></span>
+                                </div>
+                                <div class="w-full bg-gray-200 rounded-full h-2">
+                                    <div class="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                                         :style="'width: ' + getToolPercentage(tool.count) + '%'"></div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <!-- By Server breakdown -->
+            <div class="bg-white rounded-lg shadow mt-6">
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h2 class="text-lg font-semibold text-gray-900">By Server (1h)</h2>
+                </div>
+                <div class="p-4">
+                    <template x-if="!stats.by_server || Object.keys(stats.by_server).length === 0">
+                        <div class="text-center py-8 text-gray-500">
+                            <i data-lucide="server" class="w-12 h-12 mx-auto mb-2 text-gray-400"></i>
+                            <p class="text-sm">No server activity yet</p>
+                        </div>
+                    </template>
+
+                    <div class="space-y-2">
+                        <template x-for="[server, count] in Object.entries(stats.by_server || {})" :key="server">
+                            <div class="flex justify-between items-center p-2 bg-gray-50 rounded">
+                                <span class="text-sm text-gray-700" x-text="server"></span>
+                                <span class="text-sm font-medium text-gray-900" x-text="count"></span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function mcpActivity() {
+    return {
+        requests: [],
+        stats: {},
+        autoRefresh: true,
+        refreshInterval: null,
+        lastSeconds: 60,
+        filterMethod: '',
+        filterSuccess: '',
+
+        init() {
+            this.loadRequests();
+            this.loadStats();
+            this.startAutoRefresh();
+        },
+
+        async loadRequests() {
+            try {
+                const params = new URLSearchParams({
+                    limit: '50',
+                    last_seconds: this.lastSeconds.toString(),
+                });
+                
+                if (this.filterMethod) {
+                    params.append('method', this.filterMethod);
+                }
+                if (this.filterSuccess) {
+                    params.append('success', this.filterSuccess);
+                }
+
+                const response = await fetch(`/admin/api/mcp-requests?${params}`);
+                const data = await response.json();
+                this.requests = data.requests || [];
+            } catch (error) {
+                console.error('Failed to load requests:', error);
+            }
+        },
+
+        async loadStats() {
+            try {
+                const response = await fetch('/admin/api/mcp-stats?last_hours=1');
+                const data = await response.json();
+                this.stats = data;
+                
+                // Calculate requests per minute
+                if (data.total_requests) {
+                    this.stats.requests_per_min = Math.round(data.total_requests / 60);
+                }
+            } catch (error) {
+                console.error('Failed to load stats:', error);
+            }
+        },
+
+        startAutoRefresh() {
+            this.refreshInterval = setInterval(() => {
+                if (this.autoRefresh) {
+                    this.loadRequests();
+                    this.loadStats();
+                }
+            }, 3000); // Refresh every 3 seconds
+        },
+
+        toggleAutoRefresh() {
+            this.autoRefresh = !this.autoRefresh;
+            if (this.autoRefresh) {
+                this.loadRequests();
+                this.loadStats();
+            }
+        },
+
+        formatTimestamp(timestamp) {
+            const date = new Date(timestamp);
+            const now = new Date();
+            const diff = Math.floor((now - date) / 1000); // seconds ago
+            
+            if (diff < 60) return `${diff}s ago`;
+            if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
+            
+            return date.toLocaleTimeString();
+        },
+
+        getResponseTimeClass(ms) {
+            if (ms < 100) return 'bg-green-100 text-green-700';
+            if (ms < 500) return 'bg-yellow-100 text-yellow-700';
+            if (ms < 1000) return 'bg-orange-100 text-orange-700';
+            return 'bg-red-100 text-red-700';
+        },
+
+        getToolPercentage(count) {
+            if (!this.stats.top_tools || this.stats.top_tools.length === 0) return 0;
+            const max = Math.max(...this.stats.top_tools.map(t => t.count));
+            return (count / max) * 100;
+        }
+    };
+}
+</script>
+{% endblock %}

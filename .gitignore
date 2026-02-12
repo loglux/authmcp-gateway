@@ -141,3 +141,9 @@ config/
 keys/
 .env.local
 .env.production
+
+# Development files
+examples/
+JINJA2_MIGRATION_CHECKLIST.md
+NEXT_STEPS.md
+scripts/migrate_*.py

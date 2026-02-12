@@ -1,0 +1,216 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Security Logs - MCP Auth Admin{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="flex items-center justify-between mb-8">
+    <div>
+        <h1 class="text-3xl font-bold text-gray-900 flex items-center gap-3">
+            <i data-lucide="shield-alert" class="w-8 h-8 text-red-600"></i>
+            Security Events
+        </h1>
+        <p class="text-gray-600 mt-1">Monitor security-related events and threats</p>
+    </div>
+    <button 
+        onclick="loadEvents()"
+        class="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg shadow-sm transition-colors flex items-center gap-2"
+    >
+        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+        Refresh
+    </button>
+</div>
+
+<!-- Filters -->
+<div class="bg-white rounded-xl shadow-sm p-6 mb-6">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Severity</label>
+            <select 
+                id="severityFilter" 
+                onchange="loadEvents()"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+                <option value="">All Severities</option>
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Event Type</label>
+            <select 
+                id="eventTypeFilter" 
+                onchange="loadEvents()"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+                <option value="">All Events</option>
+                <option value="unauthorized_access">Unauthorized Access</option>
+                <option value="rate_limited">Rate Limited</option>
+                <option value="suspicious_payload">Suspicious Payload</option>
+                <option value="auth_failed">Auth Failed</option>
+            </select>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">Limit</label>
+            <select 
+                id="limitFilter" 
+                onchange="loadEvents()"
+                class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+                <option value="50">Last 50</option>
+                <option value="100" selected>Last 100</option>
+                <option value="500">Last 500</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- Events Container -->
+<div class="bg-white rounded-xl shadow-sm overflow-hidden">
+    <div class="bg-gradient-to-r from-red-600 to-orange-600 px-6 py-4 flex items-center gap-2 text-white">
+        <i data-lucide="shield-alert" class="w-5 h-5"></i>
+        <h2 class="text-lg font-semibold">Recent Security Events</h2>
+    </div>
+    <div class="p-6" id="eventsContainer">
+        <div class="text-center py-8">
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-blue-500 border-t-transparent"></div>
+            <p class="text-gray-500 mt-2">Loading security events...</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', loadEvents);
+
+    async function loadEvents() {
+        const severity = document.getElementById('severityFilter').value;
+        const eventType = document.getElementById('eventTypeFilter').value;
+        const limit = document.getElementById('limitFilter').value;
+
+        try {
+            const params = new URLSearchParams();
+            if (severity) params.append('severity', severity);
+            if (eventType) params.append('event_type', eventType);
+            if (limit) params.append('limit', limit);
+
+            const response = await fetch(`/admin/api/security-events?${params}`);
+            const events = await response.json();
+
+            const container = document.getElementById('eventsContainer');
+            if (events.length === 0) {
+                container.innerHTML = '<p class="text-center text-gray-500 py-8">No security events found</p>';
+                return;
+            }
+
+            container.innerHTML = events.map(event => {
+                const severityBadge = getSeverityBadge(event.severity);
+                const severityColor = getSeverityColor(event.severity);
+                const icon = getSeverityIcon(event.severity);
+
+                let details = '';
+                if (event.details) {
+                    try {
+                        const parsed = JSON.parse(event.details);
+                        details = Object.entries(parsed)
+                            .map(([key, val]) => `<strong>${key}:</strong> ${val}`)
+                            .join(', ');
+                    } catch {
+                        details = event.details;
+                    }
+                }
+
+                return `
+                    <div class="border-l-4 ${severityColor} bg-gray-50 hover:bg-gray-100 p-4 mb-3 rounded-r-lg transition-colors">
+                        <div class="flex justify-between items-start">
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-2">
+                                    ${severityBadge}
+                                    <span class="px-2 py-1 rounded text-xs font-semibold bg-gray-200 text-gray-700">${event.event_type}</span>
+                                    <i data-lucide="${icon}" class="w-5 h-5"></i>
+                                </div>
+                                <div class="text-sm text-gray-600 space-y-1">
+                                    <div class="flex items-center gap-2">
+                                        <i data-lucide="clock" class="w-4 h-4"></i>
+                                        <span>${new Date(event.timestamp).toLocaleString()}</span>
+                                    </div>
+                                    ${event.ip_address ? `
+                                        <div class="flex items-center gap-2">
+                                            <i data-lucide="map-pin" class="w-4 h-4"></i>
+                                            <span>IP: ${event.ip_address}</span>
+                                        </div>
+                                    ` : ''}
+                                    ${event.username ? `
+                                        <div class="flex items-center gap-2">
+                                            <i data-lucide="user" class="w-4 h-4"></i>
+                                            <span>User: ${event.username}</span>
+                                        </div>
+                                    ` : ''}
+                                    ${event.endpoint ? `
+                                        <div class="flex items-center gap-2">
+                                            <i data-lucide="link" class="w-4 h-4"></i>
+                                            <span>Endpoint: ${event.endpoint}</span>
+                                        </div>
+                                    ` : ''}
+                                    ${details ? `
+                                        <div class="mt-2 text-gray-500 text-xs">
+                                            ${details}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            lucide.createIcons();
+        } catch (error) {
+            console.error('Failed to load security events:', error);
+            document.getElementById('eventsContainer').innerHTML = `
+                <div class="text-center py-8 text-red-600">
+                    <i data-lucide="alert-circle" class="w-12 h-12 mx-auto mb-2"></i>
+                    <p>Failed to load security events</p>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+    }
+
+    function getSeverityBadge(severity) {
+        const badges = {
+            'critical': '<span class="px-2 py-1 rounded text-xs font-bold bg-red-600 text-white">🔴 CRITICAL</span>',
+            'high': '<span class="px-2 py-1 rounded text-xs font-bold bg-orange-600 text-white">🟠 HIGH</span>',
+            'medium': '<span class="px-2 py-1 rounded text-xs font-bold bg-yellow-600 text-white">🟡 MEDIUM</span>',
+            'low': '<span class="px-2 py-1 rounded text-xs font-bold bg-green-600 text-white">🟢 LOW</span>'
+        };
+        return badges[severity] || '<span class="px-2 py-1 rounded text-xs font-bold bg-gray-600 text-white">UNKNOWN</span>';
+    }
+
+    function getSeverityColor(severity) {
+        const colors = {
+            'critical': 'border-red-600',
+            'high': 'border-orange-600',
+            'medium': 'border-yellow-600',
+            'low': 'border-green-600'
+        };
+        return colors[severity] || 'border-gray-600';
+    }
+
+    function getSeverityIcon(severity) {
+        const icons = {
+            'critical': 'alert-triangle',
+            'high': 'shield-alert',
+            'medium': 'alert-circle',
+            'low': 'info'
+        };
+        return icons[severity] || 'help-circle';
+    }
+
+    // Auto-refresh every 30 seconds
+    setInterval(loadEvents, 30000);
+</script>
+{% endblock %}

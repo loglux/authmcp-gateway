@@ -121,6 +121,63 @@ def init_database(db_path: str):
             CREATE INDEX IF NOT EXISTS idx_auth_audit_log_timestamp ON auth_audit_log(timestamp)
         """)
 
+        # Security events table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS security_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                event_type TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                user_id INTEGER,
+                username TEXT,
+                ip_address TEXT,
+                endpoint TEXT,
+                method TEXT,
+                details TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+            )
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_security_events_severity ON security_events(severity)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_security_events_type ON security_events(event_type)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_security_events_timestamp ON security_events(timestamp)
+        """)
+
+        # MCP requests log table
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS mcp_requests (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                mcp_server_id INTEGER,
+                method TEXT NOT NULL,
+                tool_name TEXT,
+                success BOOLEAN NOT NULL,
+                error_message TEXT,
+                response_time_ms INTEGER,
+                ip_address TEXT,
+                is_suspicious BOOLEAN DEFAULT 0,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+                FOREIGN KEY (mcp_server_id) REFERENCES mcp_servers(id) ON DELETE SET NULL
+            )
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_mcp_requests_user_id ON mcp_requests(user_id)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_mcp_requests_server_id ON mcp_requests(mcp_server_id)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_mcp_requests_timestamp ON mcp_requests(timestamp)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_mcp_requests_suspicious ON mcp_requests(is_suspicious)
+        """)
+
 
 def create_user(
     db_path: str,
