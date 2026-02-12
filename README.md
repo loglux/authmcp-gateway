@@ -115,14 +115,43 @@ AuthMCP Gateway provides centralized authentication, authorization, and monitori
 
 ### Option 1: PyPI Package (Recommended)
 
-Install from PyPI and run:
-
+**1. Install:**
 ```bash
 pip install authmcp-gateway
-authmcp-gateway
 ```
 
-Then access **http://localhost:8000/** to complete setup wizard.
+**2. First Run:**
+```bash
+authmcp-gateway start
+# ✓ Auto-creates .env with JWT_SECRET_KEY
+# ✓ Auto-creates data/ directory
+# ✓ Initializes database
+```
+
+**3. Access Setup Wizard:**
+Open **http://localhost:8000/** in your browser to create admin user.
+
+**4. Optional - Customize Configuration:**
+```bash
+# Edit auto-generated .env or download full example
+curl -o .env https://raw.githubusercontent.com/loglux/authmcp-gateway/main/.env.example.pypi
+
+# Restart to apply changes
+authmcp-gateway start
+```
+
+**Available Commands:**
+```bash
+authmcp-gateway start                    # Start server
+authmcp-gateway init-db                  # Initialize database
+authmcp-gateway create-admin             # Create admin user via CLI
+authmcp-gateway version                  # Show version
+authmcp-gateway --help                   # Show all options
+
+# Start with custom settings
+authmcp-gateway start --host 127.0.0.1 --port 9000
+authmcp-gateway start --env-file custom.env
+```
 
 ### Option 2: Docker Compose
 

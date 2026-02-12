@@ -60,17 +60,40 @@ class JWTConfig:
         """Validate JWT configuration."""
         if self.algorithm == "HS256":
             if not self.secret_key:
-                # Auto-generate secret key for development
+                # Auto-generate secret key
                 self.secret_key = secrets.token_urlsafe(32)
-                print("\n" + "="*60, file=sys.stderr)
-                print("⚠️  WARNING: Auto-generated JWT_SECRET_KEY", file=sys.stderr)
-                print("="*60, file=sys.stderr)
-                print("A random JWT secret key was generated automatically.", file=sys.stderr)
-                print("\nFor PRODUCTION use, please set JWT_SECRET_KEY in .env:", file=sys.stderr)
-                print(f"  JWT_SECRET_KEY={self.secret_key}", file=sys.stderr)
-                print("\nWithout a persistent key, all tokens will be invalidated", file=sys.stderr)
-                print("on server restart!", file=sys.stderr)
-                print("="*60 + "\n", file=sys.stderr)
+                
+                # Auto-create .env file if it doesn't exist
+                env_path = '.env'
+                if not os.path.exists(env_path):
+                    try:
+                        with open(env_path, 'w', encoding='utf-8') as f:
+                            f.write(f'# AuthMCP Gateway Configuration\n')
+                            f.write(f'# Auto-generated on first run\n\n')
+                            f.write(f'JWT_SECRET_KEY={self.secret_key}\n\n')
+                            f.write(f'# Uncomment to customize:\n')
+                            f.write(f'# HOST=0.0.0.0\n')
+                            f.write(f'# PORT=8000\n')
+                            f.write(f'# AUTH_SQLITE_PATH=data/auth.db\n')
+                            f.write(f'# PASSWORD_REQUIRE_SPECIAL=false\n')
+                        print("\n" + "="*60, file=sys.stderr)
+                        print("✓ Created .env file with generated JWT_SECRET_KEY", file=sys.stderr)
+                        print("="*60 + "\n", file=sys.stderr)
+                    except Exception as e:
+                        print(f"\n⚠️  Warning: Could not create .env file: {e}", file=sys.stderr)
+                        print(f"Please manually create .env with:", file=sys.stderr)
+                        print(f"  JWT_SECRET_KEY={self.secret_key}\n", file=sys.stderr)
+                else:
+                    # .env exists but no JWT_SECRET_KEY - show warning
+                    print("\n" + "="*60, file=sys.stderr)
+                    print("⚠️  WARNING: Auto-generated JWT_SECRET_KEY", file=sys.stderr)
+                    print("="*60, file=sys.stderr)
+                    print("A random JWT secret key was generated automatically.", file=sys.stderr)
+                    print("\nFor PRODUCTION use, please add to .env:", file=sys.stderr)
+                    print(f"  JWT_SECRET_KEY={self.secret_key}", file=sys.stderr)
+                    print("\nWithout a persistent key, all tokens will be invalidated", file=sys.stderr)
+                    print("on server restart!", file=sys.stderr)
+                    print("="*60 + "\n", file=sys.stderr)
         elif self.algorithm == "RS256":
             if not self.private_key or not self.public_key:
                 raise ValueError("JWT_PRIVATE_KEY and JWT_PUBLIC_KEY are required when using RS256 algorithm")
