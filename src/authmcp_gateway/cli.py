@@ -132,6 +132,10 @@ def start_server(args):
     # Set log level in environment
     os.environ["LOG_LEVEL"] = args.log_level
 
+    # Display URL - show localhost instead of 0.0.0.0 for user convenience
+    display_host = "localhost" if args.host == "0.0.0.0" else args.host
+    server_url = f"http://{display_host}:{args.port}"
+
     print(f"""
 ╔══════════════════════════════════════════════════════════╗
 ║           AuthMCP Gateway                           ║
@@ -139,6 +143,7 @@ def start_server(args):
 ╚══════════════════════════════════════════════════════════╝
 
 Starting server...
+  URL: {server_url}
   Host: {args.host}
   Port: {args.port}
   Log Level: {args.log_level}

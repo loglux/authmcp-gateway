@@ -350,7 +350,7 @@ class MCPSecurityAuditor:
         export_data = {
             "metadata": {
                 "tool": "AuthMCP Gateway - MCP Security Audit",
-                "version": "1.0.4",
+                "version": "1.0.7",
                 "timestamp": datetime.datetime.utcnow().isoformat() + "Z",
                 "tested_url": self.url,
                 "has_token": bool(self.bearer_token)

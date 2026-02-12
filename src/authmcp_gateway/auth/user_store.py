@@ -1,6 +1,7 @@
 """SQLite database operations for user authentication."""
 
 import hashlib
+import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -30,6 +31,8 @@ def get_auth_logger():
 def get_db_connection(db_path: str):
     """Context manager for database connections.
 
+    Automatically creates parent directories if they don't exist.
+
     Args:
         db_path: Path to SQLite database file
 
@@ -41,6 +44,15 @@ def get_db_connection(db_path: str):
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM users")
     """
+    # Ensure parent directory exists
+    # Convert to absolute path if relative
+    if not os.path.isabs(db_path):
+        db_path = os.path.abspath(db_path)
+    
+    db_dir = os.path.dirname(db_path)
+    if db_dir and not os.path.exists(db_dir):
+        os.makedirs(db_dir, exist_ok=True)
+    
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
