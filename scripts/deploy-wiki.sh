@@ -1,5 +1,24 @@
 #!/bin/bash
 # Deploy Wiki pages to GitHub
+#
+# USAGE:
+#   1. Create first wiki page on GitHub (any content)
+#      https://github.com/loglux/authmcp-gateway/wiki
+#   2. Run: ./scripts/deploy-wiki.sh deploy
+#
+# This script will:
+#   - Clone wiki repository (authmcp-gateway.wiki)
+#   - Copy templates from docs/internal/wiki-templates/
+#   - Commit and push to GitHub Wiki
+#
+# After deployment, edit wiki via Git:
+#   git clone https://github.com/loglux/authmcp-gateway.wiki.git
+#   cd authmcp-gateway.wiki
+#   # Edit .md files
+#   git commit -am "Update wiki"
+#   git push
+#
+# Without arguments, shows instructions only
 
 set -e
 
