@@ -34,6 +34,22 @@ class JSONFormatter(logging.Formatter):
             log_data["details"] = record.details
         if hasattr(record, "user_agent"):
             log_data["user_agent"] = record.user_agent
+        
+        # MCP request fields
+        if hasattr(record, "method"):
+            log_data["method"] = record.method
+        if hasattr(record, "server_id"):
+            log_data["server_id"] = record.server_id
+        if hasattr(record, "server_name"):
+            log_data["server_name"] = record.server_name
+        if hasattr(record, "tool_name"):
+            log_data["tool_name"] = record.tool_name
+        if hasattr(record, "response_time_ms"):
+            log_data["response_time_ms"] = record.response_time_ms
+        if hasattr(record, "error"):
+            log_data["error"] = record.error
+        if hasattr(record, "suspicious"):
+            log_data["suspicious"] = record.suspicious
             
         return json.dumps(log_data)
 
@@ -84,6 +100,37 @@ def setup_file_logger(
     logger.addHandler(handler)
     
     return logger
+
+
+# Singleton loggers
+_auth_logger = None
+_mcp_logger = None
+
+
+def get_auth_logger() -> logging.Logger:
+    """Get or create auth logger singleton."""
+    global _auth_logger
+    if _auth_logger is None:
+        log_dir = Path("data/logs")
+        log_dir.mkdir(parents=True, exist_ok=True)
+        _auth_logger = setup_file_logger(
+            name="auth",
+            log_file=log_dir / "auth.log"
+        )
+    return _auth_logger
+
+
+def get_mcp_logger() -> logging.Logger:
+    """Get or create MCP logger singleton."""
+    global _mcp_logger
+    if _mcp_logger is None:
+        log_dir = Path("data/logs")
+        log_dir.mkdir(parents=True, exist_ok=True)
+        _mcp_logger = setup_file_logger(
+            name="mcp_requests",
+            log_file=log_dir / "mcp_requests.log"
+        )
+    return _mcp_logger
 
 
 def log_auth_event_to_file(

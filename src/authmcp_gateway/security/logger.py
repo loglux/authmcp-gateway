@@ -84,10 +84,10 @@ def log_mcp_request(
     ip_address: Optional[str] = None,
     is_suspicious: bool = False
 ) -> None:
-    """Log MCP request.
+    """Log MCP request to file.
 
     Args:
-        db_path: Path to SQLite database
+        db_path: Path to SQLite database (ignored, kept for compatibility)
         user_id: User ID making the request
         mcp_server_id: MCP server ID (if applicable)
         method: MCP method (tools/list, tools/call, initialize)
@@ -99,33 +99,45 @@ def log_mcp_request(
         is_suspicious: Whether request was flagged as suspicious
     """
     try:
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
+        from authmcp_gateway.logging_config import get_mcp_logger, log_mcp_request_to_file
         
-        cursor.execute(
-            """
-            INSERT INTO mcp_requests (
-                user_id, mcp_server_id, method, tool_name, success,
-                error_message, response_time_ms, ip_address, is_suspicious, timestamp
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                user_id,
-                mcp_server_id,
-                method,
-                tool_name,
-                1 if success else 0,
-                error_message,
-                response_time_ms,
-                ip_address,
-                1 if is_suspicious else 0,
-                datetime.now(timezone.utc).isoformat()
-            )
+        # Get username and server_name from database
+        username = None
+        server_name = None
+        
+        if user_id or mcp_server_id:
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            
+            if user_id:
+                cursor.execute("SELECT username FROM users WHERE id = ?", (user_id,))
+                row = cursor.fetchone()
+                if row:
+                    username = row[0]
+            
+            if mcp_server_id:
+                cursor.execute("SELECT name FROM mcp_servers WHERE id = ?", (mcp_server_id,))
+                row = cursor.fetchone()
+                if row:
+                    server_name = row[0]
+            
+            conn.close()
+        
+        # Log to file
+        mcp_logger = get_mcp_logger()
+        log_mcp_request_to_file(
+            logger=mcp_logger,
+            method=method,
+            server_id=mcp_server_id,
+            server_name=server_name,
+            user_id=user_id,
+            username=username,
+            tool_name=tool_name,
+            response_time_ms=response_time_ms,
+            success=success,
+            error=error_message,
+            suspicious=is_suspicious
         )
-        
-        conn.commit()
-        conn.close()
         
         logger.debug(
             f"MCP request logged: {method} (tool={tool_name or 'N/A'}, "
@@ -349,10 +361,10 @@ def get_mcp_requests(
     method: str = None,
     success: bool = None,
 ) -> list:
-    """Get recent MCP requests for live monitoring.
+    """Get recent MCP requests from log files.
     
     Args:
-        db_path: Path to SQLite database
+        db_path: Path to SQLite database (ignored, kept for compatibility)
         limit: Maximum number of requests to return
         last_seconds: Number of seconds to look back
         method: Filter by method (optional)
@@ -362,72 +374,64 @@ def get_mcp_requests(
         List of MCP request records
     """
     try:
-        conn = sqlite3.connect(db_path)
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        from pathlib import Path
+        import json
+        
+        log_file = Path("data/logs/mcp_requests.log")
+        if not log_file.exists():
+            return []
         
         # Calculate time threshold
         threshold = datetime.now(timezone.utc) - timedelta(seconds=last_seconds)
-        threshold_str = threshold.isoformat()
-        
-        # Build query
-        query = """
-            SELECT 
-                r.id,
-                r.user_id,
-                u.username,
-                r.mcp_server_id,
-                s.name as server_name,
-                r.method,
-                r.tool_name,
-                r.success,
-                r.error_message,
-                r.response_time_ms,
-                r.ip_address,
-                r.is_suspicious,
-                r.timestamp
-            FROM mcp_requests r
-            LEFT JOIN users u ON r.user_id = u.id
-            LEFT JOIN mcp_servers s ON r.mcp_server_id = s.id
-            WHERE r.timestamp >= ?
-        """
-        params = [threshold_str]
-        
-        if method:
-            query += " AND r.method = ?"
-            params.append(method)
-        
-        if success is not None:
-            query += " AND r.success = ?"
-            params.append(1 if success else 0)
-        
-        query += " ORDER BY r.timestamp DESC LIMIT ?"
-        params.append(limit)
-        
-        cursor.execute(query, params)
-        rows = cursor.fetchall()
         
         requests = []
-        for row in rows:
-            requests.append({
-                "id": row["id"],
-                "user_id": row["user_id"],
-                "username": row["username"],
-                "mcp_server_id": row["mcp_server_id"],
-                "server_name": row["server_name"],
-                "method": row["method"],
-                "tool_name": row["tool_name"],
-                "success": bool(row["success"]),
-                "error_message": row["error_message"],
-                "response_time_ms": row["response_time_ms"],
-                "ip_address": row["ip_address"],
-                "is_suspicious": bool(row["is_suspicious"]),
-                "timestamp": row["timestamp"],
-            })
+        with open(log_file, 'r') as f:
+            for line in f:
+                try:
+                    entry = json.loads(line.strip())
+                    
+                    # Parse timestamp
+                    timestamp_str = entry.get("timestamp", "").replace("Z", "+00:00")
+                    entry_time = datetime.fromisoformat(timestamp_str)
+                    
+                    # Filter by time
+                    if entry_time < threshold:
+                        continue
+                    
+                    # Filter by method
+                    if method and entry.get("method") != method:
+                        continue
+                    
+                    # Filter by success
+                    if success is not None and entry.get("success") != success:
+                        continue
+                    
+                    # Format for API response
+                    requests.append({
+                        "id": len(requests) + 1,  # Synthetic ID
+                        "user_id": entry.get("user_id"),
+                        "username": entry.get("username"),
+                        "mcp_server_id": entry.get("server_id"),
+                        "server_name": entry.get("server_name"),
+                        "method": entry.get("method"),
+                        "tool_name": entry.get("tool_name"),
+                        "success": entry.get("success", True),
+                        "error_message": entry.get("error"),
+                        "response_time_ms": entry.get("response_time_ms"),
+                        "ip_address": entry.get("ip_address"),
+                        "is_suspicious": entry.get("suspicious", False),
+                        "timestamp": entry.get("timestamp")
+                    })
+                    
+                except (json.JSONDecodeError, ValueError) as e:
+                    logger.warning(f"Failed to parse MCP log entry: {e}")
+                    continue
         
-        conn.close()
-        return requests
+        # Sort by timestamp descending and limit
+        requests.sort(key=lambda x: x["timestamp"], reverse=True)
+        return requests[:limit]
         
     except Exception as e:
-        logger.error(f"Failed to get MCP requests: {e}")
+        logger.error(f"Error reading MCP requests from file: {e}")
+        return []
         return []
