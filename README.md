@@ -10,6 +10,23 @@
 
 AuthMCP Gateway provides centralized authentication, authorization, and monitoring for MCP servers. It acts as a secure proxy between clients and your MCP backends, adding JWT-based authentication, rate limiting, real-time monitoring, and comprehensive security logging.
 
+## 📋 Table of Contents
+
+- [Features](#features)
+- [Documentation](#documentation)
+- [Screenshots](#-screenshots)
+- [Quick Start](#-quick-start)
+- [Configuration](#configuration)
+- [Usage](#usage)
+- [Architecture](#architecture)
+- [API Endpoints](#api-endpoints)
+- [Security](#security)
+- [Development](#development)
+- [Monitoring](#monitoring)
+- [Troubleshooting](#troubleshooting)
+
+---
+
 ## Features
 
 ### 🔐 **Authentication & Authorization**
