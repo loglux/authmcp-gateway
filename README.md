@@ -55,7 +55,7 @@ AuthMCP Gateway provides centralized authentication, authorization, and monitori
 <details>
 <summary><b>🖥️ Dashboard - Real-time Overview</b></summary>
 
-![Dashboard](docs/screenshots/01-dashboard.png)
+![Dashboard](https://raw.githubusercontent.com/loglux/authmcp-gateway/main/docs/screenshots/01-dashboard.png)
 
 *Live statistics, server health monitoring, top tools usage, and recent activity feed*
 </details>
@@ -63,7 +63,7 @@ AuthMCP Gateway provides centralized authentication, authorization, and monitori
 <details>
 <summary><b>🔧 MCP Servers - Connection Management</b></summary>
 
-![MCP Servers](docs/screenshots/02-mcp-servers.png)
+![MCP Servers](https://raw.githubusercontent.com/loglux/authmcp-gateway/main/docs/screenshots/02-mcp-servers.png)
 
 *Manage backend MCP server connections with status monitoring and health checks*
 </details>
@@ -71,7 +71,7 @@ AuthMCP Gateway provides centralized authentication, authorization, and monitori
 <details>
 <summary><b>📊 MCP Activity Monitor - Real-time Request Tracking</b></summary>
 
-![MCP Activity](docs/screenshots/03-mcp-activity.png)
+![MCP Activity](https://raw.githubusercontent.com/loglux/authmcp-gateway/main/docs/screenshots/03-mcp-activity.png)
 
 *Monitor live MCP requests with detailed metrics, top tools ranking, and request feed*
 </details>
@@ -79,7 +79,7 @@ AuthMCP Gateway provides centralized authentication, authorization, and monitori
 <details>
 <summary><b>🛡️ Security Events - Threat Detection</b></summary>
 
-![Security Events](docs/screenshots/04-security-events.png)
+![Security Events](https://raw.githubusercontent.com/loglux/authmcp-gateway/main/docs/screenshots/04-security-events.png)
 
 *Track security events, rate limiting, suspicious payloads, and unauthorized access attempts*
 </details>
