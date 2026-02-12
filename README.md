@@ -12,22 +12,22 @@ AuthMCP Gateway provides centralized authentication, authorization, and monitori
 
 ## 📋 Table of Contents
 
-- [Features](#features)
-- [Documentation](#documentation)
-- [Screenshots](#screenshots)
-- [Quick Start](#quick-start)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [Architecture](#architecture)
-- [API Endpoints](#api-endpoints)
-- [Security](#security)
-- [Development](#development)
-- [Monitoring](#monitoring)
-- [Troubleshooting](#troubleshooting)
+- [✨ Features](#-features)
+- [📚 Documentation](#-documentation)
+- [📸 Screenshots](#-screenshots)
+- [🚀 Quick Start](#-quick-start)
+- [⚙️ Configuration](#️-configuration)
+- [💡 Usage](#-usage)
+- [🏗️ Architecture](#️-architecture)
+- [🔌 API Endpoints](#-api-endpoints)
+- [🔐 Security](#-security)
+- [🛠️ Development](#️-development)
+- [📊 Monitoring](#-monitoring)
+- [🔧 Troubleshooting](#-troubleshooting)
 
 ---
 
-## Features
+## ✨ Features
 
 ### 🔐 **Authentication & Authorization**
 - **OAuth 2.0 + JWT** - Industry-standard authentication flow
@@ -56,7 +56,7 @@ AuthMCP Gateway provides centralized authentication, authorization, and monitori
 - **File-based logging** - No database bloat, 30-day rotation
 - Built-in security testing guide
 
-## Documentation
+## 📚 Documentation
 
 📚 **[Complete Documentation](docs/README.md)** - Full documentation index
 
@@ -144,7 +144,7 @@ Then access **http://localhost:8000/** to complete setup wizard.
    - Complete setup wizard to create admin user
    - Add your MCP servers
 
-## Configuration
+## ⚙️ Configuration
 
 ### Environment Variables
 
@@ -180,7 +180,7 @@ curl -X POST http://localhost:9105/admin/api/mcp-servers \
   }'
 ```
 
-## Usage
+## 💡 Usage
 
 ### For End Users
 
@@ -208,7 +208,7 @@ curl -X POST http://localhost:9105/admin/api/mcp-servers \
 - **User Management** - Create and manage user accounts
 - **Token Management** - Monitor and refresh backend tokens
 
-## Architecture
+## 🏗️ Architecture
 
 ```
 ┌─────────────┐
@@ -236,7 +236,7 @@ curl -X POST http://localhost:9105/admin/api/mcp-servers \
   └─────────┘ └────────┘ └────────┘ └────────┘
 ```
 
-## API Endpoints
+## 🔌 API Endpoints
 
 ### Public Endpoints
 - `POST /auth/login` - User login
@@ -277,7 +277,7 @@ See [docs/SECURITY_TESTING.md](docs/SECURITY_TESTING.md) for:
 - ✅ CORS protection
 - ✅ Secure credential storage
 
-## Development
+## 🛠️ Development
 
 ### Local Development
 
@@ -320,7 +320,7 @@ authmcp-gateway/
 └── docker-compose.yml   # Docker deployment
 ```
 
-## Monitoring
+## 📊 Monitoring
 
 ### Real-Time Dashboard
 
@@ -339,7 +339,7 @@ View logs in real-time:
 docker logs -f authmcp-gateway
 ```
 
-## Troubleshooting
+## 🔧 Troubleshooting
 
 **Cannot access admin panel:**
 - Ensure you've completed the setup wizard at `/setup`
