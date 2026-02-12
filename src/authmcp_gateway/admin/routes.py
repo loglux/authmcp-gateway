@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Optional, Callable, Any
 from functools import wraps
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from jinja2 import Environment, FileSystemLoader
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, Response
@@ -316,7 +316,7 @@ async def api_logs(request: Request) -> JSONResponse:
     logs = []
     cutoff_date = None
     if days:
-        cutoff_date = datetime.utcnow() - timedelta(days=int(days))
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=int(days))
     
     try:
         with open(log_file, 'r', encoding='utf-8') as f:
@@ -335,7 +335,7 @@ async def api_logs(request: Request) -> JSONResponse:
                             continue
                     
                     logs.append(log_entry)
-                except (json.JSONDecodeError, KeyError):
+                except (json.JSONDecodeError, KeyError, ValueError):
                     continue
     except Exception as e:
         logger.error(f"Failed to read auth logs: {e}")
