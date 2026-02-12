@@ -258,7 +258,7 @@ curl -X POST http://localhost:9105/admin/api/mcp-servers \
 - `GET /admin/mcp-servers` - MCP server configuration
 - Plus full REST API for management
 
-## Security
+## 🔐 Security
 
 ### Testing Security
 
