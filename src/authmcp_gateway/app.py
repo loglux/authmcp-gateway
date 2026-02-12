@@ -167,17 +167,34 @@ async def favicon(_: Request) -> Response:
 # ============================================================================
 
 
-async def mcp_gateway_endpoint(request: Request) -> JSONResponse:
-    """MCP Gateway endpoint - routes to backend MCP servers."""
+async def mcp_gateway_endpoint(request: Request):
+    """MCP Gateway endpoint - routes to backend MCP servers.
+    
+    Supports both POST (JSON-RPC) and GET (SSE) methods.
+    """
+    # GET = SSE transport (Server-Sent Events)
+    if request.method == "GET":
+        from authmcp_gateway.mcp.sse_handler import mcp_sse_endpoint
+        return await mcp_sse_endpoint(request, mcp_handler, server_name=None)
+    
+    # POST = JSON-RPC over HTTP
     return await mcp_handler.handle_request(request)
 
 
-async def mcp_server_endpoint(request: Request) -> JSONResponse:
+async def mcp_server_endpoint(request: Request):
     """MCP Server-specific endpoint - routes to a single backend MCP server.
 
     The server_name is extracted from the URL path (/mcp/{server_name}).
+    Supports both POST (JSON-RPC) and GET (SSE) methods.
     """
     server_name = request.path_params.get("server_name")
+    
+    # GET = SSE transport (Server-Sent Events)
+    if request.method == "GET":
+        from authmcp_gateway.mcp.sse_handler import mcp_sse_endpoint
+        return await mcp_sse_endpoint(request, mcp_handler, server_name)
+    
+    # POST = JSON-RPC over HTTP
     return await mcp_handler.handle_request(request, server_name=server_name)
 
 
@@ -247,8 +264,8 @@ app = Starlette(
     lifespan=lifespan,
     routes=[
         # MCP Gateway
-        Route("/mcp/{server_name}", mcp_server_endpoint, methods=["POST"]),  # Server-specific endpoint
-        Route("/mcp", mcp_gateway_endpoint, methods=["POST"]),  # Aggregated endpoint
+        Route("/mcp/{server_name}", mcp_server_endpoint, methods=["GET", "POST"]),  # Server-specific endpoint (GET for HTTP transport, POST for JSON-RPC)
+        Route("/mcp", mcp_gateway_endpoint, methods=["GET", "POST"]),  # Aggregated endpoint
 
         # Auth endpoints
         Route("/auth/register", auth_endpoints.register, methods=["POST"]),

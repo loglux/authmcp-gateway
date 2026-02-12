@@ -139,6 +139,32 @@ def log_mcp_request(
             suspicious=is_suspicious
         )
         
+        # Also log to database for admin panel
+        conn_db = sqlite3.connect(db_path)
+        cursor_db = conn_db.cursor()
+        cursor_db.execute(
+            """
+            INSERT INTO mcp_requests (
+                user_id, mcp_server_id, method, tool_name, success,
+                error_message, response_time_ms, ip_address, is_suspicious
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                user_id,
+                mcp_server_id,
+                method,
+                tool_name,
+                success,
+                error_message,
+                response_time_ms,
+                ip_address,
+                is_suspicious
+            )
+        )
+        conn_db.commit()
+        conn_db.close()
+        
         logger.debug(
             f"MCP request logged: {method} (tool={tool_name or 'N/A'}, "
             f"success={success}, time={response_time_ms}ms)"

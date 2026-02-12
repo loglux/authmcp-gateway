@@ -36,15 +36,15 @@
             <h2 class="text-lg font-semibold">API Access Token</h2>
         </div>
         <div class="p-6 space-y-4">
-            <p class="text-sm text-gray-600">Use this token to authenticate API requests and MCP clients (GitHub Copilot, Claude Desktop, etc.)</p>
+            <p class="text-sm text-gray-600">Use this token to authenticate API requests and GitHub Copilot CLI MCP connections.</p>
             
             <!-- Access Token -->
             <div>
                 <label class="block text-sm font-medium text-gray-700 mb-2">Your Access Token</label>
                 <div class="flex gap-2">
-                    <input type="text" readonly value="{{ access_token }}" 
+                    <input type="text" readonly id="accessToken" value="{{ access_token }}" 
                            class="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 font-mono text-sm">
-                    <button onclick="copyToClipboard('{{ access_token }}', 'Token copied!')" 
+                    <button onclick="copyAccessToken()" 
                             class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2">
                         <i data-lucide="copy" class="w-4 h-4"></i>
                         Copy
@@ -55,17 +55,17 @@
 
             <!-- MCP Client Format -->
             <div>
-                <label class="block text-sm font-medium text-gray-700 mb-2">For MCP Clients (GitHub Copilot, Claude)</label>
+                <label class="block text-sm font-medium text-gray-700 mb-2">For GitHub Copilot CLI</label>
                 <div class="flex gap-2">
-                    <input type="text" readonly value='{"Authorization": "Bearer {{ access_token }}"}'
+                    <input type="text" readonly id="mcpHeaderJson" value='{"Authorization": "Bearer {{ access_token }}"}'
                            class="flex-1 px-3 py-2 border border-gray-300 rounded-lg bg-gray-50 font-mono text-sm">
-                    <button onclick="copyToClipboard('{\"Authorization\": \"Bearer {{ access_token }}\"}', 'MCP header copied!')" 
+                    <button onclick="copyMcpHeader()" 
                             class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors flex items-center gap-2">
                         <i data-lucide="copy" class="w-4 h-4"></i>
                         Copy JSON
                     </button>
                 </div>
-                <p class="text-xs text-gray-500 mt-1">Paste this in "HTTP Headers" field when connecting MCP client</p>
+                <p class="text-xs text-gray-500 mt-1">Paste this in "HTTP Headers" field when adding HTTP MCP server</p>
             </div>
 
             <!-- Refresh Token Button -->
@@ -294,16 +294,29 @@
 
     function copyToClipboard(text, message = 'Copied!') {
         navigator.clipboard.writeText(text).then(() => {
-            // Show temporary success message
-            const toast = document.createElement('div');
-            toast.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center gap-2';
-            toast.innerHTML = `<i data-lucide="check" class="w-5 h-5"></i><span>${message}</span>`;
-            document.body.appendChild(toast);
-            lucide.createIcons();
-            setTimeout(() => toast.remove(), 2000);
+            showToast(message);
         }).catch(() => {
             alert('Failed to copy. Please select and copy manually.');
         });
+    }
+
+    function copyAccessToken() {
+        const input = document.getElementById('accessToken');
+        copyToClipboard(input.value, 'Token copied!');
+    }
+
+    function copyMcpHeader() {
+        const input = document.getElementById('mcpHeaderJson');
+        copyToClipboard(input.value, 'MCP header copied!');
+    }
+
+    function showToast(message) {
+        const toast = document.createElement('div');
+        toast.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center gap-2';
+        toast.innerHTML = `<i data-lucide="check" class="w-5 h-5"></i><span>${message}</span>`;
+        document.body.appendChild(toast);
+        lucide.createIcons();
+        setTimeout(() => toast.remove(), 2000);
     }
 
     document.addEventListener('DOMContentLoaded', function() {

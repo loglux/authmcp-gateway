@@ -169,7 +169,8 @@ class McpHandler:
         tool_name: str,
         arguments: Dict[str, Any],
         user_id: Optional[int],
-        server_name: Optional[str] = None
+        server_name: Optional[str] = None,
+        request: Optional[Request] = None
     ) -> JSONResponse:
         """Handle tools/call request.
 
@@ -192,38 +193,86 @@ class McpHandler:
                 )
 
             logger.info(f"Calling tool: {tool_name} (server: {server_name or 'any'})")
+            
+            import time
+            start_time = time.time()
+            success = True
+            error_msg = None
 
             # Route and execute tool call via proxy
-            result = await self.proxy.call_tool(
-                tool_name=tool_name,
-                arguments=arguments,
-                user_id=user_id,
-                server_name=server_name
-            )
-
-            # Return result from backend server
-            if "result" in result:
-                return JSONResponse({
-                    "jsonrpc": "2.0",
-                    "id": jsonrpc_id,
-                    "result": result["result"]
-                })
-            elif "error" in result:
-                return JSONResponse({
-                    "jsonrpc": "2.0",
-                    "id": jsonrpc_id,
-                    "error": result["error"]
-                })
-            else:
-                return self._error_response(
-                    jsonrpc_id,
-                    -32603,
-                    "Invalid response from backend server"
+            try:
+                result = await self.proxy.call_tool(
+                    tool_name=tool_name,
+                    arguments=arguments,
+                    user_id=user_id,
+                    server_name=server_name
                 )
+                
+                # Log successful tool call
+                response_time = int((time.time() - start_time) * 1000)
+                try:
+                    from authmcp_gateway.security.logger import log_mcp_request
+                    log_mcp_request(
+                        db_path=self.db_path,
+                        user_id=user_id,
+                        mcp_server_id=None,
+                        method="tools/call",
+                        tool_name=tool_name,
+                        success=True,
+                        response_time_ms=response_time,
+                        ip_address=request.client.host if request and request.client else None
+                    )
+                except Exception as log_err:
+                    logger.error(f"Failed to log tool call: {log_err}")
 
-        except ToolNotFoundError as e:
-            logger.warning(f"Tool not found: {tool_name}")
-            return self._error_response(jsonrpc_id, -32601, str(e))
+                # Return result from backend server
+                if "result" in result:
+                    return JSONResponse({
+                        "jsonrpc": "2.0",
+                        "id": jsonrpc_id,
+                        "result": result["result"]
+                    })
+                elif "error" in result:
+                    success = False
+                    error_msg = str(result.get("error"))
+                    return JSONResponse({
+                        "jsonrpc": "2.0",
+                        "id": jsonrpc_id,
+                        "error": result["error"]
+                    })
+                else:
+                    success = False
+                    error_msg = "Invalid response from backend server"
+                    return self._error_response(
+                        jsonrpc_id,
+                        -32603,
+                        error_msg
+                    )
+                    
+            except ToolNotFoundError as e:
+                logger.warning(f"Tool not found: {tool_name}")
+                success = False
+                error_msg = str(e)
+                
+                # Log failed request
+                try:
+                    from authmcp_gateway.security.logger import log_mcp_request
+                    response_time = int((time.time() - start_time) * 1000)
+                    log_mcp_request(
+                        db_path=self.db_path,
+                        user_id=user_id,
+                        mcp_server_id=None,
+                        method="tools/call",
+                        tool_name=tool_name,
+                        success=False,
+                        error_message=error_msg,
+                        response_time_ms=response_time,
+                        ip_address=request.client.host if request and request.client else None
+                    )
+                except Exception as log_err:
+                    logger.error(f"Failed to log failed tool call: {log_err}")
+                    
+                return self._error_response(jsonrpc_id, -32601, str(e))
 
         except PermissionError as e:
             logger.warning(f"Permission denied: {e}")
@@ -233,7 +282,13 @@ class McpHandler:
             logger.exception(f"Error calling tool '{tool_name}': {e}")
             return self._error_response(jsonrpc_id, -32603, str(e))
 
-    async def _handle_initialize(self, jsonrpc_id: int, params: Dict[str, Any], server_name: Optional[str] = None) -> JSONResponse:
+    async def _handle_initialize(
+        self, 
+        jsonrpc_id: int, 
+        params: Dict[str, Any], 
+        server_name: Optional[str] = None,
+        request: Optional[Request] = None
+    ) -> JSONResponse:
         """Handle initialize request.
 
         Args:

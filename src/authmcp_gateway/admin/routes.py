@@ -457,20 +457,26 @@ async def api_delete_user(request: Request) -> JSONResponse:
         return JSONResponse({"error": "User not found"}, status_code=404)
 
 
-async def admin_settings(_: Request) -> HTMLResponse:
+async def admin_settings(request: Request) -> HTMLResponse:
     """Admin settings page with current user's access token."""
-    from datetime import datetime, timezone
-    
-    # Get current user from session
-    user = _.state.user
+    # Get current user from request state (set by AdminAuthMiddleware)
+    user_id = request.state.user_id
+    username = request.state.username
+    is_superuser = request.state.is_superuser
     
     # Generate fresh access token for display
-    from authmcp_gateway.auth.jwt import create_access_token
-    access_token = create_access_token(user["username"])
-    
-    # Calculate token expiration
+    from authmcp_gateway.auth.jwt_handler import create_access_token
     from authmcp_gateway.config import load_config
     config = load_config()
+    
+    access_token = create_access_token(
+        user_id=user_id,
+        username=username,
+        is_superuser=is_superuser,
+        config=config.jwt
+    )
+    
+    # Calculate token expiration
     expires_minutes = config.jwt.access_token_expire_minutes
     
     if expires_minutes >= 1440:  # >= 1 day
