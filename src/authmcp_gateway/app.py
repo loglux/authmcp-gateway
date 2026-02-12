@@ -310,7 +310,7 @@ app = Starlette(
         Route("/admin/api/security-events", admin_routes.api_security_events, methods=["GET"]),
         Route("/admin/api/mcp-stats", admin_routes.api_mcp_stats, methods=["GET"]),
         Route("/admin/api/mcp-requests", admin_routes.admin_mcp_requests_api, methods=["GET"]),
-        Route("/admin/api/cleanup-logs", admin_routes.api_cleanup_logs, methods=["POST"]),
+        Route("/admin/api/cleanup-logs", admin_routes.api_cleanup_db_logs, methods=["POST"]),
         Route("/admin/api/mcp-servers", admin_routes.api_create_mcp_server, methods=["POST"]),
         Route("/admin/api/mcp-servers/{server_id:int}", admin_routes.api_delete_mcp_server, methods=["DELETE"]),
         Route("/admin/api/mcp-servers/{server_id:int}", admin_routes.api_update_mcp_server, methods=["PATCH"]),
@@ -320,7 +320,7 @@ app = Starlette(
         Route("/admin/api/mcp-servers/token-audit-logs", admin_routes.api_get_token_audit_logs, methods=["GET"]),
         Route("/admin/api/mcp-servers/{server_id:int}/refresh-token", admin_routes.api_refresh_server_token, methods=["POST"]),
         Route("/admin/api/logs", admin_routes.api_logs, methods=["GET"]),
-        Route("/admin/api/logs/cleanup", admin_routes.api_cleanup_logs, methods=["POST"]),
+        Route("/admin/api/logs/cleanup", admin_routes.api_cleanup_auth_logs_file, methods=["POST"]),
         Route("/admin/api/settings", admin_routes.api_get_settings, methods=["GET"]),
         Route("/admin/api/settings", admin_routes.api_save_settings, methods=["PUT"]),
         

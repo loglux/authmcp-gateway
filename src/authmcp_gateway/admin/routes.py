@@ -352,7 +352,7 @@ async def api_logs(request: Request) -> JSONResponse:
 
 
 @api_error_handler
-async def api_cleanup_logs(request: Request) -> JSONResponse:
+async def api_cleanup_auth_logs_file(request: Request) -> JSONResponse:
     """Cleanup old auth logs (older than 30 days)."""
     log_file = Path("data/logs/auth.log")
     
@@ -789,8 +789,8 @@ async def api_mcp_stats(request: Request) -> JSONResponse:
 
 
 @api_error_handler
-async def api_cleanup_logs(request: Request) -> JSONResponse:
-    """Cleanup old logs."""
+async def api_cleanup_db_logs(request: Request) -> JSONResponse:
+    """Cleanup old DB logs (security + MCP)."""
     from authmcp_gateway.security.logger import cleanup_old_logs
     
     body = await request.json()
