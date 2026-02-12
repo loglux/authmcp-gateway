@@ -136,21 +136,26 @@ Open **http://localhost:8000/** in your browser to create admin user.
 # Edit auto-generated .env or download full example
 curl -o .env https://raw.githubusercontent.com/loglux/authmcp-gateway/main/.env.example.pypi
 
+# Common settings to customize in .env:
+# PORT=9000                          # Change server port
+# PASSWORD_REQUIRE_SPECIAL=false     # Relax password requirements
+# LOG_LEVEL=DEBUG                    # More detailed logs
+
 # Restart to apply changes
 authmcp-gateway start
 ```
 
 **Available Commands:**
 ```bash
-authmcp-gateway start                    # Start server
+authmcp-gateway start                    # Start server (default: 0.0.0.0:8000)
+authmcp-gateway start --port 9000        # Start on custom port
+authmcp-gateway start --host 127.0.0.1   # Bind to localhost only
+authmcp-gateway start --env-file custom.env  # Use custom config file
+
 authmcp-gateway init-db                  # Initialize database
 authmcp-gateway create-admin             # Create admin user via CLI
 authmcp-gateway version                  # Show version
 authmcp-gateway --help                   # Show all options
-
-# Start with custom settings
-authmcp-gateway start --host 127.0.0.1 --port 9000
-authmcp-gateway start --env-file custom.env
 ```
 
 ### Option 2: Docker Compose
