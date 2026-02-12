@@ -711,15 +711,46 @@ async def api_security_events(request: Request) -> JSONResponse:
 async def api_mcp_stats(request: Request) -> JSONResponse:
     """Get MCP request statistics."""
     from authmcp_gateway.security.logger import get_mcp_request_stats
+    from authmcp_gateway.mcp.store import list_mcp_servers
     
     last_hours = int(request.query_params.get("last_hours", "24"))
+    include_top_tools = request.query_params.get("include_top_tools", "false").lower() == "true"
     
+    # Get request stats
     stats = get_mcp_request_stats(
         db_path=_config.auth.sqlite_path,
         last_hours=last_hours
     )
     
-    return JSONResponse(stats)
+    # Get server stats
+    servers = list_mcp_servers(_config.auth.sqlite_path, enabled_only=False)
+    active_servers = sum(1 for s in servers if s.get('status') == 'online')
+    total_servers = len(servers)
+    
+    # Rename fields to match Dashboard expectations
+    result = {
+        "requests_24h": stats.get("total_requests", 0),
+        "active_servers": active_servers,
+        "total_servers": total_servers,
+        "success_rate": stats.get("success_rate", 0),
+        "avg_response_time": stats.get("avg_response_time_ms", 0),
+        "trend": "",  # TODO: Calculate trend from previous period
+    }
+    
+    # Add top tools if requested
+    if include_top_tools:
+        top_tools = stats.get("top_tools", [])
+        # Reformat to match Dashboard expectations
+        result["top_tools"] = [
+            {
+                "name": t["tool"],
+                "count": t["count"],
+                "server": "Unknown"  # TODO: Add server info to log
+            }
+            for t in top_tools
+        ]
+    
+    return JSONResponse(result)
 
 
 @api_error_handler
