@@ -293,6 +293,15 @@ app = Starlette(
         Route("/oauth/token", auth_endpoints.oauth_token, methods=["POST"]),
         Route("/authorize", authorize_page, methods=["GET", "POST"]),
 
+        # User portal (non-admin)
+        Route("/account", admin_routes.user_portal, methods=["GET"]),
+        Route("/account/token", admin_routes.user_account_token, methods=["GET"]),
+        Route("/account/rotate", admin_routes.user_account_rotate_token, methods=["POST"]),
+        Route("/account/info", admin_routes.user_account_info, methods=["GET"]),
+        Route("/account/logout", admin_routes.user_logout, methods=["GET"]),
+        Route("/login", admin_routes.user_login_page, methods=["GET"]),
+        Route("/api/login", admin_routes.user_login_api, methods=["POST"]),
+
         # Setup wizard
         Route("/setup", setup_wizard.setup_page, methods=["GET"]),
         Route("/setup/create-admin", setup_wizard.create_admin_user, methods=["POST"]),
@@ -320,6 +329,8 @@ app = Starlette(
         Route("/admin/api/users/{user_id:int}/status", admin_routes.api_update_user_status, methods=["PATCH"]),
         Route("/admin/api/users/{user_id:int}/superuser", admin_routes.api_make_superuser, methods=["PATCH"]),
         Route("/admin/api/users/{user_id:int}", admin_routes.api_delete_user, methods=["DELETE"]),
+        Route("/admin/api/users/{user_id:int}/mcp-permissions", admin_routes.api_get_user_mcp_permissions, methods=["GET"]),
+        Route("/admin/api/users/{user_id:int}/mcp-permissions", admin_routes.api_set_user_mcp_permission, methods=["PATCH"]),
         Route("/admin/api/mcp-servers", admin_routes.api_list_mcp_servers, methods=["GET"]),
         Route("/admin/api/mcp-servers/token-status", admin_routes.api_mcp_servers_token_status, methods=["GET"]),
         Route("/admin/api/security-events", admin_routes.api_security_events, methods=["GET"]),
@@ -336,8 +347,11 @@ app = Starlette(
         Route("/admin/api/mcp-servers/{server_id:int}/refresh-token", admin_routes.api_refresh_server_token, methods=["POST"]),
         Route("/admin/api/logs", admin_routes.api_logs, methods=["GET"]),
         Route("/admin/api/logs/cleanup", admin_routes.api_cleanup_auth_logs_file, methods=["POST"]),
+        Route("/admin/api/mcp-auth-events", admin_routes.api_mcp_auth_events, methods=["GET"]),
         Route("/admin/api/settings", admin_routes.api_get_settings, methods=["GET"]),
         Route("/admin/api/settings", admin_routes.api_save_settings, methods=["PUT"]),
+        Route("/admin/api/access-token", admin_routes.api_admin_access_token, methods=["GET"]),
+        Route("/admin/api/access-token/rotate", admin_routes.api_admin_rotate_token, methods=["POST"]),
         
         # MCP Security Audit
         Route("/admin/mcp-audit", admin_routes.admin_mcp_audit, methods=["GET"]),

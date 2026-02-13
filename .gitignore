@@ -158,4 +158,4 @@ NEXT_STEPS.md
 scripts/migrate_*.py
 scripts/deploy-wiki.sh
 authmcp-gateway.wiki/
-templates/admin/dashboard_old.html
+scripts/check_acl.sh

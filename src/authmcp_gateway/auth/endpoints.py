@@ -791,13 +791,13 @@ async def oauth_token(request: Request) -> JSONResponse:
                 logger.warning(f"OAuth login failed: invalid credentials - {username}")
                 log_auth_event(
                     _config.auth.sqlite_path,
-                    "failed_login",
+                    "mcp_oauth_error",
                     None,
                     username,
                     request.client.host if request.client else None,
                     request.headers.get("user-agent"),
                     False,
-                    "Invalid credentials"
+                    "Password grant: invalid credentials"
                 )
                 return JSONResponse(
                     status_code=401,
@@ -812,13 +812,13 @@ async def oauth_token(request: Request) -> JSONResponse:
                 logger.warning(f"OAuth login failed: invalid credentials - {username}")
                 log_auth_event(
                     _config.auth.sqlite_path,
-                    "failed_login",
+                    "mcp_oauth_error",
                     user["id"],
                     username,
                     request.client.host if request.client else None,
                     request.headers.get("user-agent"),
                     False,
-                    "Invalid credentials"
+                    "Password grant: invalid credentials"
                 )
                 return JSONResponse(
                     status_code=401,
@@ -872,13 +872,13 @@ async def oauth_token(request: Request) -> JSONResponse:
             # Log success
             log_auth_event(
                 _config.auth.sqlite_path,
-                "login",
+                "mcp_oauth_token",
                 user["id"],
                 username,
                 request.client.host if request.client else None,
                 request.headers.get("user-agent"),
                 True,
-                None
+                "Token issued via password grant"
             )
 
             logger.info(f"OAuth login successful: {username}")
@@ -1011,6 +1011,15 @@ async def oauth_token(request: Request) -> JSONResponse:
 
             if not code_info:
                 logger.warning("Invalid or expired authorization code")
+                log_auth_event(
+                    _config.auth.sqlite_path,
+                    "mcp_oauth_error",
+                    username=None,
+                    ip_address=request.client.host if request.client else None,
+                    user_agent=request.headers.get("user-agent"),
+                    success=False,
+                    details=f"Token exchange failed (invalid code). client_id={client_id or ''} redirect_uri={redirect_uri or ''}"
+                )
                 return JSONResponse(
                     status_code=400,
                     content={
@@ -1023,6 +1032,16 @@ async def oauth_token(request: Request) -> JSONResponse:
             user = get_user_by_id(_config.auth.sqlite_path, code_info['user_id'])
             if not user:
                 logger.error(f"User not found for id {code_info['user_id']}")
+                log_auth_event(
+                    _config.auth.sqlite_path,
+                    "mcp_oauth_error",
+                    user_id=code_info.get("user_id"),
+                    username=None,
+                    ip_address=request.client.host if request.client else None,
+                    user_agent=request.headers.get("user-agent"),
+                    success=False,
+                    details=f"Token exchange failed (user not found). client_id={client_id or ''} redirect_uri={redirect_uri or ''}"
+                )
                 return JSONResponse(
                     status_code=400,
                     content={
@@ -1064,13 +1083,13 @@ async def oauth_token(request: Request) -> JSONResponse:
             # Log success
             log_auth_event(
                 _config.auth.sqlite_path,
-                "login",
+                "mcp_oauth_token",
                 user["id"],
                 user["username"],
                 request.client.host if request.client else None,
                 request.headers.get("user-agent"),
                 True,
-                "Authorization code flow"
+                f"Token issued via auth code. client_id={client_id or ''} redirect_uri={redirect_uri or ''}"
             )
 
             logger.info(f"OAuth authorization code flow successful: {user['username']}")

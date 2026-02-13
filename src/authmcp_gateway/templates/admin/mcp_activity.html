@@ -229,6 +229,44 @@
                     </div>
                 </div>
             </div>
+
+            <div class="bg-white rounded-lg shadow mt-6">
+                <div class="px-6 py-4 border-b border-gray-200 flex items-center gap-2">
+                    <i data-lucide="shield-check" class="w-5 h-5 text-indigo-600"></i>
+                    <h2 class="text-lg font-semibold text-gray-900">MCP Auth Events</h2>
+                </div>
+                <div class="p-4">
+                    <template x-if="authEvents.length === 0">
+                        <div class="text-center py-6 text-gray-500">
+                            <i data-lucide="inbox" class="w-10 h-10 mx-auto mb-2 text-gray-400"></i>
+                            <p class="text-sm">No MCP auth events</p>
+                        </div>
+                    </template>
+                    <div class="space-y-2 max-h-[360px] overflow-y-auto">
+                        <template x-for="ev in authEvents" :key="ev.timestamp">
+                            <div class="flex items-start gap-3 p-3 bg-gray-50 rounded-lg">
+                                <div class="flex-shrink-0">
+                                    <span class="flex items-center justify-center w-8 h-8 rounded-full"
+                                          :class="ev.success ? 'bg-green-100' : 'bg-red-100'">
+                                        <i data-lucide="key-round" class="w-4 h-4"
+                                           :class="ev.success ? 'text-green-600' : 'text-red-600'"></i>
+                                    </span>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2 mb-1">
+                                        <span class="text-xs font-semibold px-2 py-0.5 rounded"
+                                              :class="ev.event_type === 'mcp_oauth_error' ? 'bg-rose-100 text-rose-700' : 'bg-indigo-100 text-indigo-700'"
+                                              x-text="ev.event_type"></span>
+                                        <span class="text-sm font-medium text-gray-900" x-text="ev.username || 'Unknown'"></span>
+                                    </div>
+                                    <div class="text-xs text-gray-600" x-text="ev.details"></div>
+                                    <div class="text-xs text-gray-400 mt-1" x-text="formatTimestamp(ev.timestamp)"></div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -243,10 +281,12 @@ function mcpActivity() {
         lastSeconds: 3600,
         filterMethod: '',
         filterSuccess: '',
+        authEvents: [],
 
         init() {
             this.loadRequests();
             this.loadStats();
+            this.loadAuthEvents();
             this.startAutoRefresh();
         },
 
@@ -287,11 +327,22 @@ function mcpActivity() {
             }
         },
 
+        async loadAuthEvents() {
+            try {
+                const response = await fetch('/admin/api/mcp-auth-events?limit=8');
+                const data = await response.json();
+                this.authEvents = data.events || [];
+            } catch (error) {
+                console.error('Failed to load MCP auth events:', error);
+            }
+        },
+
         startAutoRefresh() {
             this.refreshInterval = setInterval(() => {
                 if (this.autoRefresh) {
                     this.loadRequests();
                     this.loadStats();
+                    this.loadAuthEvents();
                 }
             }, 3000); // Refresh every 3 seconds
         },

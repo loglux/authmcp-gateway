@@ -9,7 +9,7 @@ from functools import wraps
 from datetime import datetime, timedelta, timezone
 from jinja2 import Environment, FileSystemLoader
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, Response
+from starlette.responses import HTMLResponse, JSONResponse, Response, RedirectResponse
 from authmcp_gateway.auth.user_store import (
     get_all_users,
     get_auth_logs,
@@ -59,6 +59,279 @@ def render_template(template_name: str, **context) -> HTMLResponse:
     template = jinja_env.get_template(template_name)
     html = template.render(**context)
     return HTMLResponse(content=html)
+
+
+async def user_portal(request: Request) -> HTMLResponse:
+    """User portal page for obtaining access token (non-admin)."""
+    from authmcp_gateway.auth.jwt_handler import verify_token
+
+    token = request.cookies.get("user_token")
+    if not token:
+        return RedirectResponse(url="/login", status_code=302)
+
+    try:
+        payload = verify_token(token, "access", _config.jwt)
+        if payload.get("is_superuser"):
+            return RedirectResponse(url="/admin", status_code=302)
+    except Exception:
+        return RedirectResponse(url="/login", status_code=302)
+
+    username = payload.get("username")
+    if not username and payload.get("sub"):
+        try:
+            user = get_user_by_id(_config.auth.sqlite_path, int(payload["sub"]))
+            if user:
+                username = user.get("username")
+        except Exception:
+            username = None
+
+    return render_template("user_portal.html", username=username)
+
+
+async def user_login_page(_: Request) -> HTMLResponse:
+    """User login page (non-admin)."""
+    return render_template("user_login.html")
+
+
+async def user_login_api(request: Request) -> JSONResponse:
+    """Login for non-admin users and set user_token cookie."""
+    from authmcp_gateway.auth.user_store import (
+        get_user_by_username,
+        update_last_login,
+        log_auth_event,
+    )
+    from authmcp_gateway.auth.password import verify_password
+    from authmcp_gateway.auth.token_service import get_or_create_user_token
+    from authmcp_gateway.config import load_config
+
+    body = await request.json()
+    username = body.get("username")
+    password = body.get("password")
+
+    if not username or not password:
+        return JSONResponse({"detail": "Username and password required"}, status_code=400)
+
+    user = get_user_by_username(_config.auth.sqlite_path, username)
+    if not user or not verify_password(password, user["password_hash"]):
+        log_auth_event(
+            db_path=_config.auth.sqlite_path,
+            event_type="login",
+            username=username,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            success=False,
+            details="Invalid credentials"
+        )
+        return JSONResponse({"detail": "Invalid username or password"}, status_code=401)
+
+    if user.get("is_superuser"):
+        return JSONResponse(
+            {"detail": "Admin accounts must use the admin panel."},
+            status_code=403
+        )
+
+    update_last_login(_config.auth.sqlite_path, user["id"])
+
+    config = load_config()
+    access_token, _ = get_or_create_user_token(
+        _config.auth.sqlite_path,
+        user["id"],
+        user["username"],
+        False,
+        config.jwt,
+        config.jwt.access_token_expire_minutes,
+    )
+
+    response = JSONResponse({"success": True})
+    response.set_cookie(
+        "user_token",
+        access_token,
+        httponly=True,
+        samesite="lax",
+        secure=True,
+        max_age=config.jwt.access_token_expire_minutes * 60,
+    )
+    return response
+
+
+async def user_logout(_: Request) -> Response:
+    """Clear user session cookie."""
+    response = RedirectResponse(url="/login", status_code=302)
+    response.delete_cookie("user_token")
+    return response
+
+
+async def user_account_token(request: Request) -> JSONResponse:
+    """Return access token for authenticated non-admin user."""
+    from authmcp_gateway.auth.jwt_handler import verify_token, decode_token_unsafe
+    from authmcp_gateway.auth.user_store import is_token_blacklisted, get_user_by_id
+    from authmcp_gateway.auth.token_service import get_or_create_user_token
+    from authmcp_gateway.config import load_config
+
+    token = request.cookies.get("user_token")
+    if not token:
+        return JSONResponse({"detail": "Not authenticated"}, status_code=401)
+
+    try:
+        payload = verify_token(token, "access", _config.jwt)
+        jti = decode_token_unsafe(token).get("jti")
+        if jti and is_token_blacklisted(_config.auth.sqlite_path, jti):
+            return JSONResponse({"detail": "Token revoked"}, status_code=401)
+        if payload.get("is_superuser"):
+            return JSONResponse({"detail": "Admin accounts must use the admin panel."}, status_code=403)
+    except Exception:
+        return JSONResponse({"detail": "Invalid or expired token"}, status_code=401)
+
+    user_id = payload.get("sub")
+    username = payload.get("username")
+    if not username and user_id:
+        user = get_user_by_id(_config.auth.sqlite_path, int(user_id))
+        username = user["username"] if user else ""
+
+    config = load_config()
+    access_token, _ = get_or_create_user_token(
+        _config.auth.sqlite_path,
+        int(user_id),
+        username,
+        False,
+        config.jwt,
+        config.jwt.access_token_expire_minutes,
+    )
+
+    response = JSONResponse({"access_token": access_token})
+    response.set_cookie(
+        "user_token",
+        access_token,
+        httponly=True,
+        samesite="lax",
+        secure=True,
+        max_age=config.jwt.access_token_expire_minutes * 60,
+    )
+    return response
+
+
+async def user_account_rotate_token(request: Request) -> JSONResponse:
+    """Rotate access token for authenticated non-admin user."""
+    from authmcp_gateway.auth.jwt_handler import verify_token, decode_token_unsafe
+    from authmcp_gateway.auth.user_store import is_token_blacklisted
+    from authmcp_gateway.auth.token_service import rotate_user_token
+    from authmcp_gateway.config import load_config
+
+    token = request.cookies.get("user_token")
+    if not token:
+        return JSONResponse({"detail": "Not authenticated"}, status_code=401)
+
+    try:
+        payload = verify_token(token, "access", _config.jwt)
+        jti = decode_token_unsafe(token).get("jti")
+        if jti and is_token_blacklisted(_config.auth.sqlite_path, jti):
+            return JSONResponse({"detail": "Token revoked"}, status_code=401)
+        if payload.get("is_superuser"):
+            return JSONResponse({"detail": "Admin accounts must use the admin panel."}, status_code=403)
+    except Exception:
+        return JSONResponse({"detail": "Invalid or expired token"}, status_code=401)
+
+    config = load_config()
+    user_id = int(payload.get("sub"))
+    username = payload.get("username")
+    new_token, _ = rotate_user_token(
+        _config.auth.sqlite_path,
+        user_id,
+        username,
+        False,
+        config.jwt,
+        config.jwt.access_token_expire_minutes,
+        current_token=token,
+    )
+
+    response = JSONResponse({"access_token": new_token})
+    response.set_cookie(
+        "user_token",
+        new_token,
+        httponly=True,
+        samesite="lax",
+        secure=True,
+        max_age=config.jwt.access_token_expire_minutes * 60,
+    )
+    return response
+
+
+async def user_account_info(request: Request) -> JSONResponse:
+    """Return user info, token expiry, and accessible MCP servers."""
+    from authmcp_gateway.auth.jwt_handler import verify_token, decode_token_unsafe
+    from authmcp_gateway.auth.user_store import is_token_blacklisted, get_user_by_id
+    from authmcp_gateway.auth.token_service import get_or_create_user_token
+    from authmcp_gateway.mcp.store import list_mcp_servers
+    from datetime import datetime, timezone
+    from authmcp_gateway.config import load_config
+
+    token = request.cookies.get("user_token")
+    if not token:
+        return JSONResponse({"detail": "Not authenticated"}, status_code=401)
+
+    try:
+        payload = verify_token(token, "access", _config.jwt)
+        jti = decode_token_unsafe(token).get("jti")
+        if jti and is_token_blacklisted(_config.auth.sqlite_path, jti):
+            return JSONResponse({"detail": "Token revoked"}, status_code=401)
+        if payload.get("is_superuser"):
+            return JSONResponse({"detail": "Admin accounts must use the admin panel."}, status_code=403)
+    except Exception:
+        return JSONResponse({"detail": "Invalid or expired token"}, status_code=401)
+
+    user_id = payload.get("sub")
+    username = payload.get("username")
+    if not username and user_id:
+        user = get_user_by_id(_config.auth.sqlite_path, int(user_id))
+        username = user["username"] if user else ""
+
+    config = load_config()
+    access_token, exp_dt = get_or_create_user_token(
+        _config.auth.sqlite_path,
+        int(user_id),
+        username,
+        False,
+        config.jwt,
+        config.jwt.access_token_expire_minutes,
+    )
+
+    expires_at = None
+    expires_in_seconds = None
+    if exp_dt:
+        try:
+            expires_at = exp_dt.isoformat()
+            expires_in_seconds = int((exp_dt - datetime.now(timezone.utc)).total_seconds())
+        except Exception:
+            pass
+
+    servers = list_mcp_servers(_config.auth.sqlite_path, enabled_only=True, user_id=int(user_id) if user_id else None)
+    public_base = (_config.mcp_public_url or "").rstrip("/")
+    server_list = []
+    from authmcp_gateway.mcp.proxy import normalize_server_name
+    for s in servers:
+        server_slug = normalize_server_name(s["name"])
+        server_list.append({
+            "id": s["id"],
+            "name": s["name"],
+            "endpoint": f"{public_base}/mcp/{server_slug}" if public_base else f"/mcp/{server_slug}"
+        })
+
+    response = JSONResponse({
+        "username": username,
+        "expires_at": expires_at,
+        "expires_in_seconds": expires_in_seconds,
+        "servers": server_list,
+        "gateway_endpoint": f"{public_base}/mcp" if public_base else "/mcp"
+    })
+    response.set_cookie(
+        "user_token",
+        access_token,
+        httponly=True,
+        samesite="lax",
+        secure=True,
+        max_age=config.jwt.access_token_expire_minutes * 60,
+    )
+    return response
 
 
 def api_error_handler(func: Callable) -> Callable:
@@ -230,6 +503,72 @@ async def api_users(_: Request) -> JSONResponse:
 
 
 @api_error_handler
+async def api_get_user_mcp_permissions(request: Request) -> JSONResponse:
+    """Get MCP server access permissions for a user."""
+    user_id = int(request.path_params["user_id"])
+
+    users = get_all_users(_config.auth.sqlite_path)
+    user = next((u for u in users if u["id"] == user_id), None)
+    if not user:
+        return JSONResponse({"error": "User not found"}, status_code=404)
+
+    from authmcp_gateway.mcp.store import list_mcp_servers, get_user_mcp_permissions
+
+    servers = list_mcp_servers(_config.auth.sqlite_path, enabled_only=False)
+    permissions = get_user_mcp_permissions(_config.auth.sqlite_path, user_id)
+    perm_map = {p["mcp_server_id"]: p for p in permissions}
+
+    response_servers = []
+    for server in servers:
+        perm = perm_map.get(server["id"])
+        can_access = True if perm is None else bool(perm.get("can_access"))
+        response_servers.append({
+            "server_id": server["id"],
+            "name": server["name"],
+            "url": server["url"],
+            "enabled": bool(server.get("enabled", 1)),
+            "can_access": can_access,
+            "source": "default" if perm is None else "explicit"
+        })
+
+    return JSONResponse({
+        "user": {"id": user["id"], "username": user["username"]},
+        "servers": response_servers
+    })
+
+
+@api_error_handler
+async def api_set_user_mcp_permission(request: Request) -> JSONResponse:
+    """Set MCP server access permission for a user."""
+    user_id = int(request.path_params["user_id"])
+    body = await request.json()
+    server_id = body.get("server_id")
+    can_access = body.get("can_access")
+
+    if server_id is None or can_access is None:
+        return JSONResponse({"error": "server_id and can_access are required"}, status_code=400)
+
+    from authmcp_gateway.mcp.store import get_mcp_server, set_user_mcp_permission
+
+    server = get_mcp_server(_config.auth.sqlite_path, int(server_id))
+    if not server:
+        return JSONResponse({"error": "MCP server not found"}, status_code=404)
+
+    set_user_mcp_permission(
+        db_path=_config.auth.sqlite_path,
+        user_id=user_id,
+        mcp_server_id=int(server_id),
+        can_access=bool(can_access)
+    )
+
+    return JSONResponse({
+        "success": True,
+        "server_id": int(server_id),
+        "can_access": bool(can_access)
+    })
+
+
+@api_error_handler
 async def api_create_user(request: Request) -> JSONResponse:
     """Create new user (admin endpoint - bypasses allow_registration check)."""
     from authmcp_gateway.auth.user_store import create_user
@@ -327,9 +666,19 @@ async def api_logs(request: Request) -> JSONResponse:
                 try:
                     log_entry = json.loads(line.strip())
                     
-                    # Filter by event type
-                    if event_type and log_entry.get("event_type") != event_type:
-                        continue
+                    # Filter by event type (with legacy MCP OAuth mapping)
+                    if event_type:
+                        entry_type = log_entry.get("event_type")
+                        if entry_type != event_type:
+                            details = log_entry.get("details") or ""
+                            if event_type == "mcp_oauth_token" and entry_type == "login":
+                                if "Authorization code flow" in details or "password grant" in details:
+                                    log_entry = dict(log_entry)
+                                    log_entry["event_type"] = "mcp_oauth_token"
+                                else:
+                                    continue
+                            else:
+                                continue
                     
                     # Filter by date
                     if cutoff_date:
@@ -351,6 +700,50 @@ async def api_logs(request: Request) -> JSONResponse:
     paginated_logs = logs[offset:offset + limit]
     
     return JSONResponse({"logs": paginated_logs, "total": total, "limit": limit, "offset": offset})
+
+
+@api_error_handler
+async def api_mcp_auth_events(request: Request) -> JSONResponse:
+    """Get recent MCP OAuth auth events from auth log."""
+    limit = int(request.query_params.get("limit", "10"))
+    last_seconds_raw = request.query_params.get("last_seconds")
+    last_seconds = int(last_seconds_raw) if last_seconds_raw is not None else None
+    log_file = Path("data/logs/auth.log")
+
+    if not log_file.exists():
+        return JSONResponse({"events": []})
+
+    cutoff = None
+    if last_seconds is not None and last_seconds > 0:
+        cutoff = datetime.now(timezone.utc) - timedelta(seconds=last_seconds)
+    allowed_types = {"mcp_oauth_authorize", "mcp_oauth_token", "mcp_oauth_error"}
+    events = []
+
+    try:
+        with open(log_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                try:
+                    entry = json.loads(line.strip())
+                    event_type = entry.get("event_type")
+                    details = entry.get("details") or ""
+                    if event_type not in allowed_types:
+                        if event_type == "login" and ("Authorization code flow" in details or "password grant" in details):
+                            entry = dict(entry)
+                            entry["event_type"] = "mcp_oauth_token"
+                        else:
+                            continue
+                    ts = datetime.fromisoformat(entry["timestamp"].replace("Z", "+00:00"))
+                    if cutoff and ts < cutoff:
+                        continue
+                    events.append(entry)
+                except (json.JSONDecodeError, KeyError, ValueError):
+                    continue
+    except Exception as e:
+        logger.error(f"Failed to read auth logs for MCP auth events: {e}")
+        return JSONResponse({"error": "Failed to read logs"}, status_code=500)
+
+    events.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
+    return JSONResponse({"events": events[:limit]})
 
 
 @api_error_handler
@@ -466,29 +859,25 @@ async def admin_settings(request: Request) -> HTMLResponse:
     username = request.state.username
     is_superuser = request.state.is_superuser
     
-    # Generate fresh access token for display
-    from authmcp_gateway.auth.jwt_handler import create_access_token
+    # Reuse stored token or rotate if needed
+    from datetime import datetime, timezone, timedelta
+    from authmcp_gateway.auth.token_service import get_or_create_user_token, format_expires_in
     from authmcp_gateway.config import load_config
     config = load_config()
     
-    access_token = create_access_token(
-        user_id=user_id,
-        username=username,
-        is_superuser=is_superuser,
-        config=config.jwt
+    access_token, exp_dt = get_or_create_user_token(
+        _config.auth.sqlite_path,
+        user_id,
+        username,
+        is_superuser,
+        config.jwt,
+        config.jwt.admin_token_expire_minutes,
     )
-    
-    # Calculate token expiration
-    expires_minutes = config.jwt.access_token_expire_minutes
-    
-    if expires_minutes >= 1440:  # >= 1 day
-        days = expires_minutes // 1440
-        token_expires_in = f"{days} day{'s' if days > 1 else ''}"
-    elif expires_minutes >= 60:
-        hours = expires_minutes // 60
-        token_expires_in = f"{hours} hour{'s' if hours > 1 else ''}"
-    else:
-        token_expires_in = f"{expires_minutes} minute{'s' if expires_minutes > 1 else ''}"
+    token_expires_in = format_expires_in(exp_dt)
+    if not token_expires_in:
+        token_expires_in = format_expires_in(
+            datetime.now(timezone.utc) + timedelta(minutes=config.jwt.admin_token_expire_minutes)
+        )
     
     return render_template(
         "admin/settings.html",
@@ -496,6 +885,68 @@ async def admin_settings(request: Request) -> HTMLResponse:
         access_token=access_token,
         token_expires_in=token_expires_in,
     )
+
+
+@api_error_handler
+async def api_admin_access_token(request: Request) -> JSONResponse:
+    """API: Get current admin access token."""
+    user_id = request.state.user_id
+    username = request.state.username
+    is_superuser = request.state.is_superuser
+    from authmcp_gateway.auth.token_service import get_or_create_user_token, format_expires_in
+    from authmcp_gateway.config import load_config
+
+    config = load_config()
+    access_token, exp_dt = get_or_create_user_token(
+        _config.auth.sqlite_path,
+        user_id,
+        username,
+        is_superuser,
+        config.jwt,
+        config.jwt.admin_token_expire_minutes,
+    )
+    token_expires_in = format_expires_in(exp_dt)
+
+    return JSONResponse({"access_token": access_token, "token_expires_in": token_expires_in})
+
+
+@api_error_handler
+async def api_admin_rotate_token(request: Request) -> JSONResponse:
+    """API: Rotate admin access token."""
+    user_id = request.state.user_id
+    username = request.state.username
+    is_superuser = request.state.is_superuser
+    from authmcp_gateway.auth.token_service import rotate_user_token, format_expires_in
+    from authmcp_gateway.config import load_config
+
+    config = load_config()
+    current_token = request.cookies.get("admin_token")
+    new_token, exp_dt = rotate_user_token(
+        _config.auth.sqlite_path,
+        user_id,
+        username,
+        is_superuser,
+        config.jwt,
+        config.jwt.admin_token_expire_minutes,
+        current_token=current_token,
+    )
+    token_expires_in = format_expires_in(exp_dt)
+
+    response = JSONResponse({"access_token": new_token, "token_expires_in": token_expires_in})
+    is_https = (
+        request.url.scheme == "https" or
+        request.headers.get("x-forwarded-proto") == "https"
+    )
+    response.set_cookie(
+        key="admin_token",
+        value=new_token,
+        path="/",
+        httponly=True,
+        secure=is_https,
+        samesite="lax",
+        max_age=config.jwt.admin_token_expire_minutes * 60
+    )
+    return response
 
 
 async def api_get_settings(_: Request) -> JSONResponse:

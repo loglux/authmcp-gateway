@@ -224,41 +224,78 @@
         </div>
     </div>
 
-    <!-- Recent MCP Activity -->
-    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-        <div class="bg-gradient-to-r from-blue-600 to-cyan-600 px-6 py-4 flex items-center justify-between text-white">
-            <div class="flex items-center gap-2">
-                <i data-lucide="activity" class="w-5 h-5"></i>
-                <h2 class="text-lg font-semibold">Recent Activity</h2>
-            </div>
-            <a href="/admin/mcp-activity" class="text-xs text-white/80 hover:text-white">View all →</a>
-        </div>
-        <div class="divide-y divide-gray-100">
-            <template x-for="request in recentRequests" :key="request.timestamp">
-                <div class="p-4 hover:bg-gray-50 transition-colors">
-                    <div class="flex items-start justify-between gap-4">
-                        <div class="flex-1 min-w-0">
-                            <div class="flex items-center gap-2 mb-1">
-                                <i data-lucide="check-circle" class="w-4 h-4" 
-                                   :class="request.success ? 'text-green-600' : 'text-red-600'"></i>
-                                <span class="font-medium text-gray-900" x-text="request.method"></span>
-                                <span class="text-xs text-gray-500" x-show="request.tool_name">
-                                    → <span x-text="request.tool_name"></span>
-                                </span>
-                            </div>
-                            <div class="text-xs text-gray-600 space-x-3">
-                                <span x-text="request.username"></span>
-                                <span x-show="request.server_name" x-text="'• ' + request.server_name"></span>
-                                <span x-show="request.response_time_ms" x-text="'• ' + request.response_time_ms + 'ms'"></span>
-                            </div>
-                        </div>
-                        <div class="text-xs text-gray-500 whitespace-nowrap" x-text="formatTime(request.timestamp)"></div>
-                    </div>
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Recent MCP Activity -->
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div class="bg-gradient-to-r from-blue-600 to-cyan-600 px-6 py-4 flex items-center justify-between text-white">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="activity" class="w-5 h-5"></i>
+                    <h2 class="text-lg font-semibold">Recent Activity</h2>
                 </div>
-            </template>
-            <div x-show="recentRequests.length === 0" class="p-8 text-center text-gray-500">
-                <i data-lucide="inbox" class="w-12 h-12 mx-auto mb-2 text-gray-300"></i>
-                <p>No recent activity in the last 2 hours</p>
+                <a href="/admin/mcp-activity" class="text-xs text-white/80 hover:text-white">View all →</a>
+            </div>
+            <div class="divide-y divide-gray-100">
+                <template x-for="request in recentRequests" :key="request.timestamp">
+                    <div class="p-4 hover:bg-gray-50 transition-colors">
+                        <div class="flex items-start justify-between gap-4">
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <i data-lucide="check-circle" class="w-4 h-4" 
+                                       :class="request.success ? 'text-green-600' : 'text-red-600'"></i>
+                                    <span class="font-medium text-gray-900" x-text="request.method"></span>
+                                    <span class="text-xs text-gray-500" x-show="request.tool_name">
+                                        → <span x-text="request.tool_name"></span>
+                                    </span>
+                                </div>
+                                <div class="text-xs text-gray-600 space-x-3">
+                                    <span x-text="request.username"></span>
+                                    <span x-show="request.server_name" x-text="'• ' + request.server_name"></span>
+                                    <span x-show="request.response_time_ms" x-text="'• ' + request.response_time_ms + 'ms'"></span>
+                                </div>
+                            </div>
+                            <div class="text-xs text-gray-500 whitespace-nowrap" x-text="formatTime(request.timestamp)"></div>
+                        </div>
+                    </div>
+                </template>
+                <div x-show="recentRequests.length === 0" class="p-8 text-center text-gray-500">
+                    <i data-lucide="inbox" class="w-12 h-12 mx-auto mb-2 text-gray-300"></i>
+                    <p>No recent activity in the last 2 hours</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- MCP Auth Events -->
+        <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div class="bg-gradient-to-r from-indigo-600 to-purple-600 px-6 py-4 flex items-center justify-between text-white">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="shield-check" class="w-5 h-5"></i>
+                    <h2 class="text-lg font-semibold">MCP Auth Events</h2>
+                </div>
+                <a href="/admin/logs" class="text-xs text-white/80 hover:text-white">View all →</a>
+            </div>
+            <div class="divide-y divide-gray-100">
+                <template x-for="event in mcpAuthEvents" :key="event.timestamp">
+                    <div class="p-4 hover:bg-gray-50 transition-colors">
+                        <div class="flex items-start justify-between gap-4">
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center gap-2 mb-1">
+                                    <i data-lucide="key-round" class="w-4 h-4" 
+                                       :class="event.success ? 'text-green-600' : 'text-red-600'"></i>
+                                    <span class="font-medium text-gray-900" x-text="event.event_type"></span>
+                                </div>
+                                <div class="text-xs text-gray-600 space-x-3">
+                                    <span x-text="event.username || 'Unknown'"></span>
+                                    <span x-show="event.details" x-text="'• ' + event.details"></span>
+                                </div>
+                            </div>
+                            <div class="text-xs text-gray-500 whitespace-nowrap" x-text="formatTime(event.timestamp)"></div>
+                        </div>
+                    </div>
+                </template>
+                <div x-show="mcpAuthEvents.length === 0" class="p-8 text-center text-gray-500">
+                    <i data-lucide="inbox" class="w-12 h-12 mx-auto mb-2 text-gray-300"></i>
+                    <p>No recent MCP auth events</p>
+                </div>
             </div>
         </div>
     </div>
@@ -281,6 +318,7 @@
             servers: [],
             topTools: [],
             recentRequests: [],
+            mcpAuthEvents: [],
             tokenWarnings: [],
             autoRefreshInterval: null,
             
@@ -299,6 +337,7 @@
                     this.loadServers(),
                     this.loadTopTools(),
                     this.loadRecentRequests(),
+                    this.loadMcpAuthEvents(),
                     this.loadTokenWarnings()
                 ]);
                 this.loading = false;
@@ -352,6 +391,16 @@
                     this.recentRequests = data.requests || [];
                 } catch (error) {
                     console.error('Failed to load recent requests:', error);
+                }
+            },
+
+            async loadMcpAuthEvents() {
+                try {
+                    const response = await fetch('/admin/api/mcp-auth-events?limit=8');
+                    const data = await response.json();
+                    this.mcpAuthEvents = data.events || [];
+                } catch (error) {
+                    console.error('Failed to load MCP auth events:', error);
                 }
             },
             

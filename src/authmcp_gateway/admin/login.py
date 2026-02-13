@@ -2,7 +2,6 @@
 
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
-from authmcp_gateway.auth.jwt_handler import create_access_token
 from authmcp_gateway.auth.password import verify_password
 from authmcp_gateway.auth.user_store import get_user_by_username, update_last_login, log_auth_event
 from authmcp_gateway.rate_limiter import get_rate_limiter
@@ -108,6 +107,10 @@ async def admin_login_page(request: Request) -> HTMLResponse:
                     <i data-lucide="alert-circle" class="w-5 h-5 mt-0.5 flex-shrink-0"></i>
                     <span id="errorText"></span>
                 </div>
+                
+                <div class="text-center text-sm text-gray-500">
+                    Not an admin? <a href="/account" class="text-blue-600 hover:underline">Go to your account</a>
+                </div>
             </form>
         </div>
     </div>
@@ -138,6 +141,10 @@ async def admin_login_page(request: Request) -> HTMLResponse:
                     window.location.href = '/admin';
                 } else {
                     const data = await response.json();
+                    if (response.status === 403) {
+                        window.location.href = '/account';
+                        return;
+                    }
                     errorText.textContent = data.detail || 'Login failed';
                     errorDiv.classList.remove('hidden');
                     lucide.createIcons();
@@ -248,12 +255,15 @@ async def admin_login_api(request: Request) -> Response:
             )
             return JSONResponse({"detail": "Account disabled"}, status_code=403)
         
-        # Create JWT token
-        access_token = create_access_token(
-            user_id=user["id"],
-            username=user["username"],
-            is_superuser=True,
-            config=_config.jwt
+        from authmcp_gateway.auth.token_service import get_or_create_user_token
+
+        access_token, _ = get_or_create_user_token(
+            _config.auth.sqlite_path,
+            user["id"],
+            user["username"],
+            True,
+            _config.jwt,
+            _config.jwt.admin_token_expire_minutes,
         )
         
         # Update last login

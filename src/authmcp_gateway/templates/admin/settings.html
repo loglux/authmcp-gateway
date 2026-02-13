@@ -50,7 +50,7 @@
                         Copy
                     </button>
                 </div>
-                <p class="text-xs text-gray-500 mt-1">Expires in: <span class="font-medium">{{ token_expires_in }}</span></p>
+                <p class="text-xs text-gray-500 mt-1">Expires in: <span class="font-medium" id="tokenExpiresIn">{{ token_expires_in }}</span></p>
             </div>
 
             <!-- MCP Client Format -->
@@ -70,10 +70,10 @@
 
             <!-- Refresh Token Button -->
             <div class="pt-2 border-t border-gray-200">
-                <button onclick="window.location.reload()" 
+                <button onclick="rotateAccessToken()" 
                         class="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-2">
                     <i data-lucide="refresh-cw" class="w-4 h-4"></i>
-                    Refresh Page to Get New Token
+                    Rotate Token
                 </button>
             </div>
         </div>
@@ -308,6 +308,27 @@
     function copyMcpHeader() {
         const input = document.getElementById('mcpHeaderJson');
         copyToClipboard(input.value, 'MCP header copied!');
+    }
+
+    async function rotateAccessToken() {
+        try {
+            const response = await fetch('/admin/api/access-token/rotate', { method: 'POST' });
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.detail || 'Failed to rotate token');
+            }
+            const tokenInput = document.getElementById('accessToken');
+            const headerInput = document.getElementById('mcpHeaderJson');
+            const expiresEl = document.getElementById('tokenExpiresIn');
+            tokenInput.value = data.access_token || '';
+            headerInput.value = `{\"Authorization\": \"Bearer ${data.access_token || ''}\"}`;
+            if (expiresEl) {
+                expiresEl.textContent = data.token_expires_in || '';
+            }
+            showToast('Token rotated!');
+        } catch (err) {
+            alert(err.message || 'Failed to rotate token');
+        }
     }
 
     function showToast(message) {

@@ -80,6 +80,9 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
                 # Double-check in database
                 user = get_user_by_id(self.config.auth.sqlite_path, user_id)
                 if not user or not user.get("is_superuser"):
+                    # Redirect non-admin users to account portal instead of 403
+                    if not request.url.path.startswith("/admin/api"):
+                        return RedirectResponse(url="/account", status_code=302)
                     return self._forbidden(request)
             
             # Attach user info to request state
@@ -112,27 +115,4 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
                 {"detail": "Superuser access required"},
                 status_code=403
             )
-        
-        html = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <title>Access Denied</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
-        .error-card { max-width: 400px; background: white; border-radius: 16px; padding: 2rem; text-align: center; }
-    </style>
-</head>
-<body>
-    <div class="error-card">
-        <h1 class="display-1">403</h1>
-        <h2>Access Denied</h2>
-        <p class="text-muted">You need superuser privileges to access the admin panel.</p>
-        <a href="/" class="btn btn-primary">Go Home</a>
-    </div>
-</body>
-</html>
-        """
-        return Response(content=html, media_type="text/html", status_code=403)
+        return RedirectResponse(url="/account", status_code=302)

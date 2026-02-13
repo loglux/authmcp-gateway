@@ -103,6 +103,20 @@ def init_database(db_path: str):
             )
         """)
 
+        # User access tokens (single active token per user)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS user_access_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER UNIQUE NOT NULL,
+                access_token TEXT NOT NULL,
+                token_jti TEXT UNIQUE NOT NULL,
+                expires_at TIMESTAMP NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+
         # Token blacklist table
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS token_blacklist (
@@ -141,6 +155,12 @@ def init_database(db_path: str):
         """)
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token_hash ON refresh_tokens(token_hash)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_user_access_tokens_user_id ON user_access_tokens(user_id)
+        """)
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_user_access_tokens_token_jti ON user_access_tokens(token_jti)
         """)
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_token_blacklist_jti ON token_blacklist(token_jti)
@@ -484,6 +504,43 @@ def hash_token(token: str) -> str:
         str: Hex digest of SHA256 hash
     """
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def get_user_access_token(db_path: str, user_id: int) -> Optional[Dict[str, Any]]:
+    """Get the stored access token for a user, if any."""
+    with get_db_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT access_token, token_jti, expires_at FROM user_access_tokens WHERE user_id = ?",
+            (user_id,)
+        )
+        row = cursor.fetchone()
+        return dict(row) if row else None
+
+
+def upsert_user_access_token(
+    db_path: str,
+    user_id: int,
+    access_token: str,
+    token_jti: str,
+    expires_at: datetime
+) -> None:
+    """Insert or update the single active access token for a user."""
+    expires_value = expires_at.isoformat()
+    with get_db_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO user_access_tokens (user_id, access_token, token_jti, expires_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(user_id) DO UPDATE SET
+                access_token = excluded.access_token,
+                token_jti = excluded.token_jti,
+                expires_at = excluded.expires_at,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (user_id, access_token, token_jti, expires_value)
+        )
 
 
 def get_all_users(db_path: str) -> list[Dict[str, Any]]:

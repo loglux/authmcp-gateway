@@ -275,6 +275,16 @@ async def _process_login(
     user = get_user_by_username(db_path, username)
     if not user or not verify_password(password, user['password_hash']):
         logger.warning(f"Failed login attempt for user: {username}")
+        from .user_store import log_auth_event
+        log_auth_event(
+            db_path=db_path,
+            event_type="mcp_oauth_error",
+            username=username,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            success=False,
+            details=f"Authorization failed (invalid credentials). client_id={client_id} redirect_uri={redirect_uri}"
+        )
         return _show_login_form_with_error(
             "Invalid username or password",
             client_id, redirect_uri, code_challenge,
@@ -283,6 +293,17 @@ async def _process_login(
 
     # Check if user is active
     if not user['is_active']:
+        from .user_store import log_auth_event
+        log_auth_event(
+            db_path=db_path,
+            event_type="mcp_oauth_error",
+            user_id=user["id"],
+            username=user["username"],
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            success=False,
+            details=f"Authorization failed (inactive user). client_id={client_id} redirect_uri={redirect_uri}"
+        )
         return _show_login_form_with_error(
             "Account is disabled",
             client_id, redirect_uri, code_challenge,
@@ -303,6 +324,17 @@ async def _process_login(
         )
 
         logger.info(f"Authorization successful for user {username} (id={user['id']})")
+        from .user_store import log_auth_event
+        log_auth_event(
+            db_path=db_path,
+            event_type="mcp_oauth_authorize",
+            user_id=user["id"],
+            username=user["username"],
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            success=True,
+            details=f"Authorization code issued. client_id={client_id} redirect_uri={redirect_uri} scope={scope}"
+        )
 
         # Redirect back to client with code and state
         params = {'code': code}
@@ -314,6 +346,16 @@ async def _process_login(
 
     except Exception as e:
         logger.exception(f"Error generating authorization code: {e}")
+        from .user_store import log_auth_event
+        log_auth_event(
+            db_path=db_path,
+            event_type="mcp_oauth_error",
+            username=username,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            success=False,
+            details=f"Authorization error. client_id={client_id} redirect_uri={redirect_uri}"
+        )
         return _show_login_form_with_error(
             "Internal server error. Please try again.",
             client_id, redirect_uri, code_challenge,

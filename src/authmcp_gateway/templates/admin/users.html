@@ -35,7 +35,7 @@
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Role</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Last Login</th>
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Created</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Actions</th>
+        <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Actions</th>
                     </tr>
                 </thead>
                 <tbody class="bg-white divide-y divide-gray-200" id="usersTableBody">
@@ -49,6 +49,81 @@
                     </tr>
                 </tbody>
             </table>
+        </div>
+    </div>
+
+    <!-- Access Control Modal -->
+    <div x-show="showAccessModal"
+         x-cloak
+         class="fixed inset-0 z-50 overflow-y-auto"
+         @keydown.escape.window="showAccessModal = false">
+        <div class="flex items-center justify-center min-h-screen px-4">
+            <div class="fixed inset-0 bg-black opacity-30" @click="showAccessModal = false"></div>
+
+            <div class="bg-white rounded-lg shadow-xl z-10 max-w-3xl w-full p-6 relative">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h3 class="text-xl font-bold text-gray-900 flex items-center gap-2">
+                            <i data-lucide="shield" class="w-5 h-5 text-blue-600"></i>
+                            MCP Server Access
+                        </h3>
+                        <p class="text-sm text-gray-600 mt-1" x-text="accessUser ? `User: ${accessUser.username}` : ''"></p>
+                    </div>
+                    <button @click="showAccessModal = false" class="text-gray-400 hover:text-gray-600">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+
+                <div class="mb-4 text-sm text-gray-600">
+                    Default behavior: if no explicit rule exists, access is allowed.
+                </div>
+
+                <div class="border border-gray-200 rounded-lg overflow-hidden">
+                    <div class="grid grid-cols-12 bg-gray-50 px-4 py-2 text-xs font-semibold text-gray-600 uppercase">
+                        <div class="col-span-4">Server</div>
+                        <div class="col-span-5">URL</div>
+                        <div class="col-span-2">Status</div>
+                        <div class="col-span-1 text-right">Access</div>
+                    </div>
+                    <div class="max-h-96 overflow-y-auto">
+                        <template x-if="accessLoading">
+                            <div class="px-4 py-6 text-center text-gray-500">Loading access rules...</div>
+                        </template>
+                        <template x-if="!accessLoading && accessServers.length === 0">
+                            <div class="px-4 py-6 text-center text-gray-500">No MCP servers configured.</div>
+                        </template>
+                        <template x-for="server in accessServers" :key="server.server_id">
+                            <div class="grid grid-cols-12 items-center px-4 py-3 border-t border-gray-100">
+                                <div class="col-span-4">
+                                    <div class="font-medium text-gray-900" x-text="server.name"></div>
+                                    <div class="text-xs text-gray-500" x-text="server.source === 'default' ? 'default allow' : 'explicit rule'"></div>
+                                </div>
+                                <div class="col-span-5 text-xs text-gray-600 truncate" x-text="server.url"></div>
+                                <div class="col-span-2">
+                                    <span class="px-2 py-0.5 text-xs rounded-full"
+                                          :class="server.enabled ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'"
+                                          x-text="server.enabled ? 'Enabled' : 'Disabled'"></span>
+                                </div>
+                                <div class="col-span-1 text-right">
+                                    <label class="inline-flex items-center cursor-pointer">
+                                        <input type="checkbox" class="sr-only peer"
+                                               :checked="server.can_access"
+                                               @change="updateServerAccess(server, $event.target.checked)">
+                                        <div class="w-10 h-5 bg-gray-200 rounded-full peer peer-checked:bg-blue-600 transition-colors"></div>
+                                    </label>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="flex justify-end mt-6">
+                    <button type="button" @click="showAccessModal = false"
+                            class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+                        Close
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -131,10 +206,15 @@
     function usersManager() {
         return {
             showCreateModal: false,
+            showAccessModal: false,
             passwordMatch: null,
+            accessLoading: false,
+            accessUser: null,
+            accessServers: [],
             
             init() {
                 // Load users on component init
+                window.usersManager = this;
                 loadUsers();
             },
             
@@ -182,6 +262,30 @@
                 } catch (error) {
                     alert('Error: ' + error.message);
                 }
+            },
+            async updateServerAccess(server, canAccess) {
+                const userId = this.accessUser?.id;
+                if (!userId) return;
+
+                try {
+                    const response = await fetch(`/admin/api/users/${userId}/mcp-permissions`, {
+                        method: 'PATCH',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            server_id: server.server_id,
+                            can_access: canAccess
+                        })
+                    });
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error || error.detail || 'Failed to update access');
+                    }
+                    server.can_access = canAccess;
+                    server.source = 'explicit';
+                } catch (error) {
+                    alert('Error: ' + error.message);
+                    server.can_access = !canAccess;
+                }
             }
         }
     }
@@ -208,6 +312,10 @@
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${user.last_login_at ? new Date(user.last_login_at).toLocaleString() : 'Never'}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${new Date(user.created_at).toLocaleDateString()}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm space-x-2">
+                        <button onclick="openAccessModal(${user.id}, '${user.username}')" title="MCP Access"
+                                class="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded transition-colors">
+                            <i data-lucide="shield" class="w-4 h-4"></i>
+                        </button>
                         <button onclick="toggleUserStatus(${user.id}, ${user.is_active})" title="Toggle Status"
                                 class="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors">
                             <i data-lucide="power" class="w-4 h-4"></i>
@@ -255,6 +363,35 @@
             alert('Error: ' + error.message);
         }
     }
+
+    async function openAccessModal(userId, username) {
+        const state = window.usersManager;
+        if (!state) {
+            alert('Access control UI not initialized');
+            return;
+        }
+        state.showAccessModal = true;
+        state.accessLoading = true;
+        state.accessUser = { id: userId, username };
+        state.accessServers = [];
+
+        try {
+            const response = await fetch(`/admin/api/users/${userId}/mcp-permissions`);
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || error.detail || 'Failed to load permissions');
+            }
+            const data = await response.json();
+            state.accessUser = data.user || { id: userId, username };
+            state.accessServers = data.servers || [];
+        } catch (error) {
+            alert('Error: ' + error.message);
+        } finally {
+            state.accessLoading = false;
+            lucide.createIcons();
+        }
+    }
+
 
     async function makeSuperuser(userId) {
         if (!confirm('Are you sure you want to make this user a superuser?')) {
