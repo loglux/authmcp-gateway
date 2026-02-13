@@ -68,11 +68,13 @@ authmcp-gateway = "authmcp_gateway.cli:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+include-package-data = true
 
 [tool.setuptools.packages.find]
 where = ["src"]
 include = ["authmcp_gateway*"]
 namespaces = false
+exclude = ["authmcp_gateway.static*", "authmcp_gateway.templates*"]
 
 [tool.setuptools.package-data]
 authmcp_gateway = [
