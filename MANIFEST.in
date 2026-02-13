@@ -5,3 +5,4 @@ include .env.example
 recursive-include src/authmcp_gateway/templates *.html
 recursive-include src/authmcp_gateway/static *
 recursive-include scripts *.py
+prune tests
