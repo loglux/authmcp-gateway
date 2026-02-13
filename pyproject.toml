@@ -74,7 +74,6 @@ include-package-data = true
 where = ["src"]
 include = ["authmcp_gateway*"]
 namespaces = false
-exclude = ["authmcp_gateway.static*", "authmcp_gateway.templates*"]
 
 [tool.setuptools.package-data]
 authmcp_gateway = [
