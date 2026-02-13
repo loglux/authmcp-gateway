@@ -1,11 +1,15 @@
 """Security and MCP request logging functions."""
 
+import json
 import logging
 import sqlite3
+import time
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
+
+_last_mcp_db_check_ts = 0.0
 
 
 def log_security_event(
@@ -100,6 +104,7 @@ def log_mcp_request(
     """
     try:
         from authmcp_gateway.logging_config import get_mcp_logger, log_mcp_request_to_file
+        from authmcp_gateway.config import get_config
         
         # Get username and server_name from database
         username = None
@@ -123,7 +128,7 @@ def log_mcp_request(
             
             conn.close()
         
-        # Log to file
+        # Log to file (default, low overhead)
         mcp_logger = get_mcp_logger()
         log_mcp_request_to_file(
             logger=mcp_logger,
@@ -139,31 +144,65 @@ def log_mcp_request(
             suspicious=is_suspicious
         )
         
-        # Also log to database for admin panel
-        conn_db = sqlite3.connect(db_path)
-        cursor_db = conn_db.cursor()
-        cursor_db.execute(
-            """
-            INSERT INTO mcp_requests (
-                user_id, mcp_server_id, method, tool_name, success,
-                error_message, response_time_ms, ip_address, is_suspicious
+        config = get_config()
+
+        # Optional DB logging for MCP requests (future internal storage)
+        if getattr(config, "mcp_log_db_enabled", False):
+            conn_db = sqlite3.connect(db_path)
+            cursor_db = conn_db.cursor()
+            cursor_db.execute(
+                """
+                INSERT INTO mcp_requests (
+                    user_id, mcp_server_id, method, tool_name, success,
+                    error_message, response_time_ms, ip_address, is_suspicious
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    user_id,
+                    mcp_server_id,
+                    method,
+                    tool_name,
+                    success,
+                    error_message,
+                    response_time_ms,
+                    ip_address,
+                    is_suspicious
+                )
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                user_id,
-                mcp_server_id,
-                method,
-                tool_name,
-                success,
-                error_message,
-                response_time_ms,
-                ip_address,
-                is_suspicious
-            )
-        )
-        conn_db.commit()
-        conn_db.close()
+            conn_db.commit()
+            conn_db.close()
+
+        # Optional DB size/row checks (best-effort)
+        if getattr(config, "mcp_log_db_enabled", False):
+            global _last_mcp_db_check_ts
+            now = time.time()
+            interval = max(1, int(getattr(config, "mcp_log_db_check_interval_seconds", 300)))
+            if now - _last_mcp_db_check_ts >= interval:
+                _last_mcp_db_check_ts = now
+                try:
+                    conn_check = sqlite3.connect(db_path)
+                    cur = conn_check.cursor()
+                    cur.execute("PRAGMA page_count")
+                    page_count = cur.fetchone()[0]
+                    cur.execute("PRAGMA page_size")
+                    page_size = cur.fetchone()[0]
+                    db_mb = (page_count * page_size) / (1024 * 1024)
+                    cur.execute("SELECT COUNT(*) FROM mcp_requests")
+                    mcp_rows = cur.fetchone()[0]
+                    conn_check.close()
+
+                    max_mb = getattr(config, "mcp_log_db_max_mb", 200)
+                    max_rows = getattr(config, "mcp_log_db_max_rows", 200000)
+                    if db_mb > max_mb or mcp_rows > max_rows:
+                        days = getattr(config, "mcp_log_db_days_to_keep", 30)
+                        logger.warning(
+                            f"MCP log DB limits exceeded (size={db_mb:.1f}MB rows={mcp_rows}); "
+                            f"running cleanup with days_to_keep={days}"
+                        )
+                        cleanup_old_logs(db_path, days_to_keep=days)
+                except Exception as e:
+                    logger.debug(f"MCP DB size check failed: {e}")
         
         logger.debug(
             f"MCP request logged: {method} (tool={tool_name or 'N/A'}, "
@@ -190,6 +229,39 @@ def cleanup_old_logs(db_path: str, days_to_keep: int = 30) -> Dict[str, int]:
         
         cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days_to_keep)).isoformat()
         
+        # Optional archive to file before deletion
+        from authmcp_gateway.config import get_config
+        config = get_config()
+        archive_path = getattr(config, "mcp_log_db_archive_path", None)
+        archive_enabled = getattr(config, "mcp_log_db_archive_enabled", False)
+
+        def _archive_table(table_name: str) -> int:
+            if not (archive_enabled and archive_path):
+                return 0
+            cursor.execute(
+                f"SELECT * FROM {table_name} WHERE timestamp < ?",
+                (cutoff_date,)
+            )
+            columns = [d[0] for d in cursor.description]
+            archived = 0
+            with open(archive_path, "a", encoding="utf-8") as f:
+                while True:
+                    rows = cursor.fetchmany(500)
+                    if not rows:
+                        break
+                    for row in rows:
+                        payload = {
+                            "table": table_name,
+                            "row": dict(zip(columns, row))
+                        }
+                        f.write(json.dumps(payload, ensure_ascii=False) + "\n")
+                        archived += 1
+            return archived
+
+        archived_security = _archive_table("security_events")
+        archived_mcp = _archive_table("mcp_requests")
+        archived_auth = _archive_table("auth_audit_log")
+
         # Delete old security events
         cursor.execute(
             "DELETE FROM security_events WHERE timestamp < ?",
@@ -220,6 +292,12 @@ def cleanup_old_logs(db_path: str, days_to_keep: int = 30) -> Dict[str, int]:
             "auth_audit_log": auth_deleted,
             "total": security_deleted + mcp_deleted + auth_deleted
         }
+        if archive_enabled and archive_path:
+            result["archived"] = {
+                "security_events": archived_security,
+                "mcp_requests": archived_mcp,
+                "auth_audit_log": archived_auth
+            }
         
         logger.info(
             f"Cleanup completed: deleted {result['total']} old log entries "

@@ -636,8 +636,9 @@ async def api_create_mcp_server(request: Request) -> JSONResponse:
         server = get_mcp_server(_config.auth.sqlite_path, server_id)
         if server:
             await health_checker.check_server(server)
-    except:
-        pass  # Health checker might not be initialized yet
+    except Exception as e:
+        # Health checker might not be initialized yet; log for visibility.
+        logger.debug(f"Health check skipped for new server {server_id}: {e}")
 
     return JSONResponse({"id": server_id, "message": "Server created successfully"})
 
@@ -690,8 +691,9 @@ async def api_update_mcp_server(request: Request) -> JSONResponse:
             server = get_mcp_server(_config.auth.sqlite_path, server_id)
             if server:
                 await health_checker.check_server(server)
-        except:
-            pass  # Health checker might not be initialized yet
+        except Exception as e:
+            # Health checker might not be initialized yet; log for visibility.
+            logger.debug(f"Health check skipped for updated server {server_id}: {e}")
 
         return JSONResponse({"message": "Server updated successfully"})
     else:
@@ -858,7 +860,10 @@ async def api_get_token_statuses(request: Request) -> JSONResponse:
                 # Parse ISO format datetime
                 try:
                     token_expires_at = datetime.fromisoformat(token_expires_at.replace('Z', '+00:00'))
-                except:
+                except (ValueError, TypeError) as e:
+                    logger.debug(
+                        f"Failed to parse token_expires_at for server {server.get('id')}: {e}"
+                    )
                     token_expires_at = None
 
             if token_expires_at:

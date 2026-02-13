@@ -115,8 +115,11 @@ def _inject_security_schemes(body: bytes, scopes: Optional[str] = None) -> bytes
     """
     try:
         data = json.loads(body.decode("utf-8"))
-    except Exception:
-        logger.warning("Failed to parse tools/list JSON for securitySchemes injection.")
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        logger.warning(
+            "Failed to parse tools/list JSON for securitySchemes injection: %s",
+            e,
+        )
         return body
 
     result = data.get("result")
@@ -221,9 +224,9 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
             payload = json.loads(body.decode("utf-8") or "{}")
             method = payload.get("method")
             request_id = payload.get("id")
-        except Exception:
+        except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as e:
             payload = {}
-            logger.warning("Invalid JSON payload for MCP request.")
+            logger.warning("Invalid JSON payload for MCP request: %s", e)
 
         # Check trusted IP
         client_host = None
@@ -240,12 +243,10 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
         if auth_header.lower().startswith("bearer "):
             token = auth_header.split(" ", 1)[1].strip()
         if auth_header:
-            prefix = token[:8] + "..." if token else ""
             logger.info(
-                "Auth header present. scheme=%s token_len=%s token_prefix=%s",
+                "Auth header present. scheme=%s token_len=%s",
                 auth_header.split(" ", 1)[0],
                 len(token) if token else 0,
-                prefix,
             )
         else:
             logger.info("Auth header missing.")

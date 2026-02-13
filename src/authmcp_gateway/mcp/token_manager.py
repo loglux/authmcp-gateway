@@ -149,7 +149,9 @@ class TokenManager:
             try:
                 old_expires_at = datetime.fromisoformat(server['token_expires_at'])
             except (ValueError, TypeError):
-                pass
+                logger.debug(
+                    f"{server_name}: Invalid token_expires_at format: {server.get('token_expires_at')}"
+                )
 
         # Check if refresh is possible
         if not server.get('refresh_token_hash'):

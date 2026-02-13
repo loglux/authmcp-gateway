@@ -175,6 +175,16 @@ class AppConfig:
 
     # Logging
     log_level: str = "INFO"
+    # NOTE: Optional DB logging for MCP requests (kept for future internal storage)
+    mcp_log_db_enabled: bool = True
+    # Optional archive of old DB logs to file before cleanup
+    mcp_log_db_archive_enabled: bool = False
+    mcp_log_db_archive_path: Optional[str] = None
+    # DB log retention and size/row limits
+    mcp_log_db_days_to_keep: int = 30
+    mcp_log_db_max_mb: int = 200
+    mcp_log_db_max_rows: int = 200000
+    mcp_log_db_check_interval_seconds: int = 300
 
     @property
     def retrieval_config_ttl(self) -> float:
@@ -291,6 +301,13 @@ def load_config() -> AppConfig:
         retrieval_config_path=os.getenv("RETRIEVAL_CONFIG_PATH", "").strip() or None,
         retrieval_config_ttl_seconds=float(os.getenv("RETRIEVAL_CONFIG_TTL_SECONDS", "2.0")),
         log_level=os.getenv("LOG_LEVEL", "INFO").upper(),
+        mcp_log_db_enabled=_env_bool("MCP_LOG_DB_ENABLED", True),
+        mcp_log_db_archive_enabled=_env_bool("MCP_LOG_DB_ARCHIVE_ENABLED", False),
+        mcp_log_db_archive_path=os.getenv("MCP_LOG_DB_ARCHIVE_PATH", "").strip() or None,
+        mcp_log_db_days_to_keep=_env_int("MCP_LOG_DB_DAYS_TO_KEEP", 30),
+        mcp_log_db_max_mb=_env_int("MCP_LOG_DB_MAX_MB", 200),
+        mcp_log_db_max_rows=_env_int("MCP_LOG_DB_MAX_ROWS", 200000),
+        mcp_log_db_check_interval_seconds=_env_int("MCP_LOG_DB_CHECK_INTERVAL_SECONDS", 300),
     )
 
     return app_config

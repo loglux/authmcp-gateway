@@ -5,6 +5,7 @@ Provides programmatic interface for auditing MCP server security.
 Used by both CLI script and admin panel.
 """
 
+import logging
 from typing import Optional, Dict, Any, List, Tuple
 import httpx
 
@@ -51,7 +52,8 @@ class MCPSecurityAuditor:
             
             try:
                 data = response.json()
-            except:
+            except ValueError as e:
+                logger.debug(f"Non-JSON response from MCP server: {e}")
                 data = None
                 
             return response.status_code, data
@@ -360,4 +362,4 @@ class MCPSecurityAuditor:
         }
         
         return export_data
-
+logger = logging.getLogger(__name__)

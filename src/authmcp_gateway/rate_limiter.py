@@ -106,8 +106,9 @@ class RateLimiter:
                                 "retry_after": retry_after
                             }
                         )
-                except Exception:
-                    pass  # Don't fail rate limiting if logging fails
+                except Exception as e:
+                    # Don't fail rate limiting if logging fails
+                    logger.warning(f"Rate limit logging failed for {identifier}: {e}")
                 
                 return False, retry_after
 
