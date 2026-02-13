@@ -198,6 +198,19 @@ async def mcp_server_endpoint(request: Request):
     return await mcp_handler.handle_request(request, server_name=server_name)
 
 
+async def mcp_messages_endpoint(request: Request):
+    """MCP SSE message endpoint (POST only)."""
+    from authmcp_gateway.mcp.sse_handler import handle_sse_message
+    return await handle_sse_message(request, mcp_handler, server_name=None)
+
+
+async def mcp_server_messages_endpoint(request: Request):
+    """MCP SSE message endpoint for a specific server (POST only)."""
+    server_name = request.path_params.get("server_name")
+    from authmcp_gateway.mcp.sse_handler import handle_sse_message
+    return await handle_sse_message(request, mcp_handler, server_name=server_name)
+
+
 # ============================================================================
 # APPLICATION SETUP
 # ============================================================================
@@ -264,6 +277,8 @@ app = Starlette(
     lifespan=lifespan,
     routes=[
         # MCP Gateway
+        Route("/mcp/messages", mcp_messages_endpoint, methods=["POST"]),  # SSE message endpoint
+        Route("/mcp/{server_name}/messages", mcp_server_messages_endpoint, methods=["POST"]),  # SSE message endpoint
         Route("/mcp/{server_name}", mcp_server_endpoint, methods=["GET", "POST"]),  # Server-specific endpoint (GET for HTTP transport, POST for JSON-RPC)
         Route("/mcp", mcp_gateway_endpoint, methods=["GET", "POST"]),  # Aggregated endpoint
 
