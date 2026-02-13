@@ -416,19 +416,28 @@ def get_mcp_request_stats(db_path: str, last_hours: int = 24) -> Dict[str, Any]:
         )
         avg_response_time = cursor.fetchone()[0]
         
-        # Top tools
+        # Top tools (include server info when available)
         cursor.execute(
             """
-            SELECT tool_name, COUNT(*) as count
-            FROM mcp_requests
-            WHERE timestamp >= ? AND tool_name IS NOT NULL
-            GROUP BY tool_name
+            SELECT r.tool_name, r.mcp_server_id, s.name, COUNT(*) as count
+            FROM mcp_requests r
+            LEFT JOIN mcp_servers s ON s.id = r.mcp_server_id
+            WHERE r.timestamp >= ? AND r.tool_name IS NOT NULL
+            GROUP BY r.tool_name, r.mcp_server_id, s.name
             ORDER BY count DESC
             LIMIT 5
             """,
             (cutoff,)
         )
-        top_tools = [{"tool": row[0], "count": row[1]} for row in cursor.fetchall()]
+        top_tools = [
+            {
+                "tool": row[0],
+                "server_id": row[1],
+                "server_name": row[2],
+                "count": row[3],
+            }
+            for row in cursor.fetchall()
+        ]
         
         conn.close()
         

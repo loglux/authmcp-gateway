@@ -782,7 +782,7 @@ async def api_mcp_stats(request: Request) -> JSONResponse:
             {
                 "name": t["tool"],
                 "count": t["count"],
-                "server": "Unknown"  # TODO: Add server info to log
+                "server": t.get("server_name") or "Unknown"
             }
             for t in top_tools
         ]

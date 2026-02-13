@@ -224,7 +224,7 @@ class McpProxy:
         arguments: Optional[Dict[str, Any]] = None,
         user_id: Optional[int] = None,
         server_name: Optional[str] = None
-    ) -> Dict[str, Any]:
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """Route tool call to appropriate backend MCP server.
 
         Args:
@@ -253,7 +253,8 @@ class McpProxy:
             raise PermissionError(f"User {user_id} doesn't have access to server {server['name']}")
 
         # Proxy request to backend server
-        return await self._proxy_tool_call(server, tool_name, arguments)
+        result = await self._proxy_tool_call(server, tool_name, arguments)
+        return result, server
 
     async def _route_tool_to_server(
         self,

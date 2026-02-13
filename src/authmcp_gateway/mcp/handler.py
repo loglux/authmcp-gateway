@@ -197,14 +197,18 @@ class McpHandler:
             import time
             start_time = time.time()
 
-            def _log_tool_call(success: bool, error_msg: Optional[str] = None):
+            def _log_tool_call(
+                success: bool,
+                error_msg: Optional[str] = None,
+                mcp_server_id: Optional[int] = None,
+            ):
                 response_time = int((time.time() - start_time) * 1000)
                 try:
                     from authmcp_gateway.security.logger import log_mcp_request
                     log_mcp_request(
                         db_path=self.db_path,
                         user_id=user_id,
-                        mcp_server_id=None,
+                        mcp_server_id=mcp_server_id,
                         method="tools/call",
                         tool_name=tool_name,
                         success=success,
@@ -217,16 +221,17 @@ class McpHandler:
 
             # Route and execute tool call via proxy
             try:
-                result = await self.proxy.call_tool(
+                result, server = await self.proxy.call_tool(
                     tool_name=tool_name,
                     arguments=arguments,
                     user_id=user_id,
                     server_name=server_name
                 )
+                server_id = server.get("id") if server else None
 
                 # Return result from backend server
                 if "result" in result:
-                    _log_tool_call(True)
+                    _log_tool_call(True, mcp_server_id=server_id)
                     return JSONResponse({
                         "jsonrpc": "2.0",
                         "id": jsonrpc_id,
@@ -234,7 +239,7 @@ class McpHandler:
                     })
                 elif "error" in result:
                     error_msg = str(result.get("error"))
-                    _log_tool_call(False, error_msg)
+                    _log_tool_call(False, error_msg, mcp_server_id=server_id)
                     return JSONResponse({
                         "jsonrpc": "2.0",
                         "id": jsonrpc_id,
@@ -242,7 +247,7 @@ class McpHandler:
                     })
                 else:
                     error_msg = "Invalid response from backend server"
-                    _log_tool_call(False, error_msg)
+                    _log_tool_call(False, error_msg, mcp_server_id=server_id)
                     return self._error_response(
                         jsonrpc_id,
                         -32603,
