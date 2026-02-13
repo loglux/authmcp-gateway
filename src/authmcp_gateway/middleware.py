@@ -203,9 +203,8 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
         if path.startswith("/admin"):
             return await call_next(request)
 
-        # Skip auth for non-POST requests
-        if request.method != "POST":
-            return await call_next(request)
+        # Allow unauthenticated access only for explicitly public endpoints above.
+        # All other methods (including GET for SSE) require auth.
 
         # Only authenticate MCP endpoints
         is_gateway = path == "/mcp"
