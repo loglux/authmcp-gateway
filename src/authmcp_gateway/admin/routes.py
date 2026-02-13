@@ -133,11 +133,13 @@ def _get_sidebar_nav(active_page: str = "") -> str:
     """
     menu_items = [
         ("dashboard", "/admin", '<i class="bi bi-speedometer2"></i> Dashboard'),
-        ("users", "/admin/users", '<i class="bi bi-people"></i> Users'),
+        ("mcp-activity", "/admin/mcp-activity", '<i class="bi bi-activity"></i> MCP Activity'),
         ("mcp-servers", "/admin/mcp-servers", '<i class="bi bi-hdd-network"></i> MCP Servers'),
-        ("settings", "/admin/settings", '<i class="bi bi-gear"></i> Settings'),
-        ("logs", "/admin/logs", '<i class="bi bi-clock-history"></i> Auth Logs'),
+        ("security-logs", "/admin/security-logs", '<i class="bi bi-shield-exclamation"></i> Security Events'),
         ("mcp-audit", "/admin/mcp-audit", '<i class="bi bi-shield-check"></i> Security Audit'),
+        ("settings", "/admin/settings", '<i class="bi bi-gear"></i> Settings'),
+        ("users", "/admin/users", '<i class="bi bi-people"></i> Users'),
+        ("logs", "/admin/logs", '<i class="bi bi-clock-history"></i> Auth Logs'),
         ("api-test", "/admin/api-test", '<i class="bi bi-code-square"></i> API Test'),
     ]
 
@@ -953,6 +955,10 @@ async def admin_mcp_requests_api(request: Request) -> Response:
     
     # Get query parameters
     limit = int(request.query_params.get("limit", "50"))
+    if limit < 1:
+        limit = 1
+    elif limit > 200:
+        limit = 200
     last_seconds = int(request.query_params.get("last_seconds", "60"))
     method = request.query_params.get("method")
     success_param = request.query_params.get("success")

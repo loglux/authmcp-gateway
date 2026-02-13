@@ -148,7 +148,7 @@
             </div>
             <div class="p-6">
                 <div class="space-y-3" x-show="servers.length > 0">
-                    <template x-for="server in servers" :key="server.id">
+                    <template x-for="server in servers.slice(0, 5)" :key="server.id">
                         <div class="p-4 bg-gray-50 rounded-lg border-l-4" 
                              :class="{
                                  'border-emerald-500': server.status === 'online',
@@ -165,7 +165,7 @@
                                        }"></i>
                                     <div>
                                         <div class="font-semibold text-gray-900" x-text="server.name"></div>
-                                        <div class="text-xs text-gray-500" x-text="server.endpoint"></div>
+                                        <div class="text-xs text-gray-500" x-text="server.url"></div>
                                     </div>
                                 </div>
                                 <div class="flex items-center gap-2">
@@ -181,6 +181,9 @@
                             </div>
                         </div>
                     </template>
+                </div>
+                <div x-show="servers.length > 5" class="text-center mt-4">
+                    <a href="/admin/mcp-servers" class="text-blue-600 hover:underline text-sm">View all servers</a>
                 </div>
                 <div x-show="servers.length === 0" class="text-center py-8 text-gray-500">
                     <i data-lucide="inbox" class="w-12 h-12 mx-auto mb-2 text-gray-300"></i>
@@ -255,7 +258,7 @@
             </template>
             <div x-show="recentRequests.length === 0" class="p-8 text-center text-gray-500">
                 <i data-lucide="inbox" class="w-12 h-12 mx-auto mb-2 text-gray-300"></i>
-                <p>No recent activity</p>
+                <p>No recent activity in the last 2 hours</p>
             </div>
         </div>
     </div>
@@ -325,7 +328,8 @@
             async loadServers() {
                 try {
                     const response = await fetch('/admin/api/mcp-servers');
-                    this.servers = await response.json();
+                    const data = await response.json();
+                    this.servers = data.servers || [];
                 } catch (error) {
                     console.error('Failed to load servers:', error);
                 }
@@ -343,7 +347,7 @@
             
             async loadRecentRequests() {
                 try {
-                    const response = await fetch('/admin/api/mcp-requests?limit=10');
+                    const response = await fetch('/admin/api/mcp-requests?limit=10&last_seconds=7200');
                     const data = await response.json();
                     this.recentRequests = data.requests || [];
                 } catch (error) {
@@ -354,7 +358,8 @@
             async loadTokenWarnings() {
                 try {
                     const response = await fetch('/admin/api/mcp-servers/token-status');
-                    const servers = await response.json();
+                    const data = await response.json();
+                    const servers = data.servers || [];
                     
                     this.tokenWarnings = servers.filter(s => {
                         const status = s.token_status?.status;

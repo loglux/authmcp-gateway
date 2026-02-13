@@ -474,7 +474,7 @@ def get_mcp_requests(
     method: str = None,
     success: bool = None,
 ) -> list:
-    """Get recent MCP requests from log files.
+    """Get recent MCP requests from DB (fallback to log files).
     
     Args:
         db_path: Path to SQLite database (ignored, kept for compatibility)
@@ -487,39 +487,99 @@ def get_mcp_requests(
         List of MCP request records
     """
     try:
+        from authmcp_gateway.config import get_config
+        config = get_config()
+
+        # Calculate time threshold (match SQLite CURRENT_TIMESTAMP format)
+        threshold = datetime.now(timezone.utc) - timedelta(seconds=last_seconds)
+        threshold_sql = threshold.strftime("%Y-%m-%d %H:%M:%S")
+
+        if getattr(config, "mcp_log_db_enabled", False):
+            conn = sqlite3.connect(db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+
+            query = """
+                SELECT
+                    r.id,
+                    r.user_id,
+                    u.username,
+                    r.mcp_server_id,
+                    s.name AS server_name,
+                    r.method,
+                    r.tool_name,
+                    r.success,
+                    r.error_message,
+                    r.response_time_ms,
+                    r.ip_address,
+                    r.is_suspicious,
+                    r.timestamp
+                FROM mcp_requests r
+                LEFT JOIN users u ON u.id = r.user_id
+                LEFT JOIN mcp_servers s ON s.id = r.mcp_server_id
+                WHERE r.timestamp >= ?
+            """
+            params = [threshold_sql]
+
+            if method:
+                query += " AND r.method = ?"
+                params.append(method)
+
+            if success is not None:
+                query += " AND r.success = ?"
+                params.append(1 if success else 0)
+
+            query += " ORDER BY r.timestamp DESC LIMIT ?"
+            params.append(limit)
+
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            conn.close()
+
+            return [
+                {
+                    "id": row["id"],
+                    "user_id": row["user_id"],
+                    "username": row["username"],
+                    "mcp_server_id": row["mcp_server_id"],
+                    "server_name": row["server_name"],
+                    "method": row["method"],
+                    "tool_name": row["tool_name"],
+                    "success": bool(row["success"]),
+                    "error_message": row["error_message"],
+                    "response_time_ms": row["response_time_ms"],
+                    "ip_address": row["ip_address"],
+                    "is_suspicious": bool(row["is_suspicious"]),
+                    "timestamp": row["timestamp"],
+                }
+                for row in rows
+            ]
+
+        # Fallback to file-based logs if DB logging disabled
         from pathlib import Path
         import json
-        
+
         log_file = Path("data/logs/mcp_requests.log")
         if not log_file.exists():
             return []
-        
-        # Calculate time threshold
-        threshold = datetime.now(timezone.utc) - timedelta(seconds=last_seconds)
-        
+
         requests = []
-        with open(log_file, 'r') as f:
+        with open(log_file, "r") as f:
             for line in f:
                 try:
                     entry = json.loads(line.strip())
-                    
-                    # Parse timestamp
+
                     timestamp_str = entry.get("timestamp", "").replace("Z", "+00:00")
                     entry_time = datetime.fromisoformat(timestamp_str)
-                    
-                    # Filter by time
                     if entry_time < threshold:
                         continue
-                    
-                    # Filter by method
+
                     if method and entry.get("method") != method:
                         continue
-                    
-                    # Filter by success
+
                     if success is not None and entry.get("success") != success:
                         continue
-                    
-                    # Format for API response
+
                     requests.append({
                         "id": len(requests) + 1,  # Synthetic ID
                         "user_id": entry.get("user_id"),
@@ -535,16 +595,13 @@ def get_mcp_requests(
                         "is_suspicious": entry.get("suspicious", False),
                         "timestamp": entry.get("timestamp")
                     })
-                    
                 except (json.JSONDecodeError, ValueError) as e:
                     logger.warning(f"Failed to parse MCP log entry: {e}")
                     continue
-        
-        # Sort by timestamp descending and limit
+
         requests.sort(key=lambda x: x["timestamp"], reverse=True)
         return requests[:limit]
         
     except Exception as e:
-        logger.error(f"Error reading MCP requests from file: {e}")
-        return []
+        logger.error(f"Error reading MCP requests: {e}")
         return []
