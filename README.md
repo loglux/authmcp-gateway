@@ -53,7 +53,7 @@ AuthMCP Gateway provides centralized authentication, authorization, and monitori
 - Secure credential storage with encrypted database support
 - CORS protection and request validation
 - Security event logging and monitoring
-- **File-based logging** - No database bloat, 30-day rotation
+- **File-based logging** - JSON logs for auth & MCP requests with rotation; security events remain in SQLite for audit/queries
 - Built-in security testing guide
 
 ## 📚 Documentation
@@ -184,9 +184,9 @@ authmcp-gateway --help                   # Show all options
 
 ```bash
 # Gateway Settings
-GATEWAY_PORT=9105              # Gateway port (default: 8000)
-JWT_SECRET=your-secret-key     # JWT signing key (auto-generated if not set)
-REQUIRE_AUTH=true              # Enable authentication (default: true)
+GATEWAY_PORT=9105              # Host port mapping for Docker (container listens on 8000)
+JWT_SECRET_KEY=your-secret-key # JWT signing key (auto-generated if not set)
+AUTH_REQUIRED=true             # Enable authentication (default: true)
 
 # Admin Settings
 ADMIN_USERNAME=admin           # Initial admin username
@@ -281,6 +281,7 @@ curl -X POST http://localhost:9105/admin/api/mcp-servers \
 ### Protected Endpoints
 - `POST /mcp` - Aggregated MCP endpoint (all servers)
 - `POST /mcp/{server_name}` - Specific MCP server endpoint
+- `GET /mcp` - Streamable MCP endpoint (SSE/stream clients)
 - `GET /auth/me` - Current user info
 - `POST /auth/logout` - Logout
 
@@ -378,7 +379,7 @@ docker logs -f authmcp-gateway
 **Cannot access admin panel:**
 - Ensure you've completed the setup wizard at `/setup`
 - Check that cookies are enabled
-- Verify JWT_SECRET is set correctly
+- Verify JWT_SECRET_KEY is set correctly
 
 **MCP server shows as offline:**
 - Check server URL is correct and reachable

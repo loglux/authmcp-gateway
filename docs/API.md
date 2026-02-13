@@ -344,6 +344,7 @@ NEW_TOKEN=$(curl -s -X POST https://your-domain.com/auth/refresh \
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/mcp` | Aggregated endpoint (all servers) |
+| `GET` | `/mcp` | Streamable MCP endpoint (SSE/stream clients) |
 | `POST` | `/mcp/{server_name}` | Server-specific endpoint |
 
 ### Admin API Endpoints

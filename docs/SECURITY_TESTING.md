@@ -67,16 +67,11 @@ curl -X POST http://localhost:9105/mcp \
 
 **Expected result:**
 - HTTP Status: 401
-- JSON error response with authentication requirement
+- JSON error response indicating authentication is required
 
 ```json
 {
-  "jsonrpc": "2.0",
-  "id": "auth-error",
-  "error": {
-    "code": -32001,
-    "message": "Unauthorized: Bearer token required"
-  }
+  "detail": "Unauthorized"
 }
 ```
 
@@ -97,7 +92,7 @@ curl -X POST http://localhost:9105/mcp \
 
 **Expected result:**
 - HTTP Status: 401
-- JSON error with "Invalid token" message
+- JSON error indicating invalid/expired token (401)
 
 ---
 
@@ -326,7 +321,7 @@ Before deploying to production, ensure:
 - [ ] HSTS headers enabled (optional but recommended)
 
 ### ✓ Secrets Management
-- [ ] `JWT_SECRET` is randomized (not default)
+- [ ] `JWT_SECRET_KEY` is randomized (not default)
 - [ ] Admin password is strong
 - [ ] Credentials not in version control
 
