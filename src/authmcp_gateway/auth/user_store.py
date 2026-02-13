@@ -507,11 +507,11 @@ def hash_token(token: str) -> str:
 
 
 def get_user_access_token(db_path: str, user_id: int) -> Optional[Dict[str, Any]]:
-    """Get the stored access token for a user, if any."""
+    """Get the stored access token metadata for a user, if any."""
     with get_db_connection(db_path) as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT access_token, token_jti, expires_at FROM user_access_tokens WHERE user_id = ?",
+            "SELECT token_jti, expires_at FROM user_access_tokens WHERE user_id = ?",
             (user_id,)
         )
         row = cursor.fetchone()
@@ -539,8 +539,20 @@ def upsert_user_access_token(
                 expires_at = excluded.expires_at,
                 updated_at = CURRENT_TIMESTAMP
             """,
-            (user_id, access_token, token_jti, expires_value)
+            (user_id, "", token_jti, expires_value)
         )
+
+
+def get_current_user_token_jti(db_path: str, user_id: int) -> Optional[str]:
+    """Return the current token JTI for a user, if set."""
+    with get_db_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT token_jti FROM user_access_tokens WHERE user_id = ?",
+            (user_id,)
+        )
+        row = cursor.fetchone()
+        return row["token_jti"] if row else None
 
 
 def get_all_users(db_path: str) -> list[Dict[str, Any]]:

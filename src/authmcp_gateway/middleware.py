@@ -261,7 +261,7 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
                 try:
                     # Import here to avoid circular dependencies
                     from .auth.jwt_handler import verify_token, get_token_jti
-                    from .auth.user_store import is_token_blacklisted
+                    from .auth.user_store import is_token_blacklisted, get_current_user_token_jti
 
                     token_payload = verify_token(token, "access", self.jwt_config)
 
@@ -270,6 +270,17 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
                     if jti and is_token_blacklisted(self.auth_db_path, jti):
                         logger.warning("Token is blacklisted. jti=%s", jti)
                         return _unauthorized(self.mcp_public_url, self.oauth_scopes)
+
+                    # Enforce single active token per user (if recorded)
+                    if "sub" in token_payload:
+                        try:
+                            user_id_int = int(token_payload["sub"])
+                            current_jti = get_current_user_token_jti(self.auth_db_path, user_id_int)
+                            if current_jti and jti and jti != current_jti:
+                                logger.warning("Token is not current. jti=%s expected=%s", jti, current_jti)
+                                return _unauthorized(self.mcp_public_url, self.oauth_scopes)
+                        except (ValueError, TypeError):
+                            pass
 
                     scopes = token_payload.get("scope") or token_payload.get("scp")
                     if scopes:

@@ -140,6 +140,7 @@ async def user_login_api(request: Request) -> JSONResponse:
         False,
         config.jwt,
         config.jwt.access_token_expire_minutes,
+        current_token=request.cookies.get("user_token"),
     )
 
     response = JSONResponse({"success": True})
@@ -196,6 +197,7 @@ async def user_account_token(request: Request) -> JSONResponse:
         False,
         config.jwt,
         config.jwt.access_token_expire_minutes,
+        current_token=token,
     )
 
     response = JSONResponse({"access_token": access_token})
@@ -293,6 +295,7 @@ async def user_account_info(request: Request) -> JSONResponse:
         False,
         config.jwt,
         config.jwt.access_token_expire_minutes,
+        current_token=token,
     )
 
     expires_at = None
@@ -872,6 +875,7 @@ async def admin_settings(request: Request) -> HTMLResponse:
         is_superuser,
         config.jwt,
         config.jwt.admin_token_expire_minutes,
+        current_token=request.cookies.get("admin_token"),
     )
     token_expires_in = format_expires_in(exp_dt)
     if not token_expires_in:
@@ -904,6 +908,7 @@ async def api_admin_access_token(request: Request) -> JSONResponse:
         is_superuser,
         config.jwt,
         config.jwt.admin_token_expire_minutes,
+        current_token=request.cookies.get("admin_token"),
     )
     token_expires_in = format_expires_in(exp_dt)
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Optional, Tuple
 
-from authmcp_gateway.auth.jwt_handler import create_access_token, decode_token_unsafe
+from authmcp_gateway.auth.jwt_handler import create_access_token, decode_token_unsafe, verify_token
 from authmcp_gateway.auth.user_store import (
     get_user_access_token,
     upsert_user_access_token,
@@ -50,21 +50,28 @@ def get_or_create_user_token(
     is_superuser: bool,
     config: JWTConfig,
     expire_minutes: int,
+    current_token: Optional[str] = None,
 ) -> Tuple[str, datetime]:
-    """Return valid token if exists, otherwise rotate and return new one."""
+    """Return valid token if current token matches stored JTI, otherwise rotate."""
     existing = get_user_access_token(db_path, user_id)
-    if existing:
-        token = existing.get("access_token")
-        token_jti = existing.get("token_jti")
-        exp_dt = _parse_expires_at(existing.get("expires_at"))
-        expired = exp_dt is None or exp_dt <= datetime.now(timezone.utc)
-        if token and not expired and not (token_jti and is_token_blacklisted(db_path, token_jti)):
-            return token, exp_dt
-        if token_jti and exp_dt and not is_token_blacklisted(db_path, token_jti):
-            try:
-                blacklist_token(db_path, token_jti, exp_dt)
-            except Exception:
-                pass
+    exp_dt = _parse_expires_at(existing.get("expires_at")) if existing else None
+    stored_jti = existing.get("token_jti") if existing else None
+
+    if current_token:
+        try:
+            payload = verify_token(current_token, "access", config)
+            token_jti = payload.get("jti")
+            if stored_jti and token_jti == stored_jti and exp_dt and exp_dt > datetime.now(timezone.utc):
+                if not is_token_blacklisted(db_path, token_jti):
+                    return current_token, exp_dt
+        except Exception:
+            pass
+
+    if stored_jti and exp_dt and not is_token_blacklisted(db_path, stored_jti):
+        try:
+            blacklist_token(db_path, stored_jti, exp_dt)
+        except Exception:
+            pass
 
     token = create_access_token(
         user_id=user_id,

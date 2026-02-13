@@ -5,7 +5,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response, RedirectResponse, JSONResponse
 from authmcp_gateway.auth.jwt_handler import verify_token, decode_token_unsafe
-from authmcp_gateway.auth.user_store import is_token_blacklisted, get_user_by_id
+from authmcp_gateway.auth.user_store import is_token_blacklisted, get_user_by_id, get_current_user_token_jti
 from authmcp_gateway.config import AppConfig
 from authmcp_gateway.setup_wizard import is_setup_required
 
@@ -75,6 +75,11 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
             # Check if user is superuser
             user_id = int(payload.get("sub"))
             is_superuser = payload.get("is_superuser", False)
+
+            # Enforce single active token per user (if recorded)
+            current_jti = get_current_user_token_jti(self.config.auth.sqlite_path, user_id)
+            if current_jti and jti and jti != current_jti:
+                return self._unauthorized(request, "Token has been rotated")
             
             if not is_superuser:
                 # Double-check in database

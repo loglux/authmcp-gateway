@@ -264,6 +264,7 @@ async def admin_login_api(request: Request) -> Response:
             True,
             _config.jwt,
             _config.jwt.admin_token_expire_minutes,
+            current_token=request.cookies.get("admin_token"),
         )
         
         # Update last login
