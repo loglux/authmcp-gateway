@@ -1005,9 +1005,24 @@ async def api_run_mcp_audit(request: Request) -> JSONResponse:
     if not url.startswith(("http://", "https://")):
         return JSONResponse({"error": "URL must start with http:// or https://"}, status_code=400)
     
-    # Run security audit
+    # Run security audit (blocking I/O) in a worker thread
+    import anyio
     auditor = MCPSecurityAuditor(url, bearer_token)
-    results = auditor.run_all_tests()
+    results = await anyio.to_thread.run_sync(auditor.run_all_tests)
+
+    # Ensure details render cleanly in UI
+    try:
+        import json as _json
+        for test in results.get("tests", []):
+            details = test.get("details")
+            if details is None or isinstance(details, str):
+                continue
+            try:
+                test["details"] = _json.dumps(details, ensure_ascii=False, indent=2)
+            except Exception:
+                test["details"] = str(details)
+    except Exception:
+        pass
     
     return JSONResponse(results)
 

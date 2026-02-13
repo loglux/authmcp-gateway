@@ -96,8 +96,8 @@ def _unauthorized(mcp_public_url: str, scopes: Optional[str] = None) -> Response
     Returns:
         401 Unauthorized response
     """
-    return PlainTextResponse(
-        "Unauthorized",
+    return JSONResponse(
+        {"detail": "Unauthorized"},
         status_code=401,
         headers={"WWW-Authenticate": _auth_challenge_header(mcp_public_url, scopes)},
     )

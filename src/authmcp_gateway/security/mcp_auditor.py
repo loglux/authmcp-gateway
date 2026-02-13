@@ -57,8 +57,25 @@ class MCPSecurityAuditor:
                 data = None
                 
             return response.status_code, data
+        except httpx.TimeoutException:
+            return 0, {"error": "timeout"}
         except httpx.RequestError as e:
             return 0, {"error": str(e)}
+
+    @staticmethod
+    def _jsonrpc_error_message(data: Optional[Dict]) -> Optional[str]:
+        if not isinstance(data, dict):
+            return None
+        if "error" not in data:
+            return None
+        err = data.get("error")
+        if isinstance(err, dict):
+            message = err.get("message") or str(err)
+            code = err.get("code")
+            if code is not None:
+                return f"JSON-RPC error: {message} (code {code})"
+            return f"JSON-RPC error: {message}"
+        return f"JSON-RPC error: {err}"
             
     def test_unauthenticated_access(self) -> Dict[str, Any]:
         """Test 1: Check if MCP endpoint is open without authentication"""
@@ -71,6 +88,13 @@ class MCPSecurityAuditor:
                 "status": "error",
                 "name": test_name,
                 "message": "Server unreachable",
+                "details": data
+            }
+        elif status == 200 and self._jsonrpc_error_message(data):
+            result = {
+                "status": "warn",
+                "name": test_name,
+                "message": self._jsonrpc_error_message(data),
                 "details": data
             }
         elif status == 401 or status == 403:
@@ -117,6 +141,13 @@ class MCPSecurityAuditor:
                 "name": test_name,
                 "message": "Server rejects invalid tokens",
                 "details": None
+            }
+        elif status == 200 and self._jsonrpc_error_message(data):
+            result = {
+                "status": "warn",
+                "name": test_name,
+                "message": self._jsonrpc_error_message(data),
+                "details": data
             }
         elif status == 200:
             result = {
@@ -165,6 +196,13 @@ class MCPSecurityAuditor:
                 "message": f"✅ Token works - {tools_count} tools accessible",
                 "details": data
             }
+        elif status == 200 and self._jsonrpc_error_message(data):
+            result = {
+                "status": "warn",
+                "name": test_name,
+                "message": self._jsonrpc_error_message(data),
+                "details": data
+            }
         elif status == 401 or status == 403:
             result = {
                 "status": "fail",
@@ -198,6 +236,13 @@ class MCPSecurityAuditor:
                 "name": test_name,
                 "message": "Tool execution requires authentication",
                 "details": None
+            }
+        elif status == 200 and self._jsonrpc_error_message(data):
+            result = {
+                "status": "warn",
+                "name": test_name,
+                "message": self._jsonrpc_error_message(data),
+                "details": data
             }
         elif status == 200:
             result = {
@@ -240,11 +285,18 @@ class MCPSecurityAuditor:
                 "message": "Initialize requires authentication",
                 "details": None
             }
-        elif status == 200:
+        elif status == 200 and self._jsonrpc_error_message(data):
             result = {
                 "status": "warn",
                 "name": test_name,
-                "message": "Initialize method is open (may be intentional)",
+                "message": self._jsonrpc_error_message(data),
+                "details": data
+            }
+        elif status == 200:
+            result = {
+                "status": "pass",
+                "name": test_name,
+                "message": "Initialize is publicly accessible for MCP handshake (expected)",
                 "details": data
             }
         else:
@@ -264,7 +316,14 @@ class MCPSecurityAuditor:
         
         status, data = self.mcp_request("invalid_method_xyz")
         
-        if data and isinstance(data, dict):
+        if self._jsonrpc_error_message(data):
+            result = {
+                "status": "warn",
+                "name": test_name,
+                "message": self._jsonrpc_error_message(data),
+                "details": data
+            }
+        elif data and isinstance(data, dict):
             error_msg = str(data)
             
             sensitive_patterns = [

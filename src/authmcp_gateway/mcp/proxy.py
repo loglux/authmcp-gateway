@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timezone
 
@@ -15,6 +16,7 @@ from .store import (
 )
 
 logger = logging.getLogger(__name__)
+_MCP_DEBUG = os.getenv("MCP_DEBUG", "").lower() in ("1", "true", "yes", "on")
 
 
 def normalize_server_name(name: str) -> str:
@@ -120,6 +122,14 @@ class McpProxy:
                     },
                     headers=headers
                 )
+                if _MCP_DEBUG:
+                    snippet = response.text[:300] if response.text else ""
+                    logger.debug(
+                        "MCP_DEBUG tools/list %s -> HTTP %s in proxy. Body: %s",
+                        server_url,
+                        response.status_code,
+                        snippet
+                    )
 
                 # Handle 401 with token refresh (NEW)
                 if response.status_code == 401 and server.get('refresh_token_hash'):
@@ -371,6 +381,15 @@ class McpProxy:
                     },
                     headers=headers
                 )
+                if _MCP_DEBUG:
+                    snippet = response.text[:300] if response.text else ""
+                    logger.debug(
+                        "MCP_DEBUG tools/call %s tool=%s -> HTTP %s. Body: %s",
+                        server_url,
+                        tool_name,
+                        response.status_code,
+                        snippet
+                    )
 
                 # Handle 401 with token refresh (NEW)
                 if response.status_code == 401 and server.get('refresh_token_hash'):

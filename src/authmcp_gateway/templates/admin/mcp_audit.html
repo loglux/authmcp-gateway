@@ -198,7 +198,12 @@ function displayResults(data) {
                     <div class="flex-1">
                         <h4 class="font-semibold ${statusTextColors[test.status]}">${test.name}</h4>
                         <p class="text-sm text-gray-700 mt-1">${test.message}</p>
-                        ${test.details ? `<p class="text-xs text-gray-600 mt-2 font-mono">${test.details}</p>` : ''}
+                        ${test.details ? `
+                            <details class="mt-2">
+                                <summary class="text-xs text-blue-600 cursor-pointer">Show details</summary>
+                                <pre class="text-xs text-gray-600 mt-2 font-mono whitespace-pre-wrap">${formatDetails(test.details)}</pre>
+                            </details>
+                        ` : ''}
                     </div>
                 </div>
             </div>
@@ -206,6 +211,16 @@ function displayResults(data) {
     }).join('');
     
     document.getElementById('testResults').innerHTML = testsHtml;
+}
+
+function formatDetails(details) {
+    if (details === null || details === undefined) return '';
+    if (typeof details === 'string') return details;
+    try {
+        return JSON.stringify(details, null, 2);
+    } catch (_) {
+        return String(details);
+    }
 }
 
 async function exportResults() {
