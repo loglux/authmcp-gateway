@@ -333,6 +333,13 @@ You can refresh tokens with the helper script without going through the manual a
 python3 scripts/codex_refresh_mcp.py rag https://your-domain.com/oauth/token
 ```
 
+### Codex Multi-Machine Note
+
+If Codex runs on multiple machines, each machine stores its own local tokens. In that case, a login from one
+machine can invalidate tokens on another when **Enforce Single Session** is enabled (one active token per user).
+Disable **Enforce Single Session** in the admin settings to avoid forced logouts in multi-machine setups.
+
+
 
 ## 🔐 Security
 
