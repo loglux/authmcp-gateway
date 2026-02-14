@@ -60,7 +60,7 @@ AuthMCP Gateway provides centralized authentication, authorization, and monitori
 
 ## 📚 Documentation
 
-📚 **[Project Wiki](https://github.com/loglux/authmcp-gateway/wiki)** - Full documentation index
+📚 **Documentation** - See the sections below for setup and usage
 
 ## 📸 Screenshots
 
@@ -287,8 +287,6 @@ Codex uses OAuth Authorization Code + PKCE and Dynamic Client Registration (DCR)
 without an auto-launching browser, you must manually open the authorization URL and then **call the localhost
 callback URL yourself** to finish the login.
 
-See the wiki page: `Codex-Registration` for a full CLI transcript.
-
 Steps:
 
 1. Add the MCP server in Codex:
@@ -426,7 +424,7 @@ docker logs -f authmcp-gateway
 - Verify Authorization header format: `Bearer YOUR_TOKEN`
 - Check user has permission for the MCP server
 
-For more help, see the [Project Wiki](https://github.com/loglux/authmcp-gateway/wiki).
+For more help, see the troubleshooting and usage sections above.
 
 ## License
 
