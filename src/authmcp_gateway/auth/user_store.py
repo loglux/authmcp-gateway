@@ -469,10 +469,10 @@ def log_auth_event(
     success: bool = True,
     details: Optional[str] = None
 ):
-    """Log authentication event to file (no longer uses database).
+    """Log authentication event to database.
 
     Args:
-        db_path: Ignored (kept for backward compatibility)
+        db_path: Path to SQLite database
         event_type: Type of event (e.g., "login", "logout", "token_refresh", "failed_login")
         user_id: Optional user ID
         username: Optional username (useful when user_id not available)
@@ -481,17 +481,64 @@ def log_auth_event(
         success: Whether the event was successful
         details: Optional additional details
     """
-    logger = get_auth_logger()
-    log_auth_event_to_file(
-        logger=logger,
-        event_type=event_type,
-        user_id=user_id,
-        username=username,
-        ip_address=ip_address,
-        user_agent=user_agent,
-        success=success,
-        details=details
-    )
+    try:
+        import sqlite3
+        from datetime import datetime, timezone
+
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO auth_audit_log (
+                event_type, user_id, username, ip_address,
+                user_agent, success, details, timestamp
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                event_type,
+                user_id,
+                username,
+                ip_address,
+                user_agent,
+                success,
+                details,
+                datetime.now(timezone.utc).isoformat()
+            )
+        )
+
+        conn.commit()
+        conn.close()
+
+        # Also log to file for debugging (optional)
+        logger = get_auth_logger()
+        log_auth_event_to_file(
+            logger=logger,
+            event_type=event_type,
+            user_id=user_id,
+            username=username,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            success=success,
+            details=details
+        )
+
+    except Exception as e:
+        # Fallback to file logging if database fails
+        import logging
+        logging.error(f"Failed to log auth event to database: {e}")
+        logger = get_auth_logger()
+        log_auth_event_to_file(
+            logger=logger,
+            event_type=event_type,
+            user_id=user_id,
+            username=username,
+            ip_address=ip_address,
+            user_agent=user_agent,
+            success=success,
+            details=details
+        )
 
 
 def hash_token(token: str) -> str:

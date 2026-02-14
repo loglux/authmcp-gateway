@@ -646,63 +646,69 @@ async def api_create_user(request: Request) -> JSONResponse:
 
 @api_error_handler
 async def api_logs(request: Request) -> JSONResponse:
-    """Get auth logs from file with pagination."""
+    """Get auth logs from database with pagination."""
     event_type = request.query_params.get("event_type")
     limit = int(request.query_params.get("limit", "50"))
     offset = int(request.query_params.get("offset", "0"))
     days = request.query_params.get("days")  # Filter by days (e.g., "1", "7", "30")
 
-    log_file = Path("data/logs/auth.log")
-    
-    if not log_file.exists():
-        return JSONResponse({"logs": [], "total": 0, "limit": limit, "offset": offset})
-    
-    # Read and parse log file
-    logs = []
-    cutoff_date = None
-    if days:
-        cutoff_date = datetime.now(timezone.utc) - timedelta(days=int(days))
-    
     try:
-        with open(log_file, 'r', encoding='utf-8') as f:
-            for line in f:
-                try:
-                    log_entry = json.loads(line.strip())
-                    
-                    # Filter by event type (with legacy MCP OAuth mapping)
-                    if event_type:
-                        entry_type = log_entry.get("event_type")
-                        if entry_type != event_type:
-                            details = log_entry.get("details") or ""
-                            if event_type == "mcp_oauth_token" and entry_type == "login":
-                                if "Authorization code flow" in details or "password grant" in details:
-                                    log_entry = dict(log_entry)
-                                    log_entry["event_type"] = "mcp_oauth_token"
-                                else:
-                                    continue
-                            else:
-                                continue
-                    
-                    # Filter by date
-                    if cutoff_date:
-                        log_time = datetime.fromisoformat(log_entry["timestamp"].replace("Z", "+00:00"))
-                        if log_time < cutoff_date:
-                            continue
-                    
-                    logs.append(log_entry)
-                except (json.JSONDecodeError, KeyError, ValueError):
-                    continue
+        import sqlite3
+        conn = sqlite3.connect(_config.auth.sqlite_path)
+        cursor = conn.cursor()
+
+        # Build WHERE clause
+        where_clauses = []
+        params = []
+
+        if event_type:
+            where_clauses.append("event_type = ?")
+            params.append(event_type)
+
+        if days:
+            cutoff_date = (datetime.now(timezone.utc) - timedelta(days=int(days))).isoformat()
+            where_clauses.append("timestamp >= ?")
+            params.append(cutoff_date)
+
+        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
+
+        # Get total count
+        cursor.execute(f"SELECT COUNT(*) FROM auth_audit_log {where_sql}", params)
+        total = cursor.fetchone()[0]
+
+        # Get paginated results (sorted by timestamp descending)
+        cursor.execute(
+            f"""
+            SELECT event_type, user_id, username, ip_address, user_agent,
+                   success, details, timestamp
+            FROM auth_audit_log
+            {where_sql}
+            ORDER BY timestamp DESC
+            LIMIT ? OFFSET ?
+            """,
+            params + [limit, offset]
+        )
+
+        logs = []
+        for row in cursor.fetchall():
+            logs.append({
+                "event_type": row[0],
+                "user_id": row[1],
+                "username": row[2],
+                "ip_address": row[3],
+                "user_agent": row[4],
+                "success": bool(row[5]),
+                "details": row[6],
+                "timestamp": row[7]
+            })
+
+        conn.close()
+
+        return JSONResponse({"logs": logs, "total": total, "limit": limit, "offset": offset})
+
     except Exception as e:
-        logger.error(f"Failed to read auth logs: {e}")
+        logger.error(f"Failed to read auth logs from database: {e}")
         return JSONResponse({"error": "Failed to read logs"}, status_code=500)
-    
-    # Sort by timestamp descending (newest first)
-    logs.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
-    
-    total = len(logs)
-    paginated_logs = logs[offset:offset + limit]
-    
-    return JSONResponse({"logs": paginated_logs, "total": total, "limit": limit, "offset": offset})
 
 
 @api_error_handler
