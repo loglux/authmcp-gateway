@@ -10,6 +10,8 @@
 
 AuthMCP Gateway provides centralized authentication, authorization, and monitoring for MCP servers. It acts as a secure proxy between clients and your MCP backends, adding JWT-based authentication, rate limiting, real-time monitoring, and comprehensive security logging.
 
+**OAuth + DCR ready:** the gateway supports OAuth 2.0 Authorization Code flow with Dynamic Client Registration (DCR), so MCP clients like Codex can self-register and authenticate without manual client provisioning.
+
 ## 📋 Table of Contents
 
 - [✨ Features](#-features)
@@ -31,6 +33,7 @@ AuthMCP Gateway provides centralized authentication, authorization, and monitori
 
 ### 🔐 **Authentication & Authorization**
 - **OAuth 2.0 + JWT** - Industry-standard authentication flow
+- **Dynamic Client Registration (DCR)** - MCP clients can self-register for OAuth
 - **User Management** - Multi-user support with role-based access
 - **Backend Token Management** - Secure storage and auto-refresh of MCP server credentials
 - **Rate Limiting** - Per-user request throttling with configurable limits
