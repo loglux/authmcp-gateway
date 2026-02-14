@@ -248,14 +248,26 @@
             },
             
             async saveSettings() {
+                const parseIntStrict = (id, min, max, label) => {
+                    const raw = document.getElementById(id).value;
+                    const value = Number.parseInt(raw, 10);
+                    if (!Number.isFinite(value)) {
+                        throw new Error(`${label} must be a number`);
+                    }
+                    if (value < min || value > max) {
+                        throw new Error(`${label} must be between ${min} and ${max}`);
+                    }
+                    return value;
+                };
+
                 const settings = {
                     jwt: {
-                        access_token_expire_minutes: parseInt(document.getElementById('accessTokenTTL').value),
-                        refresh_token_expire_days: parseInt(document.getElementById('refreshTokenTTL').value),
+                        access_token_expire_minutes: parseIntStrict('accessTokenTTL', 1, 525600, 'Access token lifetime'),
+                        refresh_token_expire_days: parseIntStrict('refreshTokenTTL', 1, 365, 'Refresh token lifetime'),
                         enforce_single_session: document.getElementById('enforceSingleSession').checked
                     },
                     password_policy: {
-                        min_length: parseInt(document.getElementById('passwordMinLength').value),
+                        min_length: parseIntStrict('passwordMinLength', 4, 128, 'Password minimum length'),
                         require_uppercase: document.getElementById('requireUppercase').checked,
                         require_lowercase: document.getElementById('requireLowercase').checked,
                         require_digit: document.getElementById('requireDigit').checked,
@@ -304,11 +316,29 @@
     }
 
     function copyToClipboard(text, message = 'Copied!') {
-        navigator.clipboard.writeText(text).then(() => {
+        const canUseClipboard = navigator.clipboard && window.isSecureContext;
+        if (canUseClipboard) {
+            navigator.clipboard.writeText(text).then(() => {
+                showToast(message);
+            }).catch(() => {
+                alert('Failed to copy. Please select and copy manually.');
+            });
+            return;
+        }
+        try {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.setAttribute('readonly', '');
+            textarea.style.position = 'absolute';
+            textarea.style.left = '-9999px';
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
             showToast(message);
-        }).catch(() => {
+        } catch (err) {
             alert('Failed to copy. Please select and copy manually.');
-        });
+        }
     }
 
     function copyAccessToken() {
