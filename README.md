@@ -57,7 +57,6 @@ AuthMCP Gateway provides centralized authentication, authorization, and monitori
 - CORS protection and request validation
 - Security event logging and monitoring
 - **File-based logging** - JSON logs for auth & MCP requests with rotation; security events remain in SQLite for audit/queries
-- Built-in security testing guide
 
 ## 📚 Documentation
 
@@ -282,14 +281,6 @@ curl -X POST http://localhost:9105/admin/api/mcp-servers \
 - `GET /auth/me` - Current user info
 - `POST /auth/logout` - Logout
 
-### Admin Endpoints
-- `GET /admin` - Admin dashboard
-- `GET /admin/mcp-activity` - Real-time MCP monitoring
-- `GET /admin/security-logs` - Security events
-- `GET /admin/users` - User management
-- `GET /admin/mcp-servers` - MCP server configuration
-- Plus full REST API for management
-
 ## 🤖 Codex OAuth (DCR) Login (Manual Callback)
 
 Codex uses OAuth Authorization Code + PKCE and Dynamic Client Registration (DCR). When running in a terminal
@@ -344,14 +335,6 @@ You can refresh tokens with the helper script without going through the manual a
 python3 scripts/codex_refresh_mcp.py rag https://your-domain.com/oauth/token
 ```
 
-
-### Calling RAG Tools From Codex (Example)
-
-In Codex chat, you can invoke tools directly, for example:
-- `mcp__rag__list_knowledge_bases`
-- `mcp__rag__rag_query`
-
-Or ask Codex to list tools: `show rag tools`.
 
 ## 🔐 Security
 
