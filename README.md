@@ -63,13 +63,6 @@ AuthMCP Gateway provides centralized authentication, authorization, and monitori
 
 📚 **[Complete Documentation](docs/README.md)** - Full documentation index
 
-**Quick Links:**
-- **[Deployment Guide](docs/DEPLOYMENT.md)** - Production setup with HTTPS, Docker, cloud platforms
-- **[Logging Architecture](docs/LOGGING.md)** - File-based logging, log formats, analysis
-- **[API Reference](docs/API.md)** - REST API documentation with examples
-- **[Security Testing](docs/SECURITY_TESTING.md)** - Security verification and testing
-- **[Publishing Guide](docs/PUBLISHING.md)** - Publishing to PyPI
-
 ## 📸 Screenshots
 
 <details>
