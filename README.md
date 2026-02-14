@@ -61,7 +61,7 @@ AuthMCP Gateway provides centralized authentication, authorization, and monitori
 
 ## 📚 Documentation
 
-📚 **[Complete Documentation](docs/README.md)** - Full documentation index
+📚 **[Project Wiki](https://github.com/loglux/authmcp-gateway/wiki)** - Full documentation index
 
 ## 📸 Screenshots
 
