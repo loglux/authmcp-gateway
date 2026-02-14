@@ -2,6 +2,7 @@
 
 import logging
 import sqlite3
+from dataclasses import replace
 from typing import Optional, Tuple
 
 import jwt
@@ -40,6 +41,7 @@ from .user_store import (
     revoke_refresh_token,
     save_refresh_token,
     update_last_login,
+    upsert_user_access_token,
     verify_refresh_token,
 )
 
@@ -88,6 +90,23 @@ def _get_config() -> AppConfig:
     if _config is None:
         raise RuntimeError("Config not initialized. Call set_config() first.")
     return _config
+
+
+def _get_password_policy(config: AppConfig):
+    """Get effective password policy from settings manager if available."""
+    try:
+        settings = get_settings_manager()
+        policy = settings.get("password_policy", default={}) or {}
+        return replace(
+            config.auth,
+            password_min_length=policy.get("min_length", config.auth.password_min_length),
+            password_require_uppercase=policy.get("require_uppercase", config.auth.password_require_uppercase),
+            password_require_lowercase=policy.get("require_lowercase", config.auth.password_require_lowercase),
+            password_require_digit=policy.get("require_digit", config.auth.password_require_digit),
+            password_require_special=policy.get("require_special", config.auth.password_require_special),
+        )
+    except Exception:
+        return config.auth
 
 
 def _get_client_ip(request: Request) -> Optional[str]:
@@ -202,7 +221,8 @@ async def register(request: Request) -> JSONResponse:
             )
 
     # Validate password strength
-    is_valid, error_msg = validate_password_strength(user_data.password, config.auth)
+    policy = _get_password_policy(config)
+    is_valid, error_msg = validate_password_strength(user_data.password, policy)
     if not is_valid:
         logger.warning("Registration failed: weak password for %s", user_data.username)
         return _error_response(400, error_msg, "WEAK_PASSWORD")
@@ -852,7 +872,7 @@ async def oauth_token(request: Request) -> JSONResponse:
 
             # Save refresh token
             refresh_jti = get_token_jti(refresh_token)
-            refresh_hash = hash_password(refresh_jti)
+            refresh_hash = hash_token(refresh_jti)
 
             # Calculate expiration from token
             from datetime import datetime, timezone
@@ -864,6 +884,18 @@ async def oauth_token(request: Request) -> JSONResponse:
                 user["id"],
                 refresh_hash,
                 expires_at
+            )
+
+            # Update current access token JTI in database
+            access_jti = get_token_jti(access_token)
+            access_payload = decode_token_unsafe(access_token)
+            access_expires_at = datetime.fromtimestamp(access_payload["exp"], tz=timezone.utc)
+            upsert_user_access_token(
+                _config.auth.sqlite_path,
+                user["id"],
+                "",  # Don't store full token
+                access_jti,
+                access_expires_at
             )
 
             # Update last login
@@ -933,7 +965,7 @@ async def oauth_token(request: Request) -> JSONResponse:
 
             # Verify refresh token is not revoked
             refresh_jti = get_token_jti(refresh_token_value)
-            refresh_hash = hash_password(refresh_jti)
+            refresh_hash = hash_token(refresh_jti)
             user_id = verify_refresh_token(_config.auth.sqlite_path, refresh_hash)
 
             if not user_id:
@@ -965,6 +997,19 @@ async def oauth_token(request: Request) -> JSONResponse:
                 bool(user["is_superuser"]),
                 _config.jwt,
                 expire_minutes=access_ttl
+            )
+
+            # Update current access token JTI in database
+            from datetime import datetime, timezone
+            access_jti = get_token_jti(new_access_token)
+            access_payload = decode_token_unsafe(new_access_token)
+            access_expires_at = datetime.fromtimestamp(access_payload["exp"], tz=timezone.utc)
+            upsert_user_access_token(
+                _config.auth.sqlite_path,
+                user["id"],
+                "",  # Don't store full token
+                access_jti,
+                access_expires_at
             )
 
             logger.info(f"OAuth token refreshed for user: {user['username']}")
@@ -1066,7 +1111,7 @@ async def oauth_token(request: Request) -> JSONResponse:
             # Save refresh token
             from datetime import datetime, timezone
             refresh_jti = get_token_jti(refresh_token)
-            refresh_hash = hash_password(refresh_jti)
+            refresh_hash = hash_token(refresh_jti)
             refresh_payload = decode_token_unsafe(refresh_token)
             expires_at = datetime.fromtimestamp(refresh_payload["exp"], tz=timezone.utc)
 
@@ -1075,6 +1120,18 @@ async def oauth_token(request: Request) -> JSONResponse:
                 user["id"],
                 refresh_hash,
                 expires_at
+            )
+
+            # Update current access token JTI in database
+            access_jti = get_token_jti(access_token)
+            access_payload = decode_token_unsafe(access_token)
+            access_expires_at = datetime.fromtimestamp(access_payload["exp"], tz=timezone.utc)
+            upsert_user_access_token(
+                _config.auth.sqlite_path,
+                user["id"],
+                "",  # Don't store full token
+                access_jti,
+                access_expires_at
             )
 
             # Update last login

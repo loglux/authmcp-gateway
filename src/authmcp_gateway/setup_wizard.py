@@ -4,7 +4,10 @@ from typing import Optional
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
 from authmcp_gateway.auth.user_store import get_all_users, create_user
+from dataclasses import replace
+
 from authmcp_gateway.auth.password import hash_password, validate_password_strength
+from authmcp_gateway.settings_manager import get_settings_manager
 from authmcp_gateway.config import AppConfig
 
 logger = logging.getLogger(__name__)
@@ -285,8 +288,23 @@ async def create_admin_user(request: Request) -> JSONResponse:
                 status_code=400
             )
         
-        # Validate password strength
-        is_valid, error_msg = validate_password_strength(password, _config.auth)
+        # Validate password strength against settings (if available)
+        policy = _config.auth
+        try:
+            settings = get_settings_manager()
+            policy_data = settings.get("password_policy", default={}) or {}
+            policy = replace(
+                policy,
+                password_min_length=policy_data.get("min_length", policy.password_min_length),
+                password_require_uppercase=policy_data.get("require_uppercase", policy.password_require_uppercase),
+                password_require_lowercase=policy_data.get("require_lowercase", policy.password_require_lowercase),
+                password_require_digit=policy_data.get("require_digit", policy.password_require_digit),
+                password_require_special=policy_data.get("require_special", policy.password_require_special),
+            )
+        except Exception:
+            pass
+
+        is_valid, error_msg = validate_password_strength(password, policy)
         if not is_valid:
             return JSONResponse({"detail": error_msg}, status_code=400)
         
