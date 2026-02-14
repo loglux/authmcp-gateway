@@ -1,2 +1,2 @@
 #!/bin/sh
-python3 scripts/codex_refresh_mcp.py rag https://mcp.log7.uk/oauth/token --restart
+python3 scripts/codex_refresh_mcp.py rag https://mcp.log7.uk/oauth/token

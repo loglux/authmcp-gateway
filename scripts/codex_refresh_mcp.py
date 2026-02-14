@@ -6,8 +6,8 @@ import urllib.request
 
 
 def _usage() -> None:
-    print("Usage: codex_refresh_mcp.py <server_name> <oauth_token_url> [--restart]", file=sys.stderr)
-    print("Example: codex_refresh_mcp.py rag https://mcp.log7.uk/oauth/token --restart", file=sys.stderr)
+    print("Usage: codex_refresh_mcp.py <server_name> <oauth_token_url>", file=sys.stderr)
+    print("Example: codex_refresh_mcp.py rag https://mcp.log7.uk/oauth/token", file=sys.stderr)
 
 
 def _load_credentials(path: str) -> dict:
@@ -38,16 +38,12 @@ def _refresh_token(token_url: str, client_id: str, refresh_token: str) -> dict:
 
 
 def main() -> int:
-    if len(sys.argv) not in (3, 4):
+    if len(sys.argv) != 3:
         _usage()
         return 2
 
     server_name = sys.argv[1]
     token_url = sys.argv[2]
-    restart = len(sys.argv) == 4 and sys.argv[3] == "--restart"
-    if len(sys.argv) == 4 and not restart:
-        _usage()
-        return 2
 
     codex_home = os.environ.get("CODEX_HOME", os.path.expanduser("~/.codex"))
     cred_path = os.path.join(codex_home, ".credentials.json")
@@ -95,11 +91,6 @@ def main() -> int:
     creds[entry_key] = entry
     _save_credentials(cred_path, creds)
     print("OK: access_token refreshed")
-    if restart:
-        print("Restarting Codex...")
-        os.system("pkill -f '^codex' >/dev/null 2>&1")
-        # Launch new Codex session if available in PATH.
-        os.system("codex >/dev/null 2>&1 &")
     return 0
 
 

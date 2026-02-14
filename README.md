@@ -319,6 +319,37 @@ You should see: `Authentication complete. You may close this window.`
 
 Once completed, Codex shows the MCP server as logged in.
 
+### Headless Token Storage (Important)
+
+On headless servers, Codex may fail to read MCP OAuth tokens from the OS keyring. If you see "Auth required"
+errors even when tokens are valid, force file-based storage:
+
+```toml
+# ~/.codex/config.toml
+mcp_oauth_credentials_store = "file"
+```
+
+Reference: [Codex Config Reference](https://developers.openai.com/codex/config-reference)
+
+Without this parameter Codex fails to refresh tokens because it looks for a keyring security service and
+fails. That forces you to re-login each time again and again following the manual procedure above.
+After updating the config, restart Codex.
+
+If you are already locked out and see this warning:
+
+```
+⚠ The rag MCP server is not logged in. Run `codex mcp login rag`.
+⚠ MCP startup incomplete (failed: rag)
+```
+
+You can refresh tokens with the helper script without going through the manual authentication procedure again:
+
+```bash
+python3 scripts/codex_refresh_mcp.py rag https://your-domain.com/oauth/token
+```
+
+There is also a small wrapper script: `scripts/codex-refresh` (same behavior, shorter command).
+
 ### Calling RAG Tools From Codex (Example)
 
 In Codex chat, you can invoke tools directly, for example:
