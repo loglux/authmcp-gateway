@@ -324,11 +324,41 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
             # Require auth for tools/call
             if method in {"tools/call"} and not token_payload and not trusted_ip:
                 logger.info("Unauthorized tools/call (missing or invalid token). id=%s", request_id)
+
+                # Log security event
+                try:
+                    from .security.logger import log_security_event
+                    log_security_event(
+                        db_path=self.auth_db_path,
+                        event_type="unauthorized_access",
+                        severity="medium",
+                        ip_address=client_host,
+                        endpoint=path,
+                        details={"request_id": request_id, "mcp_method": method}
+                    )
+                except Exception as log_err:
+                    logger.error(f"Failed to log security event: {log_err}")
+
                 return _unauthorized(self.mcp_public_url, self.oauth_scopes)
 
             # Require auth for all MCP methods except initialization
             if method not in {None, "initialize", "notifications/initialized"} and not token_payload and not trusted_ip:
                 logger.info("Unauthorized MCP call. method=%s id=%s", method, request_id)
+
+                # Log security event
+                try:
+                    from .security.logger import log_security_event
+                    log_security_event(
+                        db_path=self.auth_db_path,
+                        event_type="unauthorized_access",
+                        severity="medium",
+                        ip_address=client_host,
+                        endpoint=path,
+                        details={"request_id": request_id, "mcp_method": method}
+                    )
+                except Exception as log_err:
+                    logger.error(f"Failed to log security event: {log_err}")
+
                 return _unauthorized(self.mcp_public_url, self.oauth_scopes)
 
         # Process request
