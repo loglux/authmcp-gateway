@@ -338,6 +338,16 @@ NEW_TOKEN=$(curl -s -X POST https://your-domain.com/auth/refresh \
 | `POST` | `/auth/logout` | Revoke access token |
 | `GET` | `/authorize` | OAuth2 authorization (PKCE) |
 | `GET` | `/auth/me` | Get current user profile |
+| `GET` | `/.well-known/oauth-authorization-server` | OAuth2 discovery |
+
+### OAuth Dynamic Client Registration (DCR)
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/oauth/register` | Create a new OAuth client (DCR) |
+| `GET` | `/oauth/register/{client_id}` | Get a registered OAuth client |
+| `PUT` | `/oauth/register/{client_id}` | Update a registered OAuth client |
+| `DELETE` | `/oauth/register/{client_id}` | Delete a registered OAuth client |
 
 ### MCP Protocol Endpoints
 
@@ -359,6 +369,9 @@ NEW_TOKEN=$(curl -s -X POST https://your-domain.com/auth/refresh \
 | `DELETE` | `/admin/api/logs/cleanup` | Delete old authentication logs |
 | `GET` | `/admin/api/mcp-requests` | Get MCP request logs (live monitoring) |
 | `GET` | `/admin/api/stats` | Get system statistics |
+| `GET` | `/admin/api/oauth-clients` | List OAuth clients (DCR) |
+| `POST` | `/admin/api/oauth-clients/{client_id}/rotate` | Rotate OAuth client token |
+| `DELETE` | `/admin/api/oauth-clients/{client_id}` | Delete OAuth client |
 
 ---
 

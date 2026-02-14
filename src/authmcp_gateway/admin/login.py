@@ -255,9 +255,9 @@ async def admin_login_api(request: Request) -> Response:
             )
             return JSONResponse({"detail": "Account disabled"}, status_code=403)
         
-        from authmcp_gateway.auth.token_service import get_or_create_user_token
+        from authmcp_gateway.auth.token_service import get_or_create_admin_token
 
-        access_token, _ = get_or_create_user_token(
+        access_token, _ = get_or_create_admin_token(
             _config.auth.sqlite_path,
             user["id"],
             user["username"],

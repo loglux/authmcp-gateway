@@ -8,6 +8,8 @@ from starlette.responses import HTMLResponse, RedirectResponse, Response
 from .oauth_code_flow import generate_authorization_code
 from .user_store import get_user_by_username
 from .password import verify_password
+from .client_store import get_oauth_client_by_client_id, is_redirect_uri_allowed, update_oauth_client_last_seen
+from ..config import get_config
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +63,28 @@ async def authorize_page(request: Request) -> Response:
             status_code=400
         )
 
+    # Enforce registered clients if DCR is enabled
+    try:
+        config = get_config()
+        if config.auth.allow_dcr:
+            client = get_oauth_client_by_client_id(config.auth.sqlite_path, client_id)
+            if not client:
+                return HTMLResponse(
+                    "<h1>Error</h1><p>Unknown client_id.</p>",
+                    status_code=400
+                )
+            if not is_redirect_uri_allowed(client, redirect_uri):
+                return HTMLResponse(
+                    "<h1>Error</h1><p>redirect_uri not registered for this client.</p>",
+                    status_code=400
+                )
+    except Exception as e:
+        logger.error(f"DCR validation failed: {e}")
+        return HTMLResponse(
+            "<h1>Error</h1><p>Client validation failed.</p>",
+            status_code=400
+        )
+
     # GET request: show login form
     if request.method == 'GET':
         return _show_login_form(
@@ -70,10 +94,21 @@ async def authorize_page(request: Request) -> Response:
 
     # POST request: process login
     elif request.method == 'POST':
-        return await _process_login(
+        response = await _process_login(
             request, client_id, redirect_uri, code_challenge,
             code_challenge_method, state, scope
         )
+        try:
+            config = get_config()
+            update_oauth_client_last_seen(
+                config.auth.sqlite_path,
+                client_id,
+                request.client.host if request.client else None,
+                request.headers.get("user-agent"),
+            )
+        except Exception as e:
+            logger.debug(f"Failed to update client last_seen: {e}")
+        return response
 
     return HTMLResponse("Method not allowed", status_code=405)
 

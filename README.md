@@ -276,6 +276,7 @@ curl -X POST http://localhost:9105/admin/api/mcp-servers \
 - `POST /auth/login` - User login
 - `POST /auth/register` - User registration (if enabled)
 - `POST /auth/refresh` - Refresh access token
+- `POST /oauth/register` - OAuth dynamic client registration (if enabled)
 - `GET /.well-known/oauth-authorization-server` - OAuth discovery
 
 ### Protected Endpoints
@@ -292,6 +293,39 @@ curl -X POST http://localhost:9105/admin/api/mcp-servers \
 - `GET /admin/users` - User management
 - `GET /admin/mcp-servers` - MCP server configuration
 - Plus full REST API for management
+
+## 🤖 Codex OAuth (DCR) Login (Manual Callback)
+
+Codex uses OAuth Authorization Code + PKCE and Dynamic Client Registration (DCR). When running in a terminal
+without an auto-launching browser, you must manually open the authorization URL and then **call the localhost
+callback URL yourself** to finish the login.
+
+See the wiki page: `Codex-Registration` for a full CLI transcript.
+
+Steps:
+
+1. Add the MCP server in Codex:
+```bash
+codex mcp add rag --url https://your-domain.com/mcp/your-backend
+```
+2. Codex prints an **Authorize URL**. Open it in your browser.
+3. Complete the login (admin/user credentials).
+4. After successful login you will be redirected to a `http://127.0.0.1:<port>/callback?...` URL.
+   Copy that full URL and call it from another terminal:
+```bash
+curl "http://127.0.0.1:<port>/callback?code=...&state=..."
+```
+You should see: `Authentication complete. You may close this window.`
+
+Once completed, Codex shows the MCP server as logged in.
+
+### Calling RAG Tools From Codex (Example)
+
+In Codex chat, you can invoke tools directly, for example:
+- `mcp__rag__list_knowledge_bases`
+- `mcp__rag__rag_query`
+
+Or ask Codex to list tools: `show rag tools`.
 
 ## 🔐 Security
 

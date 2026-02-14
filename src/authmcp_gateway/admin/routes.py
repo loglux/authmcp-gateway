@@ -101,7 +101,7 @@ async def user_login_api(request: Request) -> JSONResponse:
         log_auth_event,
     )
     from authmcp_gateway.auth.password import verify_password
-    from authmcp_gateway.auth.token_service import get_or_create_user_token
+    from authmcp_gateway.auth.token_service import get_or_create_admin_token
     from authmcp_gateway.config import load_config
 
     body = await request.json()
@@ -133,7 +133,7 @@ async def user_login_api(request: Request) -> JSONResponse:
     update_last_login(_config.auth.sqlite_path, user["id"])
 
     config = load_config()
-    access_token, _ = get_or_create_user_token(
+    access_token, _ = get_or_create_admin_token(
         _config.auth.sqlite_path,
         user["id"],
         user["username"],
@@ -166,7 +166,7 @@ async def user_account_token(request: Request) -> JSONResponse:
     """Return access token for authenticated non-admin user."""
     from authmcp_gateway.auth.jwt_handler import verify_token, decode_token_unsafe
     from authmcp_gateway.auth.user_store import is_token_blacklisted, get_user_by_id
-    from authmcp_gateway.auth.token_service import get_or_create_user_token
+    from authmcp_gateway.auth.token_service import get_or_create_admin_token
     from authmcp_gateway.config import load_config
 
     token = request.cookies.get("user_token")
@@ -190,7 +190,7 @@ async def user_account_token(request: Request) -> JSONResponse:
         username = user["username"] if user else ""
 
     config = load_config()
-    access_token, _ = get_or_create_user_token(
+    access_token, _ = get_or_create_admin_token(
         _config.auth.sqlite_path,
         int(user_id),
         username,
@@ -216,7 +216,7 @@ async def user_account_rotate_token(request: Request) -> JSONResponse:
     """Rotate access token for authenticated non-admin user."""
     from authmcp_gateway.auth.jwt_handler import verify_token, decode_token_unsafe
     from authmcp_gateway.auth.user_store import is_token_blacklisted
-    from authmcp_gateway.auth.token_service import rotate_user_token
+    from authmcp_gateway.auth.token_service import rotate_admin_token
     from authmcp_gateway.config import load_config
 
     token = request.cookies.get("user_token")
@@ -236,7 +236,7 @@ async def user_account_rotate_token(request: Request) -> JSONResponse:
     config = load_config()
     user_id = int(payload.get("sub"))
     username = payload.get("username")
-    new_token, _ = rotate_user_token(
+    new_token, _ = rotate_admin_token(
         _config.auth.sqlite_path,
         user_id,
         username,
@@ -262,7 +262,7 @@ async def user_account_info(request: Request) -> JSONResponse:
     """Return user info, token expiry, and accessible MCP servers."""
     from authmcp_gateway.auth.jwt_handler import verify_token, decode_token_unsafe
     from authmcp_gateway.auth.user_store import is_token_blacklisted, get_user_by_id
-    from authmcp_gateway.auth.token_service import get_or_create_user_token
+    from authmcp_gateway.auth.token_service import get_or_create_admin_token
     from authmcp_gateway.mcp.store import list_mcp_servers
     from datetime import datetime, timezone
     from authmcp_gateway.config import load_config
@@ -288,7 +288,7 @@ async def user_account_info(request: Request) -> JSONResponse:
         username = user["username"] if user else ""
 
     config = load_config()
-    access_token, exp_dt = get_or_create_user_token(
+    access_token, exp_dt = get_or_create_admin_token(
         _config.auth.sqlite_path,
         int(user_id),
         username,
@@ -414,6 +414,7 @@ def _get_sidebar_nav(active_page: str = "") -> str:
         ("security-logs", "/admin/security-logs", '<i class="bi bi-shield-exclamation"></i> Security Events'),
         ("mcp-audit", "/admin/mcp-audit", '<i class="bi bi-shield-check"></i> Security Audit'),
         ("settings", "/admin/settings", '<i class="bi bi-gear"></i> Settings'),
+        ("oauth-clients", "/admin/oauth-clients", '<i class="bi bi-shield-lock"></i> OAuth Clients'),
         ("users", "/admin/users", '<i class="bi bi-people"></i> Users'),
         ("logs", "/admin/logs", '<i class="bi bi-clock-history"></i> Auth Logs'),
         ("api-test", "/admin/api-test", '<i class="bi bi-code-square"></i> API Test'),
@@ -448,6 +449,12 @@ async def admin_dashboard(_: Request) -> HTMLResponse:
 async def admin_users(_: Request) -> HTMLResponse:
     """Admin users management page."""
     return render_template("admin/users.html", active_page="users")
+
+
+@requires_admin
+async def admin_oauth_clients(_: Request) -> HTMLResponse:
+    """Admin OAuth clients management page."""
+    return render_template("admin/oauth_clients.html", active_page="oauth-clients")
 
 
 @requires_admin
@@ -870,11 +877,11 @@ async def admin_settings(request: Request) -> HTMLResponse:
     
     # Reuse stored token or rotate if needed
     from datetime import datetime, timezone, timedelta
-    from authmcp_gateway.auth.token_service import get_or_create_user_token, format_expires_in
+    from authmcp_gateway.auth.token_service import get_or_create_admin_token, format_expires_in
     from authmcp_gateway.config import load_config
     config = load_config()
     
-    access_token, exp_dt = get_or_create_user_token(
+    access_token, exp_dt = get_or_create_admin_token(
         _config.auth.sqlite_path,
         user_id,
         username,
@@ -903,11 +910,11 @@ async def api_admin_access_token(request: Request) -> JSONResponse:
     user_id = request.state.user_id
     username = request.state.username
     is_superuser = request.state.is_superuser
-    from authmcp_gateway.auth.token_service import get_or_create_user_token, format_expires_in
+    from authmcp_gateway.auth.token_service import get_or_create_admin_token, format_expires_in
     from authmcp_gateway.config import load_config
 
     config = load_config()
-    access_token, exp_dt = get_or_create_user_token(
+    access_token, exp_dt = get_or_create_admin_token(
         _config.auth.sqlite_path,
         user_id,
         username,
@@ -927,12 +934,12 @@ async def api_admin_rotate_token(request: Request) -> JSONResponse:
     user_id = request.state.user_id
     username = request.state.username
     is_superuser = request.state.is_superuser
-    from authmcp_gateway.auth.token_service import rotate_user_token, format_expires_in
+    from authmcp_gateway.auth.token_service import rotate_admin_token, format_expires_in
     from authmcp_gateway.config import load_config
 
     config = load_config()
     current_token = request.cookies.get("admin_token")
-    new_token, exp_dt = rotate_user_token(
+    new_token, exp_dt = rotate_admin_token(
         _config.auth.sqlite_path,
         user_id,
         username,
@@ -978,6 +985,40 @@ async def api_save_settings(request: Request) -> JSONResponse:
     settings_manager.save()
 
     return JSONResponse({"success": True, "message": "Settings saved successfully"})
+
+
+# ============================================================================
+# OAUTH CLIENTS MANAGEMENT
+# ============================================================================
+
+@api_error_handler
+async def api_list_oauth_clients(_: Request) -> JSONResponse:
+    """List OAuth clients."""
+    from authmcp_gateway.auth.client_store import list_oauth_clients
+    clients = list_oauth_clients(_config.auth.sqlite_path)
+    return JSONResponse(clients)
+
+
+@api_error_handler
+async def api_rotate_oauth_client_token(request: Request) -> JSONResponse:
+    """Rotate registration token for OAuth client."""
+    client_id = request.path_params["client_id"]
+    from authmcp_gateway.auth.client_store import rotate_registration_token
+    new_token = rotate_registration_token(_config.auth.sqlite_path, client_id)
+    if not new_token:
+        return JSONResponse({"error": "Client not found"}, status_code=404)
+    return JSONResponse({"registration_access_token": new_token})
+
+
+@api_error_handler
+async def api_delete_oauth_client(request: Request) -> JSONResponse:
+    """Delete OAuth client."""
+    client_id = request.path_params["client_id"]
+    from authmcp_gateway.auth.client_store import delete_oauth_client
+    deleted = delete_oauth_client(_config.auth.sqlite_path, client_id)
+    if not deleted:
+        return JSONResponse({"error": "Client not found"}, status_code=404)
+    return JSONResponse({"success": True})
 
 
 # ============================================================================

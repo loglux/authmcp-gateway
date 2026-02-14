@@ -106,6 +106,9 @@ class AuthConfig:
     """Authentication and password policy configuration."""
 
     allow_registration: bool = False
+    allow_dcr: bool = False
+    dcr_require_initial_token: bool = False
+    dcr_initial_access_token: Optional[str] = None
     sqlite_path: str = "data/auth.db"
     password_min_length: int = 8
     password_require_uppercase: bool = True
@@ -123,6 +126,8 @@ class RateLimitConfig:
     login_window: int = 60  # Seconds
     register_limit: int = 3  # Max registrations
     register_window: int = 300  # 5 minutes
+    dcr_limit: int = 10  # Max dynamic client registrations
+    dcr_window: int = 3600  # 1 hour
     cleanup_interval: int = 3600  # Cleanup old entries every hour
 
 
@@ -257,6 +262,9 @@ def load_config() -> AppConfig:
     # Auth Configuration
     auth_config = AuthConfig(
         allow_registration=_env_bool("ALLOW_REGISTRATION", False),
+        allow_dcr=_env_bool("ALLOW_DCR", False),
+        dcr_require_initial_token=_env_bool("DCR_REQUIRE_INITIAL_TOKEN", False),
+        dcr_initial_access_token=os.getenv("DCR_INITIAL_ACCESS_TOKEN", "").strip() or None,
         sqlite_path=os.getenv("AUTH_SQLITE_PATH", "data/auth.db"),
         password_min_length=_env_int("PASSWORD_MIN_LENGTH", 8),
         password_require_uppercase=_env_bool("PASSWORD_REQUIRE_UPPERCASE", True),
@@ -272,6 +280,8 @@ def load_config() -> AppConfig:
         login_window=_env_int("RATE_LIMIT_LOGIN_WINDOW", 60),
         register_limit=_env_int("RATE_LIMIT_REGISTER_MAX", 3),
         register_window=_env_int("RATE_LIMIT_REGISTER_WINDOW", 300),
+        dcr_limit=_env_int("RATE_LIMIT_DCR_MAX", 10),
+        dcr_window=_env_int("RATE_LIMIT_DCR_WINDOW", 3600),
         cleanup_interval=_env_int("RATE_LIMIT_CLEANUP_INTERVAL", 3600),
     )
 

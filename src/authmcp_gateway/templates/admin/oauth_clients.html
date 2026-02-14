@@ -1,0 +1,211 @@
+{% extends "admin/base.html" %}
+
+{% block title %}OAuth Clients - Auth MCP Admin{% endblock %}
+
+{% block content %}
+<div x-data="oauthClientsManager()">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8">
+        <div>
+            <h1 class="text-3xl font-bold text-gray-900 flex items-center gap-3">
+                <i data-lucide="shield-lock" class="w-8 h-8 text-blue-600"></i>
+                OAuth Clients
+            </h1>
+            <p class="text-gray-600 mt-1">Manage dynamic client registrations</p>
+        </div>
+        <button 
+            @click="loadClients()"
+            class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2"
+        >
+            <i data-lucide="rotate-ccw" class="w-4 h-4"></i>
+            Refresh
+        </button>
+    </div>
+
+    <!-- Clients Table -->
+    <div class="bg-white rounded-xl shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="bg-gradient-to-r from-blue-50 to-cyan-50">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Client ID</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Name</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Auth Method</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Redirect URIs</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Created</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Last Seen</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="bg-white divide-y divide-gray-200" id="oauthClientsTableBody">
+                    <tr>
+                        <td colspan="7" class="px-6 py-8 text-center">
+                            <div class="flex justify-center">
+                                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                            </div>
+                            <p class="text-gray-500 mt-2">Loading clients...</p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Token Modal -->
+    <div x-show="showTokenModal"
+         x-cloak
+         class="fixed inset-0 z-50 overflow-y-auto"
+         @keydown.escape.window="showTokenModal = false">
+        <div class="flex items-center justify-center min-h-screen px-4">
+            <div class="fixed inset-0 bg-black opacity-30" @click="showTokenModal = false"></div>
+            <div class="bg-white rounded-lg shadow-xl z-10 max-w-lg w-full p-6 relative">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-xl font-bold text-gray-900 flex items-center gap-2">
+                        <i data-lucide="key" class="w-5 h-5 text-blue-600"></i>
+                        Registration Token
+                    </h3>
+                    <button @click="showTokenModal = false" class="text-gray-400 hover:text-gray-600">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+                <p class="text-sm text-gray-600 mb-3">Copy this token now. It won't be shown again.</p>
+                <div class="bg-gray-50 border border-gray-200 rounded-lg p-3 font-mono text-xs break-all" x-text="tokenValue"></div>
+                <div class="flex justify-end mt-4">
+                    <button @click="copyToken()" class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2">
+                        <i data-lucide="copy" class="w-4 h-4"></i>
+                        Copy
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    [x-cloak] { display: none !important; }
+</style>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function oauthClientsManager() {
+        return {
+            showTokenModal: false,
+            tokenValue: '',
+
+            init() {
+                window.oauthClientsManager = this;
+                this.loadClients();
+            },
+
+            async loadClients() {
+                const tbody = document.getElementById('oauthClientsTableBody');
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="px-6 py-8 text-center">
+                            <div class="flex justify-center">
+                                <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                            </div>
+                            <p class="text-gray-500 mt-2">Loading clients...</p>
+                        </td>
+                    </tr>
+                `;
+                try {
+                    const resp = await fetch('/admin/api/oauth-clients');
+                    const clients = await resp.json();
+                    if (!resp.ok) {
+                        throw new Error(clients.error || 'Failed to load clients');
+                    }
+
+                    if (!clients.length) {
+                        tbody.innerHTML = `
+                            <tr>
+                        <td colspan="7" class="px-6 py-8 text-center text-gray-500">No OAuth clients registered.</td>
+                            </tr>
+                        `;
+                        return;
+                    }
+
+                    tbody.innerHTML = clients.map(c => `
+                        <tr>
+                            <td class="px-6 py-4 text-xs font-mono text-gray-700">${c.client_id}</td>
+                            <td class="px-6 py-4 text-sm text-gray-900">${c.client_name || '-'}</td>
+                            <td class="px-6 py-4 text-sm text-gray-700">${c.token_endpoint_auth_method || 'none'}</td>
+                            <td class="px-6 py-4 text-xs text-gray-600">${(c.redirect_uris || []).join('<br>') || '-'}</td>
+                            <td class="px-6 py-4 text-sm text-gray-600">${(c.created_at || '').replace('T', ' ').replace('Z', '')}</td>
+                            <td class="px-6 py-4 text-xs text-gray-600">
+                                ${c.last_seen_at ? c.last_seen_at.replace('T', ' ').replace('Z', '') : '-'}
+                                ${c.last_seen_ip ? `<div class="text-[10px] text-gray-500">${c.last_seen_ip}</div>` : ''}
+                                ${c.last_seen_user_agent ? `<div class="text-[10px] text-gray-400 truncate max-w-[220px]">${c.last_seen_user_agent}</div>` : ''}
+                            </td>
+                            <td class="px-6 py-4 text-sm text-gray-600">
+                                <div class="flex items-center gap-2">
+                                    <button class="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                                            onclick="rotateOauthClientToken('${c.client_id}')">
+                                        Rotate Token
+                                    </button>
+                                    <button class="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
+                                            onclick="deleteOauthClient('${c.client_id}')">
+                                        Delete
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                    `).join('');
+                    setTimeout(() => lucide.createIcons(), 50);
+                } catch (e) {
+                    tbody.innerHTML = `
+                        <tr>
+                        <td colspan="7" class="px-6 py-8 text-center text-red-600">Error: ${e.message}</td>
+                        </tr>
+                    `;
+                }
+            },
+
+            async showToken(token) {
+                this.tokenValue = token;
+                this.showTokenModal = true;
+                setTimeout(() => lucide.createIcons(), 50);
+            },
+
+            async copyToken() {
+                try {
+                    await navigator.clipboard.writeText(this.tokenValue);
+                } catch (e) {
+                    console.error(e);
+                }
+            }
+        }
+    }
+
+    async function rotateOauthClientToken(clientId) {
+        if (!confirm('Rotate registration token for this client?')) {
+            return;
+        }
+        const resp = await fetch(`/admin/api/oauth-clients/${clientId}/rotate`, { method: 'POST' });
+        const data = await resp.json();
+        if (!resp.ok) {
+            alert(data.error || 'Failed to rotate token');
+            return;
+        }
+        if (window.oauthClientsManager) {
+            window.oauthClientsManager.showToken(data.registration_access_token);
+        }
+    }
+
+    async function deleteOauthClient(clientId) {
+        if (!confirm('Delete this OAuth client? This cannot be undone.')) {
+            return;
+        }
+        const resp = await fetch(`/admin/api/oauth-clients/${clientId}`, { method: 'DELETE' });
+        const data = await resp.json();
+        if (!resp.ok) {
+            alert(data.error || 'Failed to delete client');
+            return;
+        }
+        if (window.oauthClientsManager) {
+            window.oauthClientsManager.loadClients();
+        }
+    }
+</script>
+{% endblock %}

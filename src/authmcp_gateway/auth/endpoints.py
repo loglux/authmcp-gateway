@@ -1,6 +1,7 @@
 """Authentication API endpoints."""
 
 import logging
+import base64
 import sqlite3
 from dataclasses import replace
 from typing import Optional, Tuple
@@ -43,6 +44,12 @@ from .user_store import (
     update_last_login,
     upsert_user_access_token,
     verify_refresh_token,
+)
+from .client_store import (
+    get_oauth_client_by_client_id,
+    is_redirect_uri_allowed,
+    verify_client_secret,
+    update_oauth_client_last_seen,
 )
 
 logger = logging.getLogger(__name__)
@@ -121,6 +128,21 @@ def _get_client_ip(request: Request) -> Optional[str]:
     if request.client:
         return request.client.host
     return None
+
+
+def _parse_basic_auth(request: Request) -> Tuple[Optional[str], Optional[str]]:
+    auth = request.headers.get("authorization") or request.headers.get("Authorization")
+    if not auth:
+        return None, None
+    parts = auth.split()
+    if len(parts) != 2 or parts[0].lower() != "basic":
+        return None, None
+    try:
+        decoded = base64.b64decode(parts[1]).decode("utf-8")
+        client_id, client_secret = decoded.split(":", 1)
+        return client_id, client_secret
+    except Exception:
+        return None, None
 
 
 def _get_user_agent(request: Request) -> Optional[str]:
@@ -1042,8 +1064,61 @@ async def oauth_token(request: Request) -> JSONResponse:
                     }
                 )
 
-            # Note: client_id and redirect_uri might be optional depending on OAuth implementation
-            # For PKCE flow, they should be validated
+            # Enforce registered clients when DCR is enabled
+            if _config.auth.allow_dcr:
+                if not client_id or not redirect_uri:
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "error": "invalid_request",
+                            "error_description": "Missing client_id or redirect_uri"
+                        }
+                    )
+                client = get_oauth_client_by_client_id(_config.auth.sqlite_path, client_id)
+                if not client:
+                    return JSONResponse(
+                        status_code=401,
+                        content={
+                            "error": "invalid_client",
+                            "error_description": "Unknown client_id"
+                        }
+                    )
+                if not is_redirect_uri_allowed(client, redirect_uri):
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "error": "invalid_request",
+                            "error_description": "redirect_uri not registered for this client"
+                        }
+                    )
+                auth_method = client.get("token_endpoint_auth_method") or "none"
+                if auth_method == "client_secret_basic":
+                    basic_id, basic_secret = _parse_basic_auth(request)
+                    if basic_id != client_id or not verify_client_secret(client, basic_secret):
+                        return JSONResponse(
+                            status_code=401,
+                            content={
+                                "error": "invalid_client",
+                                "error_description": "Invalid client authentication"
+                            }
+                        )
+                elif auth_method == "client_secret_post":
+                    if not verify_client_secret(client, data.get("client_secret")):
+                        return JSONResponse(
+                            status_code=401,
+                            content={
+                                "error": "invalid_client",
+                                "error_description": "Invalid client authentication"
+                            }
+                        )
+                elif auth_method != "none":
+                    return JSONResponse(
+                        status_code=400,
+                        content={
+                            "error": "invalid_request",
+                            "error_description": f"Unsupported token_endpoint_auth_method: {auth_method}"
+                        }
+                    )
 
             # Verify authorization code and get user info
             code_info = verify_authorization_code(
@@ -1102,6 +1177,18 @@ async def oauth_token(request: Request) -> JSONResponse:
                 is_superuser=user["is_superuser"],
                 config=_config.jwt
             )
+
+            # Update client last seen info
+            try:
+                if client_id:
+                    update_oauth_client_last_seen(
+                        _config.auth.sqlite_path,
+                        client_id,
+                        request.client.host if request.client else None,
+                        request.headers.get("user-agent"),
+                    )
+            except Exception as e:
+                logger.debug(f"Failed to update client last_seen: {e}")
 
             refresh_token = create_refresh_token(
                 user_id=user["id"],

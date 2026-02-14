@@ -60,6 +60,17 @@ class McpHandler:
             elif method == "initialize":
                 return await self._handle_initialize(jsonrpc_id, params, server_name, request)
 
+            elif method in {"notifications/initialized", "initialized"}:
+                # MCP clients send an initialized notification after successful initialize.
+                # It's a notification, so no response is required if id is absent.
+                if "id" in data:
+                    return JSONResponse({
+                        "jsonrpc": "2.0",
+                        "id": jsonrpc_id,
+                        "result": {}
+                    })
+                return JSONResponse(status_code=204, content={})
+
             else:
                 return self._error_response(
                     jsonrpc_id,

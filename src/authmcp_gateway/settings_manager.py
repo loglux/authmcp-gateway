@@ -51,6 +51,7 @@ class SettingsManager:
             },
             "system": {
                 "allow_registration": True,
+                "allow_dcr": False,
                 "auth_required": True
             }
         }

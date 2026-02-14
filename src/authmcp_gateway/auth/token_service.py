@@ -9,6 +9,8 @@ from authmcp_gateway.auth.jwt_handler import create_access_token, decode_token_u
 from authmcp_gateway.auth.user_store import (
     get_user_access_token,
     upsert_user_access_token,
+    get_admin_access_token,
+    upsert_admin_access_token,
     is_token_blacklisted,
     blacklist_token,
 )
@@ -88,6 +90,51 @@ def get_or_create_user_token(
     return token, exp_dt
 
 
+def get_or_create_admin_token(
+    db_path: str,
+    user_id: int,
+    username: str,
+    is_superuser: bool,
+    config: JWTConfig,
+    expire_minutes: int,
+    current_token: Optional[str] = None,
+) -> Tuple[str, datetime]:
+    """Return valid admin token if current token matches stored JTI, otherwise rotate."""
+    existing = get_admin_access_token(db_path, user_id)
+    exp_dt = _parse_expires_at(existing.get("expires_at")) if existing else None
+    stored_jti = existing.get("token_jti") if existing else None
+
+    if current_token:
+        try:
+            payload = verify_token(current_token, "access", config)
+            token_jti = payload.get("jti")
+            if stored_jti and token_jti == stored_jti and exp_dt and exp_dt > datetime.now(timezone.utc):
+                if not is_token_blacklisted(db_path, token_jti):
+                    return current_token, exp_dt
+        except Exception:
+            pass
+
+    if stored_jti and exp_dt and not is_token_blacklisted(db_path, stored_jti):
+        try:
+            blacklist_token(db_path, stored_jti, exp_dt)
+        except Exception:
+            pass
+
+    token = create_access_token(
+        user_id=user_id,
+        username=username,
+        is_superuser=is_superuser,
+        config=config,
+        expire_minutes=expire_minutes,
+    )
+    payload = decode_token_unsafe(token)
+    token_jti = payload.get("jti") or ""
+    exp = payload.get("exp")
+    exp_dt = datetime.fromtimestamp(int(exp), tz=timezone.utc) if exp else datetime.now(timezone.utc)
+    upsert_admin_access_token(db_path, user_id, token, token_jti, exp_dt)
+    return token, exp_dt
+
+
 def rotate_user_token(
     db_path: str,
     user_id: int,
@@ -121,4 +168,40 @@ def rotate_user_token(
     exp = payload.get("exp")
     exp_dt = datetime.fromtimestamp(int(exp), tz=timezone.utc) if exp else datetime.now(timezone.utc)
     upsert_user_access_token(db_path, user_id, token, token_jti, exp_dt)
+    return token, exp_dt
+
+
+def rotate_admin_token(
+    db_path: str,
+    user_id: int,
+    username: str,
+    is_superuser: bool,
+    config: JWTConfig,
+    expire_minutes: int,
+    current_token: Optional[str] = None,
+) -> Tuple[str, datetime]:
+    """Blacklist current admin token (if provided) and issue a new one."""
+    if current_token:
+        try:
+            payload = decode_token_unsafe(current_token)
+            jti = payload.get("jti")
+            exp = payload.get("exp")
+            exp_dt = datetime.fromtimestamp(int(exp), tz=timezone.utc) if exp else datetime.now(timezone.utc)
+            if jti:
+                blacklist_token(db_path, jti, exp_dt)
+        except Exception:
+            pass
+
+    token = create_access_token(
+        user_id=user_id,
+        username=username,
+        is_superuser=is_superuser,
+        config=config,
+        expire_minutes=expire_minutes,
+    )
+    payload = decode_token_unsafe(token)
+    token_jti = payload.get("jti") or ""
+    exp = payload.get("exp")
+    exp_dt = datetime.fromtimestamp(int(exp), tz=timezone.utc) if exp else datetime.now(timezone.utc)
+    upsert_admin_access_token(db_path, user_id, token, token_jti, exp_dt)
     return token, exp_dt
