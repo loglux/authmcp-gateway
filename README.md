@@ -338,14 +338,6 @@ python3 scripts/codex_refresh_mcp.py rag https://your-domain.com/oauth/token
 
 ## 🔐 Security
 
-### Testing Security
-
-See [docs/SECURITY_TESTING.md](docs/SECURITY_TESTING.md) for:
-- Manual security tests
-- Automated testing script
-- Production deployment checklist
-- Security best practices
-
 ### Security Features
 - ✅ JWT-based authentication with refresh tokens
 - ✅ Rate limiting per user
@@ -434,7 +426,7 @@ docker logs -f authmcp-gateway
 - Verify Authorization header format: `Bearer YOUR_TOKEN`
 - Check user has permission for the MCP server
 
-For more help, see [docs/SECURITY_TESTING.md](docs/SECURITY_TESTING.md).
+For more help, see the [Project Wiki](https://github.com/loglux/authmcp-gateway/wiki).
 
 ## License
 
