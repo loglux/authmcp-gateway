@@ -60,6 +60,8 @@ def _ensure_oauth_client_columns(conn: sqlite3.Connection) -> None:
         ("last_seen_at", "TIMESTAMP"),
         ("last_seen_ip", "TEXT"),
         ("last_seen_user_agent", "TEXT"),
+        ("last_token_issued_at", "TIMESTAMP"),
+        ("last_token_expires_at", "TIMESTAMP"),
     ]:
         if col not in existing:
             cursor.execute(f"ALTER TABLE oauth_clients ADD COLUMN {col} {col_type}")
@@ -293,6 +295,8 @@ def list_oauth_clients(db_path: str) -> list[Dict[str, Any]]:
                 last_seen_at,
                 last_seen_ip,
                 last_seen_user_agent,
+                last_token_issued_at,
+                last_token_expires_at,
                 created_at,
                 updated_at,
                 is_active
@@ -350,6 +354,27 @@ def update_oauth_client_last_seen(
             WHERE client_id = ?
             """,
             (now, ip_address, user_agent, now, client_id),
+        )
+
+
+def update_oauth_client_token_meta(
+    db_path: str,
+    client_id: str,
+    issued_at: str,
+    expires_at: str,
+) -> None:
+    """Update last token issued/expires timestamps for a client."""
+    with get_db_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE oauth_clients
+            SET last_token_issued_at = ?,
+                last_token_expires_at = ?,
+                updated_at = ?
+            WHERE client_id = ?
+            """,
+            (issued_at, expires_at, issued_at, client_id),
         )
 
 

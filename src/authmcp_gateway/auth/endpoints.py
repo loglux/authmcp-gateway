@@ -50,6 +50,7 @@ from .client_store import (
     is_redirect_uri_allowed,
     verify_client_secret,
     update_oauth_client_last_seen,
+    update_oauth_client_token_meta,
 )
 
 logger = logging.getLogger(__name__)
@@ -1033,6 +1034,18 @@ async def oauth_token(request: Request) -> JSONResponse:
                 access_jti,
                 access_expires_at
             )
+            try:
+                refresh_client_id = data.get("client_id")
+                if refresh_client_id:
+                    issued_at = datetime.fromtimestamp(access_payload["iat"], tz=timezone.utc)
+                    update_oauth_client_token_meta(
+                        _config.auth.sqlite_path,
+                        refresh_client_id,
+                        issued_at.isoformat(),
+                        access_expires_at.isoformat(),
+                    )
+            except Exception as e:
+                logger.debug(f"Failed to update client token meta: {e}")
 
             logger.info(f"OAuth token refreshed for user: {user['username']}")
 
@@ -1220,6 +1233,17 @@ async def oauth_token(request: Request) -> JSONResponse:
                 access_jti,
                 access_expires_at
             )
+            try:
+                if client_id:
+                    issued_at = datetime.fromtimestamp(access_payload["iat"], tz=timezone.utc)
+                    update_oauth_client_token_meta(
+                        _config.auth.sqlite_path,
+                        client_id,
+                        issued_at.isoformat(),
+                        access_expires_at.isoformat(),
+                    )
+            except Exception as e:
+                logger.debug(f"Failed to update client token meta: {e}")
 
             # Update last login
             update_last_login(_config.auth.sqlite_path, user["id"])
