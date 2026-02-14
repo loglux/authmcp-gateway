@@ -76,10 +76,11 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
             user_id = int(payload.get("sub"))
             is_superuser = payload.get("is_superuser", False)
 
-            # Enforce single active token per user (if recorded)
-            current_jti = get_current_admin_token_jti(self.config.auth.sqlite_path, user_id)
-            if current_jti and jti and jti != current_jti:
-                return self._unauthorized(request, "Token has been rotated")
+            # Enforce single active token per user (if enabled)
+            if self.config.jwt.enforce_single_session:
+                current_jti = get_current_admin_token_jti(self.config.auth.sqlite_path, user_id)
+                if current_jti and jti and jti != current_jti:
+                    return self._unauthorized(request, "Token has been rotated")
             
             if not is_superuser:
                 # Double-check in database

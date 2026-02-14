@@ -40,7 +40,8 @@ class SettingsManager:
         return {
             "jwt": {
                 "access_token_expire_minutes": 1440,  # 24 hours
-                "refresh_token_expire_days": 7
+                "refresh_token_expire_days": 7,
+                "enforce_single_session": True
             },
             "password_policy": {
                 "min_length": 8,

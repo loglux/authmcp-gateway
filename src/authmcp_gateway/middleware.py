@@ -271,8 +271,8 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
                         logger.warning("Token is blacklisted. jti=%s", jti)
                         return _unauthorized(self.mcp_public_url, self.oauth_scopes)
 
-                    # Enforce single active token per user (if recorded)
-                    if "sub" in token_payload:
+                    # Enforce single active token per user (if enabled)
+                    if self.jwt_config.enforce_single_session and "sub" in token_payload:
                         try:
                             user_id_int = int(token_payload["sub"])
                             current_jti = get_current_user_token_jti(self.auth_db_path, user_id_int)

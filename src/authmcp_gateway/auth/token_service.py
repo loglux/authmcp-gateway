@@ -69,7 +69,7 @@ def get_or_create_user_token(
         except Exception:
             pass
 
-    if stored_jti and exp_dt and not is_token_blacklisted(db_path, stored_jti):
+    if config.enforce_single_session and stored_jti and exp_dt and not is_token_blacklisted(db_path, stored_jti):
         try:
             blacklist_token(db_path, stored_jti, exp_dt)
         except Exception:
@@ -114,7 +114,7 @@ def get_or_create_admin_token(
         except Exception:
             pass
 
-    if stored_jti and exp_dt and not is_token_blacklisted(db_path, stored_jti):
+    if config.enforce_single_session and stored_jti and exp_dt and not is_token_blacklisted(db_path, stored_jti):
         try:
             blacklist_token(db_path, stored_jti, exp_dt)
         except Exception:

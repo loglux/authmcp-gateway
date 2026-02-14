@@ -100,6 +100,15 @@
                     <p class="text-xs text-gray-500 mt-1">Recommended: 7, 30, or 90 days</p>
                 </div>
             </div>
+            <div class="mt-4 flex items-start">
+                <input type="checkbox" id="enforceSingleSession"
+                       class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mt-1">
+                <div class="ml-3">
+                    <label for="enforceSingleSession" class="font-medium text-gray-900">Enforce Single Session</label>
+                    <p class="text-sm text-gray-600">When enabled, new logins invalidate previous access tokens (one active token per user).</p>
+                    <p class="text-xs text-gray-500 mt-1">If Codex runs on multiple machines, disable this to avoid logouts (tokens are stored locally per machine).</p>
+                </div>
+            </div>
             <div class="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
                 <div class="flex items-start gap-2">
                     <i data-lucide="info" class="w-5 h-5 text-blue-600 mt-0.5"></i>
@@ -218,6 +227,7 @@
                     // JWT settings
                     document.getElementById('accessTokenTTL').value = settings.jwt?.access_token_expire_minutes || 1440;
                     document.getElementById('refreshTokenTTL').value = settings.jwt?.refresh_token_expire_days || 7;
+                    document.getElementById('enforceSingleSession').checked = settings.jwt?.enforce_single_session !== false;
 
                     // Password policy
                     const policy = settings.password_policy || {};
@@ -241,7 +251,8 @@
                 const settings = {
                     jwt: {
                         access_token_expire_minutes: parseInt(document.getElementById('accessTokenTTL').value),
-                        refresh_token_expire_days: parseInt(document.getElementById('refreshTokenTTL').value)
+                        refresh_token_expire_days: parseInt(document.getElementById('refreshTokenTTL').value),
+                        enforce_single_session: document.getElementById('enforceSingleSession').checked
                     },
                     password_policy: {
                         min_length: parseInt(document.getElementById('passwordMinLength').value),

@@ -348,7 +348,6 @@ You can refresh tokens with the helper script without going through the manual a
 python3 scripts/codex_refresh_mcp.py rag https://your-domain.com/oauth/token
 ```
 
-There is also a small wrapper script: `scripts/codex-refresh` (same behavior, shorter command).
 
 ### Calling RAG Tools From Codex (Example)
 

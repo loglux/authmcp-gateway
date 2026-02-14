@@ -480,6 +480,7 @@ JWT_SECRET_KEY=<GENERATE_STRONG_KEY>
 JWT_ALGORITHM=HS256
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES=10080   # 7 days
 JWT_REFRESH_TOKEN_EXPIRE_DAYS=30
+JWT_ENFORCE_SINGLE_SESSION=true        # Set false to allow multiple active access tokens per user
 ADMIN_TOKEN_EXPIRE_MINUTES=480          # 8 hours
 
 # Server Configuration

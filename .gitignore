@@ -53,6 +53,9 @@ coverage.xml
 *.py,cover
 .hypothesis/
 .pytest_cache/
+.env
+.env.*
+scripts/codex-refresh
 tests/
 
 # Translations

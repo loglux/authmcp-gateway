@@ -984,6 +984,14 @@ async def api_save_settings(request: Request) -> JSONResponse:
     settings_manager.update(body)
     settings_manager.save()
 
+    # Apply dynamic JWT settings immediately
+    try:
+        jwt_settings = body.get("jwt") or {}
+        if "enforce_single_session" in jwt_settings:
+            _config.jwt.enforce_single_session = bool(jwt_settings["enforce_single_session"])
+    except Exception as e:
+        logger.debug(f"Failed to apply enforce_single_session from admin settings: {e}")
+
     return JSONResponse({"success": True, "message": "Settings saved successfully"})
 
 

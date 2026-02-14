@@ -43,6 +43,14 @@ logger.info(f"✓ Database initialized: {config.auth.sqlite_path}")
 settings_manager = initialize_settings("/app/data/auth_settings.json")
 logger.info("✓ Settings manager initialized")
 
+# Apply dynamic settings to config (if present)
+try:
+    config.jwt.enforce_single_session = settings_manager.get(
+        "jwt", "enforce_single_session", default=config.jwt.enforce_single_session
+    )
+except Exception as e:
+    logger.debug(f"Failed to apply enforce_single_session from settings: {e}")
+
 # Set global config for auth endpoints
 auth_endpoints.set_config(config)
 dcr_endpoints.set_config(config)

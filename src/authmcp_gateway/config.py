@@ -55,6 +55,7 @@ class JWTConfig:
     access_token_expire_minutes: int = 30  # For MCP client access tokens
     refresh_token_expire_days: int = 7
     admin_token_expire_minutes: int = 480  # 8 hours for admin panel
+    enforce_single_session: bool = True
 
     def __post_init__(self):
         """Validate JWT configuration."""
@@ -257,6 +258,7 @@ def load_config() -> AppConfig:
         access_token_expire_minutes=_env_int("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", 10080),  # 7 days for MCP clients
         refresh_token_expire_days=_env_int("JWT_REFRESH_TOKEN_EXPIRE_DAYS", 7),
         admin_token_expire_minutes=_env_int("ADMIN_TOKEN_EXPIRE_MINUTES", 480),  # 8 hours for admin panel
+        enforce_single_session=_env_bool("JWT_ENFORCE_SINGLE_SESSION", True),
     )
 
     # Auth Configuration
