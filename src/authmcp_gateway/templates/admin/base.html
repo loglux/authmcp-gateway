@@ -84,14 +84,14 @@
             <nav class="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
                 {% set menu_items = [
                     ('dashboard', '/admin', 'gauge', 'Dashboard'),
-                    ('users', '/admin/users', 'users', 'Users'),
                     ('mcp-servers', '/admin/mcp-servers', 'server', 'MCP Servers'),
                     ('mcp-activity', '/admin/mcp-activity', 'activity', 'MCP Activity'),
+                    ('users', '/admin/users', 'users', 'Users'),
+                    ('oauth-clients', '/admin/oauth-clients', 'key-round', 'OAuth Clients'),
                     ('logs', '/admin/logs', 'clock', 'Auth Logs'),
                     ('security-logs', '/admin/security-logs', 'shield-alert', 'Security Events'),
                     ('mcp-audit', '/admin/mcp-audit', 'shield-check', 'Security Audit'),
                     ('settings', '/admin/settings', 'settings', 'Settings'),
-                    ('oauth-clients', '/admin/oauth-clients', 'shield-lock', 'OAuth Clients'),
                     ('api-test', '/admin/api-test', 'code-2', 'API Test')
                 ] %}
                 {# Hidden: ('mcp-tokens', '/admin/mcp-tokens', 'key', 'Backend Tokens') - investigating OAuth2 refresh #}
@@ -142,11 +142,19 @@
         document.addEventListener('DOMContentLoaded', () => {
             lucide.createIcons();
         });
-        
+
         // Re-initialize icons after Alpine updates
         document.addEventListener('alpine:initialized', () => {
             setTimeout(() => lucide.createIcons(), 100);
         });
+
+        // Global HTML escape helper to prevent XSS in innerHTML
+        function esc(str) {
+            if (str == null) return '';
+            const d = document.createElement('div');
+            d.appendChild(document.createTextNode(String(str)));
+            return d.innerHTML;
+        }
     </script>
     
     {% block extra_scripts %}{% endblock %}

@@ -33,7 +33,7 @@ def requires_admin(func):
 
 # Setup Jinja2 templates
 TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
-jinja_env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
+jinja_env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)), autoescape=True)
 
 # Global config instance
 _config: Optional[AppConfig] = None
@@ -984,13 +984,53 @@ async def api_save_settings(request: Request) -> JSONResponse:
     settings_manager.update(body)
     settings_manager.save()
 
-    # Apply dynamic JWT settings immediately
+    # Apply all settings to live config immediately
     try:
-        jwt_settings = body.get("jwt") or {}
-        if "enforce_single_session" in jwt_settings:
-            _config.jwt.enforce_single_session = bool(jwt_settings["enforce_single_session"])
+        jwt_s = body.get("jwt") or {}
+        if "access_token_expire_minutes" in jwt_s:
+            _config.jwt.access_token_expire_minutes = int(jwt_s["access_token_expire_minutes"])
+        if "refresh_token_expire_days" in jwt_s:
+            _config.jwt.refresh_token_expire_days = int(jwt_s["refresh_token_expire_days"])
+        if "enforce_single_session" in jwt_s:
+            _config.jwt.enforce_single_session = bool(jwt_s["enforce_single_session"])
+
+        pw = body.get("password_policy") or {}
+        if "min_length" in pw:
+            _config.auth.password_min_length = int(pw["min_length"])
+        if "require_uppercase" in pw:
+            _config.auth.password_require_uppercase = bool(pw["require_uppercase"])
+        if "require_lowercase" in pw:
+            _config.auth.password_require_lowercase = bool(pw["require_lowercase"])
+        if "require_digit" in pw:
+            _config.auth.password_require_digit = bool(pw["require_digit"])
+        if "require_special" in pw:
+            _config.auth.password_require_special = bool(pw["require_special"])
+
+        sys_s = body.get("system") or {}
+        if "allow_registration" in sys_s:
+            _config.auth.allow_registration = bool(sys_s["allow_registration"])
+        if "allow_dcr" in sys_s:
+            _config.auth.allow_dcr = bool(sys_s["allow_dcr"])
+        if "auth_required" in sys_s:
+            _config.auth_required = bool(sys_s["auth_required"])
+
+        rl = body.get("rate_limit") or {}
+        if "mcp_limit" in rl:
+            _config.rate_limit.mcp_limit = int(rl["mcp_limit"])
+        if "mcp_window" in rl:
+            _config.rate_limit.mcp_window = int(rl["mcp_window"])
+        if "login_limit" in rl:
+            _config.rate_limit.login_limit = int(rl["login_limit"])
+        if "login_window" in rl:
+            _config.rate_limit.login_window = int(rl["login_window"])
+        if "register_limit" in rl:
+            _config.rate_limit.register_limit = int(rl["register_limit"])
+        if "register_window" in rl:
+            _config.rate_limit.register_window = int(rl["register_window"])
+
+        logger.info("Dynamic settings applied from admin panel")
     except Exception as e:
-        logger.debug(f"Failed to apply enforce_single_session from admin settings: {e}")
+        logger.warning(f"Failed to apply some admin settings: {e}")
 
     return JSONResponse({"success": True, "message": "Settings saved successfully"})
 

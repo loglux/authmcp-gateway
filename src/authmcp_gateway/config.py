@@ -129,6 +129,8 @@ class RateLimitConfig:
     register_window: int = 300  # 5 minutes
     dcr_limit: int = 10  # Max dynamic client registrations
     dcr_window: int = 3600  # 1 hour
+    mcp_limit: int = 100  # Max MCP requests per user per window
+    mcp_window: int = 60  # Seconds
     cleanup_interval: int = 3600  # Cleanup old entries every hour
 
 
@@ -284,6 +286,8 @@ def load_config() -> AppConfig:
         register_window=_env_int("RATE_LIMIT_REGISTER_WINDOW", 300),
         dcr_limit=_env_int("RATE_LIMIT_DCR_MAX", 10),
         dcr_window=_env_int("RATE_LIMIT_DCR_WINDOW", 3600),
+        mcp_limit=_env_int("RATE_LIMIT_MCP_MAX", 100),
+        mcp_window=_env_int("RATE_LIMIT_MCP_WINDOW", 60),
         cleanup_interval=_env_int("RATE_LIMIT_CLEANUP_INTERVAL", 3600),
     )
 

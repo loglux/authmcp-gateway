@@ -164,10 +164,10 @@
                     try {
                         const parsed = JSON.parse(event.details);
                         details = Object.entries(parsed)
-                            .map(([key, val]) => `<strong>${key}:</strong> ${val}`)
+                            .map(([key, val]) => `<strong>${esc(key)}:</strong> ${esc(val)}`)
                             .join(', ');
                     } catch {
-                        details = event.details;
+                        details = esc(event.details);
                     }
                 }
 
@@ -189,19 +189,19 @@
                                     ${event.ip_address ? `
                                         <div class="flex items-center gap-2">
                                             <i data-lucide="map-pin" class="w-4 h-4"></i>
-                                            <span>IP: ${event.ip_address}</span>
+                                            <span>IP: ${esc(event.ip_address)}</span>
                                         </div>
                                     ` : ''}
                                     ${event.username ? `
                                         <div class="flex items-center gap-2">
                                             <i data-lucide="user" class="w-4 h-4"></i>
-                                            <span>User: ${event.username}</span>
+                                            <span>User: ${esc(event.username)}</span>
                                         </div>
                                     ` : ''}
                                     ${event.endpoint ? `
                                         <div class="flex items-center gap-2">
                                             <i data-lucide="link" class="w-4 h-4"></i>
-                                            <span>Endpoint: ${event.endpoint}</span>
+                                            <span>Endpoint: ${esc(event.endpoint)}</span>
                                         </div>
                                     ` : ''}
                                     ${details ? `

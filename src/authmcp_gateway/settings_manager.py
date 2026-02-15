@@ -22,18 +22,46 @@ class SettingsManager:
         self._load_settings()
     
     def _load_settings(self) -> None:
-        """Load settings from JSON file."""
+        """Load settings from JSON file, backfilling missing sections from defaults."""
         try:
             if self.settings_path.exists():
                 with open(self.settings_path, 'r') as f:
                     self._settings = json.load(f)
                 logger.info(f"Settings loaded from {self.settings_path}")
+                # Backfill missing sections/keys from defaults
+                self._backfill_defaults()
             else:
-                logger.warning(f"Settings file not found: {self.settings_path}, using defaults")
+                logger.info(f"Settings file not found: {self.settings_path}, creating with defaults")
                 self._settings = self._get_defaults()
+                try:
+                    self.save()
+                except Exception as e:
+                    logger.warning(f"Could not save initial settings file: {e}")
         except Exception as e:
             logger.error(f"Failed to load settings: {e}, using defaults")
             self._settings = self._get_defaults()
+
+    def _backfill_defaults(self) -> None:
+        """Add missing sections and keys from defaults without overwriting existing values."""
+        defaults = self._get_defaults()
+        changed = False
+        for section, section_defaults in defaults.items():
+            if section not in self._settings:
+                self._settings[section] = section_defaults
+                changed = True
+                logger.info(f"Settings: added missing section '{section}' with defaults")
+            elif isinstance(section_defaults, dict) and isinstance(self._settings[section], dict):
+                for key, value in section_defaults.items():
+                    if key not in self._settings[section]:
+                        self._settings[section][key] = value
+                        changed = True
+                        logger.info(f"Settings: added missing key '{section}.{key}' = {value}")
+        if changed:
+            try:
+                self.save()
+                logger.info("Settings file updated with new defaults")
+            except Exception as e:
+                logger.warning(f"Could not save backfilled settings: {e}")
     
     def _get_defaults(self) -> Dict[str, Any]:
         """Get default settings."""
@@ -54,6 +82,14 @@ class SettingsManager:
                 "allow_registration": True,
                 "allow_dcr": False,
                 "auth_required": True
+            },
+            "rate_limit": {
+                "mcp_limit": 100,
+                "mcp_window": 60,
+                "login_limit": 5,
+                "login_window": 60,
+                "register_limit": 3,
+                "register_window": 300
             }
         }
     

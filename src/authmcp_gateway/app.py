@@ -2,6 +2,7 @@
 
 import os
 import logging
+from pathlib import Path
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response, RedirectResponse
 
@@ -40,16 +41,61 @@ init_mcp_database(config.auth.sqlite_path)
 logger.info(f"✓ Database initialized: {config.auth.sqlite_path}")
 
 # Initialize settings manager
-settings_manager = initialize_settings("/app/data/auth_settings.json")
+_settings_path = str(Path(config.auth.sqlite_path).parent / "auth_settings.json")
+settings_manager = initialize_settings(_settings_path)
 logger.info("✓ Settings manager initialized")
 
-# Apply dynamic settings to config (if present)
+# Apply dynamic settings to config (overrides .env with values from admin panel)
+def _apply_dynamic_settings(cfg, sm):
+    """Apply saved settings from auth_settings.json to live AppConfig."""
+    # JWT
+    cfg.jwt.access_token_expire_minutes = sm.get(
+        "jwt", "access_token_expire_minutes", default=cfg.jwt.access_token_expire_minutes)
+    cfg.jwt.refresh_token_expire_days = sm.get(
+        "jwt", "refresh_token_expire_days", default=cfg.jwt.refresh_token_expire_days)
+    cfg.jwt.enforce_single_session = sm.get(
+        "jwt", "enforce_single_session", default=cfg.jwt.enforce_single_session)
+
+    # Password policy
+    cfg.auth.password_min_length = sm.get(
+        "password_policy", "min_length", default=cfg.auth.password_min_length)
+    cfg.auth.password_require_uppercase = sm.get(
+        "password_policy", "require_uppercase", default=cfg.auth.password_require_uppercase)
+    cfg.auth.password_require_lowercase = sm.get(
+        "password_policy", "require_lowercase", default=cfg.auth.password_require_lowercase)
+    cfg.auth.password_require_digit = sm.get(
+        "password_policy", "require_digit", default=cfg.auth.password_require_digit)
+    cfg.auth.password_require_special = sm.get(
+        "password_policy", "require_special", default=cfg.auth.password_require_special)
+
+    # System
+    cfg.auth.allow_registration = sm.get(
+        "system", "allow_registration", default=cfg.auth.allow_registration)
+    cfg.auth.allow_dcr = sm.get(
+        "system", "allow_dcr", default=cfg.auth.allow_dcr)
+    cfg.auth_required = sm.get(
+        "system", "auth_required", default=cfg.auth_required)
+
+    # Rate limits
+    cfg.rate_limit.mcp_limit = sm.get(
+        "rate_limit", "mcp_limit", default=cfg.rate_limit.mcp_limit)
+    cfg.rate_limit.mcp_window = sm.get(
+        "rate_limit", "mcp_window", default=cfg.rate_limit.mcp_window)
+    cfg.rate_limit.login_limit = sm.get(
+        "rate_limit", "login_limit", default=cfg.rate_limit.login_limit)
+    cfg.rate_limit.login_window = sm.get(
+        "rate_limit", "login_window", default=cfg.rate_limit.login_window)
+    cfg.rate_limit.register_limit = sm.get(
+        "rate_limit", "register_limit", default=cfg.rate_limit.register_limit)
+    cfg.rate_limit.register_window = sm.get(
+        "rate_limit", "register_window", default=cfg.rate_limit.register_window)
+
+
 try:
-    config.jwt.enforce_single_session = settings_manager.get(
-        "jwt", "enforce_single_session", default=config.jwt.enforce_single_session
-    )
+    _apply_dynamic_settings(config, settings_manager)
+    logger.info("✓ Dynamic settings applied from auth_settings.json")
 except Exception as e:
-    logger.debug(f"Failed to apply enforce_single_session from settings: {e}")
+    logger.warning(f"Failed to apply dynamic settings: {e}")
 
 # Set global config for auth endpoints
 auth_endpoints.set_config(config)
@@ -189,16 +235,55 @@ async def favicon(_: Request) -> Response:
 # ============================================================================
 
 
+def _check_mcp_rate_limit(request: Request):
+    """Check per-user rate limit for MCP endpoints.
+
+    Returns JSONResponse with 429 if limit exceeded, None if allowed.
+    """
+    if not config.rate_limit.enabled:
+        return None
+
+    limiter = get_rate_limiter()
+    user_id = getattr(request.state, "user_id", None)
+    client_ip = request.client.host if request.client else "unknown"
+    identifier = f"mcp:{user_id or client_ip}"
+
+    allowed, retry_after = limiter.check_limit(
+        identifier=identifier,
+        limit=config.rate_limit.mcp_limit,
+        window=config.rate_limit.mcp_window,
+    )
+    if not allowed:
+        return JSONResponse(
+            {
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32000,
+                    "message": "Rate limit exceeded",
+                    "data": {"retry_after": retry_after},
+                },
+                "id": None,
+            },
+            status_code=429,
+            headers={"Retry-After": str(retry_after)},
+        )
+    return None
+
+
 async def mcp_gateway_endpoint(request: Request):
     """MCP Gateway endpoint - routes to backend MCP servers.
-    
+
     Supports both POST (JSON-RPC) and GET (SSE) methods.
     """
+    rate_limit_response = _check_mcp_rate_limit(request)
+    if rate_limit_response:
+        return rate_limit_response
+
     # GET = SSE transport (Server-Sent Events)
     if request.method == "GET":
         from authmcp_gateway.mcp.sse_handler import mcp_sse_endpoint
         return await mcp_sse_endpoint(request, mcp_handler, server_name=None)
-    
+
     # POST = JSON-RPC over HTTP
     return await mcp_handler.handle_request(request)
 
@@ -209,25 +294,37 @@ async def mcp_server_endpoint(request: Request):
     The server_name is extracted from the URL path (/mcp/{server_name}).
     Supports both POST (JSON-RPC) and GET (SSE) methods.
     """
+    rate_limit_response = _check_mcp_rate_limit(request)
+    if rate_limit_response:
+        return rate_limit_response
+
     server_name = request.path_params.get("server_name")
-    
+
     # GET = SSE transport (Server-Sent Events)
     if request.method == "GET":
         from authmcp_gateway.mcp.sse_handler import mcp_sse_endpoint
         return await mcp_sse_endpoint(request, mcp_handler, server_name)
-    
+
     # POST = JSON-RPC over HTTP
     return await mcp_handler.handle_request(request, server_name=server_name)
 
 
 async def mcp_messages_endpoint(request: Request):
     """MCP SSE message endpoint (POST only)."""
+    rate_limit_response = _check_mcp_rate_limit(request)
+    if rate_limit_response:
+        return rate_limit_response
+
     from authmcp_gateway.mcp.sse_handler import handle_sse_message
     return await handle_sse_message(request, mcp_handler, server_name=None)
 
 
 async def mcp_server_messages_endpoint(request: Request):
     """MCP SSE message endpoint for a specific server (POST only)."""
+    rate_limit_response = _check_mcp_rate_limit(request)
+    if rate_limit_response:
+        return rate_limit_response
+
     server_name = request.path_params.get("server_name")
     from authmcp_gateway.mcp.sse_handler import handle_sse_message
     return await handle_sse_message(request, mcp_handler, server_name=server_name)

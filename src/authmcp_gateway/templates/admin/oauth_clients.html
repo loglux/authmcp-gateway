@@ -145,15 +145,17 @@
 
                     tbody.innerHTML = clients.map(c => `
                         <tr>
-                            <td class="px-6 py-4 text-xs font-mono text-gray-700">${c.client_id}</td>
-                            <td class="px-6 py-4 text-sm text-gray-900">${c.client_name || '-'}</td>
-                            <td class="px-6 py-4 text-sm text-gray-700">${c.token_endpoint_auth_method || 'none'}</td>
-                            <td class="px-6 py-4 text-xs text-gray-600">${(c.redirect_uris || []).join('<br>') || '-'}</td>
+                            <td class="px-6 py-4 text-xs font-mono text-gray-700">${esc(c.client_id)}</td>
+                            <td class="px-6 py-4 text-sm text-gray-900">${esc(c.client_name || '-')}</td>
+                            <td class="px-6 py-4 text-sm text-gray-700">
+                                <span title="${c.token_endpoint_auth_method === 'none' || !c.token_endpoint_auth_method ? 'Public client (no secret) — normal for MCP clients using PKCE' : 'Client authenticates with secret'}" class="cursor-help border-b border-dotted border-gray-400">${esc(c.token_endpoint_auth_method || 'none')}</span>
+                            </td>
+                            <td class="px-6 py-4 text-xs text-gray-600">${(c.redirect_uris || []).map(u => esc(u)).join('<br>') || '-'}</td>
                             <td class="px-6 py-4 text-sm text-gray-600">${fmt(c.created_at)}</td>
                             <td class="px-6 py-4 text-xs text-gray-600">
                                 ${fmt(c.last_seen_at)}
-                                ${c.last_seen_ip ? `<div class="text-[10px] text-gray-500">${c.last_seen_ip}</div>` : ''}
-                                ${c.last_seen_user_agent ? `<div class="text-[10px] text-gray-400 truncate max-w-[220px]">${c.last_seen_user_agent}</div>` : ''}
+                                ${c.last_seen_ip ? `<div class="text-[10px] text-gray-500">${esc(c.last_seen_ip)}</div>` : ''}
+                                ${c.last_seen_user_agent ? `<div class="text-[10px] text-gray-400 truncate max-w-[220px]">${esc(c.last_seen_user_agent)}</div>` : ''}
                             </td>
                             <td class="px-6 py-4 text-xs text-gray-600">
                                 ${fmt(c.last_token_issued_at)}
@@ -181,7 +183,7 @@
                 } catch (e) {
                     tbody.innerHTML = `
                         <tr>
-                        <td colspan="9" class="px-6 py-8 text-center text-red-600">Error: ${e.message}</td>
+                        <td colspan="9" class="px-6 py-8 text-center text-red-600">Error: ${esc(e.message)}</td>
                         </tr>
                     `;
                 }
