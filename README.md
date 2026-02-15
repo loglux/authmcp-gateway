@@ -49,7 +49,7 @@ AuthMCP Gateway provides centralized authentication, authorization, and monitori
 - **MCP Server Configuration** - Add and configure backend MCP servers
 - **Token Management** - Monitor token health and manual refresh
 - **Security Events** - View and filter security events
-- **API Testing** - Built-in MCP testing interface
+- **Security Audit** - MCP vulnerability scanning
 
 ### 🛡️ **Security**
 - JWT token-based authentication with refresh tokens
@@ -306,8 +306,8 @@ Once completed, Codex shows the MCP server as logged in.
 
 ### Headless Token Storage (Important)
 
-On headless servers, Codex may fail to read MCP OAuth tokens from the OS keyring. If you see "Auth required"
-errors even when tokens are valid, force file-based storage:
+On headless servers (no desktop environment), Codex cannot access the OS keyring to store OAuth tokens.
+This causes "Auth required" errors even after a successful login. To fix this, switch to file-based token storage:
 
 ```toml
 # ~/.codex/config.toml
@@ -389,7 +389,7 @@ authmcp-gateway/
 │   ├── security/        # Security logging and monitoring
 │   ├── middleware.py    # Request middleware
 │   └── app.py           # Main application
-├── templates/           # Jinja2 templates (admin UI)
+│   ├── templates/       # Jinja2 templates (admin UI)
 ├── docs/                # Documentation
 ├── tests/               # Test suite
 └── docker-compose.yml   # Docker deployment
