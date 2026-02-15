@@ -15,7 +15,6 @@ AuthMCP Gateway provides centralized authentication, authorization, and monitori
 ## 📋 Table of Contents
 
 - [✨ Features](#-features)
-- [📚 Documentation](#-documentation)
 - [📸 Screenshots](#-screenshots)
 - [🚀 Quick Start](#-quick-start)
 - [⚙️ Configuration](#️-configuration)
@@ -57,10 +56,6 @@ AuthMCP Gateway provides centralized authentication, authorization, and monitori
 - CORS protection and request validation
 - Security event logging and monitoring
 - **File-based logging** - JSON logs for auth & MCP requests with rotation; security events remain in SQLite for audit/queries
-
-## 📚 Documentation
-
-📚 **Documentation** - See the sections below for setup and usage
 
 ## 📸 Screenshots
 
