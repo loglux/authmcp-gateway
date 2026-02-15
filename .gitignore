@@ -162,3 +162,4 @@ scripts/migrate_*.py
 scripts/deploy-wiki.sh
 authmcp-gateway.wiki/
 scripts/check_acl.sh
+CLAUDE.md
