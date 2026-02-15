@@ -402,7 +402,7 @@ def _get_sidebar_nav(active_page: str = "") -> str:
     """Generate unified sidebar navigation menu.
 
     Args:
-        active_page: The current active page (dashboard, users, mcp-servers, settings, logs, api-test)
+        active_page: The current active page (dashboard, users, mcp-servers, settings, logs)
 
     Returns:
         HTML string for sidebar navigation (complete <li> elements)
@@ -417,7 +417,6 @@ def _get_sidebar_nav(active_page: str = "") -> str:
         ("oauth-clients", "/admin/oauth-clients", '<i class="bi bi-shield-lock"></i> OAuth Clients'),
         ("users", "/admin/users", '<i class="bi bi-people"></i> Users'),
         ("logs", "/admin/logs", '<i class="bi bi-clock-history"></i> Auth Logs'),
-        ("api-test", "/admin/api-test", '<i class="bi bi-code-square"></i> API Test'),
     ]
 
     nav_html = ""
@@ -467,12 +466,6 @@ async def admin_logs(_: Request) -> HTMLResponse:
 async def admin_security_logs(_: Request) -> HTMLResponse:
     """Admin security events page."""
     return render_template("admin/security_logs.html", active_page="security-logs")
-
-
-@requires_admin
-async def admin_api_test(_: Request) -> HTMLResponse:
-    """Admin API testing page."""
-    return render_template("admin/api_test.html", active_page="api-test")
 
 
 async def api_stats(_: Request) -> JSONResponse:

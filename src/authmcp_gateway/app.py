@@ -443,7 +443,6 @@ app = Starlette(
         Route("/admin/logs", admin_routes.admin_logs, methods=["GET"]),
         Route("/admin/security-logs", admin_routes.admin_security_logs, methods=["GET"]),
         Route("/admin/mcp-activity", admin_routes.admin_mcp_activity, methods=["GET"]),
-        Route("/admin/api-test", admin_routes.admin_api_test, methods=["GET"]),
         Route("/admin/oauth-clients", admin_routes.admin_oauth_clients, methods=["GET"]),
 
         # Admin API

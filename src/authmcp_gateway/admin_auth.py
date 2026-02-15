@@ -41,7 +41,7 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
 
         # If setup required, redirect to setup
         if is_setup_required():
-            if path.startswith("/admin/api"):
+            if path.startswith("/admin/api/"):
                 return JSONResponse(
                     {"detail": "Setup required. Please complete initial setup first."},
                     status_code=403
@@ -87,7 +87,7 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
                 user = get_user_by_id(self.config.auth.sqlite_path, user_id)
                 if not user or not user.get("is_superuser"):
                     # Redirect non-admin users to account portal instead of 403
-                    if not request.url.path.startswith("/admin/api"):
+                    if not request.url.path.startswith("/admin/api/"):
                         return RedirectResponse(url="/account", status_code=302)
                     return self._forbidden(request)
             
@@ -105,7 +105,7 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
     def _unauthorized(self, request: Request, message: str) -> Response:
         """Return unauthorized response."""
         # For API requests, return JSON
-        if request.url.path.startswith("/admin/api"):
+        if request.url.path.startswith("/admin/api/"):
             return JSONResponse(
                 {"detail": message},
                 status_code=401
@@ -116,7 +116,7 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
     
     def _forbidden(self, request: Request) -> Response:
         """Return forbidden response."""
-        if request.url.path.startswith("/admin/api"):
+        if request.url.path.startswith("/admin/api/"):
             return JSONResponse(
                 {"detail": "Superuser access required"},
                 status_code=403
