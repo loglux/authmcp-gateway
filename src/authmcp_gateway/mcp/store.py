@@ -6,7 +6,19 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
+from .crypto import decrypt_token_safe, encrypt_token
+
 logger = logging.getLogger(__name__)
+
+
+def _decrypt_server_dict(server: Dict[str, Any]) -> Dict[str, Any]:
+    """Decrypt encrypted fields in a server dict (auth_token).
+
+    Handles backward compatibility with legacy plaintext tokens.
+    """
+    if server.get("auth_token"):
+        server["auth_token"] = decrypt_token_safe(server["auth_token"])
+    return server
 
 
 @contextmanager
@@ -146,6 +158,16 @@ def create_mcp_server(
     Raises:
         sqlite3.IntegrityError: If name already exists
     """
+    # Encrypt auth_token before storing
+    encrypted_token = None
+    if auth_token:
+        try:
+            encrypted_token = encrypt_token(auth_token)
+        except RuntimeError:
+            # Crypto not initialized — store as-is (dev/test mode)
+            encrypted_token = auth_token
+            logger.warning("Crypto not initialized, storing auth_token as plaintext")
+
     with _db_conn(db_path) as conn:
         cursor = conn.cursor()
 
@@ -164,7 +186,7 @@ def create_mcp_server(
                 tool_prefix,
                 1 if enabled else 0,
                 auth_type,
-                auth_token,
+                encrypted_token,
                 routing_strategy,
                 datetime.now(timezone.utc).isoformat(),
             ),
@@ -193,7 +215,7 @@ def get_mcp_server(db_path: str, server_id: int) -> Optional[Dict[str, Any]]:
         row = cursor.fetchone()
 
     if row:
-        return dict(row)
+        return _decrypt_server_dict(dict(row))
     return None
 
 
@@ -213,7 +235,7 @@ def get_mcp_server_by_name(db_path: str, name: str) -> Optional[Dict[str, Any]]:
         row = cursor.fetchone()
 
     if row:
-        return dict(row)
+        return _decrypt_server_dict(dict(row))
     return None
 
 
@@ -259,7 +281,7 @@ def list_mcp_servers(
         cursor.execute(query, params)
         rows = cursor.fetchall()
 
-    return [dict(row) for row in rows]
+    return [_decrypt_server_dict(dict(row)) for row in rows]
 
 
 def update_mcp_server(db_path: str, server_id: int, **fields) -> bool:
@@ -303,6 +325,13 @@ def update_mcp_server(db_path: str, server_id: int, **fields) -> bool:
     if invalid_keys:
         logger.error(f"Rejected invalid column names in update_mcp_server: {invalid_keys}")
         raise ValueError(f"Invalid column names: {invalid_keys}")
+
+    # Encrypt auth_token if being updated
+    if "auth_token" in fields and fields["auth_token"]:
+        try:
+            fields["auth_token"] = encrypt_token(fields["auth_token"])
+        except RuntimeError:
+            logger.warning("Crypto not initialized, storing auth_token as plaintext")
 
     # Add updated_at timestamp
     fields["updated_at"] = datetime.now(timezone.utc).isoformat()
@@ -682,6 +711,13 @@ def update_mcp_server_token(
     """
     now = datetime.now(timezone.utc).isoformat()
 
+    # Encrypt access token before storing
+    encrypted_access_token = access_token
+    try:
+        encrypted_access_token = encrypt_token(access_token)
+    except RuntimeError:
+        logger.warning("Crypto not initialized, storing access_token as plaintext")
+
     with _db_conn(db_path) as conn:
         cursor = conn.cursor()
         try:
@@ -698,7 +734,7 @@ def update_mcp_server_token(
                     WHERE id = ?
                     """,
                     (
-                        access_token,
+                        encrypted_access_token,
                         token_expires_at.isoformat(),
                         refresh_token_hash,
                         now,
@@ -717,7 +753,7 @@ def update_mcp_server_token(
                         updated_at = ?
                     WHERE id = ?
                     """,
-                    (access_token, token_expires_at.isoformat(), now, now, server_id),
+                    (encrypted_access_token, token_expires_at.isoformat(), now, now, server_id),
                 )
 
             rows_affected = cursor.rowcount
@@ -767,4 +803,4 @@ def get_servers_needing_refresh(db_path: str, threshold_minutes: int = 5) -> Lis
         )
         rows = cursor.fetchall()
 
-    return [dict(row) for row in rows]
+    return [_decrypt_server_dict(dict(row)) for row in rows]
