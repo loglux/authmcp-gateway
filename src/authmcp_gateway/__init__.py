@@ -1,6 +1,6 @@
 """AuthMCP Gateway - Universal Authentication for MCP Servers."""
 
-__version__ = "1.1.4"
+__version__ = "1.1.5"
 __author__ = "loglux"
 __license__ = "MIT"
 
