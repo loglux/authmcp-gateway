@@ -94,7 +94,7 @@ async function runAudit() {
     const bearerToken = document.getElementById('bearer_token').value.trim();
     
     if (!url) {
-        alert('Please enter an MCP server URL');
+        showToast('Please enter an MCP server URL', 'warning');
         return;
     }
     
@@ -131,7 +131,7 @@ async function runAudit() {
         document.getElementById('exportBtn').classList.add('bg-blue-600', 'hover:bg-blue-700');
         
     } catch (error) {
-        alert('Error: ' + error.message);
+        showToast(error.message, 'error');
     } finally {
         document.getElementById('loadingSpinner').classList.add('hidden');
     }
@@ -192,16 +192,16 @@ function displayResults(data) {
         };
         
         return `
-            <div class="border rounded-lg p-4 ${statusColors[test.status]}">
+            <div class="border rounded-lg p-4 ${statusColors[test.status] || ''}">
                 <div class="flex items-start gap-3">
-                    <span class="text-2xl ${statusTextColors[test.status]}">${statusIcons[test.status]}</span>
+                    <span class="text-2xl ${statusTextColors[test.status] || ''}">${statusIcons[test.status] || '?'}</span>
                     <div class="flex-1">
-                        <h4 class="font-semibold ${statusTextColors[test.status]}">${test.name}</h4>
-                        <p class="text-sm text-gray-700 mt-1">${test.message}</p>
+                        <h4 class="font-semibold ${statusTextColors[test.status] || ''}">${esc(test.name)}</h4>
+                        <p class="text-sm text-gray-700 mt-1">${esc(test.message)}</p>
                         ${test.details ? `
                             <details class="mt-2">
                                 <summary class="text-xs text-blue-600 cursor-pointer">Show details</summary>
-                                <pre class="text-xs text-gray-600 mt-2 font-mono whitespace-pre-wrap">${formatDetails(test.details)}</pre>
+                                <pre class="text-xs text-gray-600 mt-2 font-mono whitespace-pre-wrap">${esc(formatDetails(test.details))}</pre>
                             </details>
                         ` : ''}
                     </div>
@@ -225,7 +225,7 @@ function formatDetails(details) {
 
 async function exportResults() {
     if (!currentResults) {
-        alert('No audit results to export');
+        showToast('No audit results to export', 'warning');
         return;
     }
     
@@ -267,7 +267,7 @@ async function exportResults() {
         URL.revokeObjectURL(downloadUrl);
         
     } catch (error) {
-        alert('Error exporting results: ' + error.message);
+        showToast('Error exporting: ' + error.message, 'error');
     }
 }
 

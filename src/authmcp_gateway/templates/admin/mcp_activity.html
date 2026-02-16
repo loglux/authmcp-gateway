@@ -184,7 +184,7 @@
                 <div class="p-4">
                     <template x-if="stats.top_tools && stats.top_tools.length === 0">
                         <div class="text-center py-8 text-gray-500">
-                            <i data-lucide="tool" class="w-12 h-12 mx-auto mb-2 text-gray-400"></i>
+                            <i data-lucide="wrench" class="w-12 h-12 mx-auto mb-2 text-gray-400"></i>
                             <p class="text-sm">No tool usage yet</p>
                         </div>
                     </template>
@@ -338,13 +338,13 @@ function mcpActivity() {
         },
 
         startAutoRefresh() {
-            this.refreshInterval = setInterval(() => {
+            this._poller = pollWhileVisible(() => {
                 if (this.autoRefresh) {
                     this.loadRequests();
                     this.loadStats();
                     this.loadAuthEvents();
                 }
-            }, 3000); // Refresh every 3 seconds
+            }, 5000);
         },
 
         toggleAutoRefresh() {

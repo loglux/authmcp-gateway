@@ -3,7 +3,7 @@
 {% block title %}Users - Auth MCP Admin{% endblock %}
 
 {% block content %}
-<div x-data="usersManager()">
+<div x-data="usersManager()" @click="handleAction($event)">
     <!-- Header -->
     <div class="flex items-center justify-between mb-8">
         <div>
@@ -13,7 +13,7 @@
             </h1>
             <p class="text-gray-600 mt-1">Manage system users and permissions</p>
         </div>
-        <button 
+        <button
             @click="showCreateModal = true"
             class="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg shadow-sm transition-colors flex items-center gap-2"
         >
@@ -55,6 +55,8 @@
     <!-- Access Control Modal -->
     <div x-show="showAccessModal"
          x-cloak
+         role="dialog" aria-modal="true" aria-labelledby="accessModalTitle"
+         x-effect="if (showAccessModal) { $nextTick(() => { window._accessTrap = trapFocus($el); }) } else if (window._accessTrap) { window._accessTrap.release(); }"
          class="fixed inset-0 z-50 overflow-y-auto"
          @keydown.escape.window="showAccessModal = false">
         <div class="flex items-center justify-center min-h-screen px-4">
@@ -63,7 +65,7 @@
             <div class="bg-white rounded-lg shadow-xl z-10 max-w-3xl w-full p-6 relative">
                 <div class="flex items-center justify-between mb-4">
                     <div>
-                        <h3 class="text-xl font-bold text-gray-900 flex items-center gap-2">
+                        <h3 id="accessModalTitle" class="text-xl font-bold text-gray-900 flex items-center gap-2">
                             <i data-lucide="shield" class="w-5 h-5 text-blue-600"></i>
                             MCP Server Access
                         </h3>
@@ -128,16 +130,18 @@
     </div>
 
     <!-- Create User Modal -->
-    <div x-show="showCreateModal" 
+    <div x-show="showCreateModal"
          x-cloak
+         role="dialog" aria-modal="true" aria-labelledby="createUserTitle"
+         x-effect="if (showCreateModal) { $nextTick(() => { window._createTrap = trapFocus($el); }) } else if (window._createTrap) { window._createTrap.release(); }"
          class="fixed inset-0 z-50 overflow-y-auto"
          @keydown.escape.window="showCreateModal = false">
         <div class="flex items-center justify-center min-h-screen px-4">
             <div class="fixed inset-0 bg-black opacity-30" @click="showCreateModal = false"></div>
-            
+
             <div class="bg-white rounded-lg shadow-xl z-10 max-w-md w-full p-6 relative">
                 <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-xl font-bold text-gray-900 flex items-center gap-2">
+                    <h3 id="createUserTitle" class="text-xl font-bold text-gray-900 flex items-center gap-2">
                         <i data-lucide="user-plus" class="w-5 h-5 text-blue-600"></i>
                         Create New User
                     </h3>
@@ -145,7 +149,7 @@
                         <i data-lucide="x" class="w-5 h-5"></i>
                     </button>
                 </div>
-                
+
                 <form id="createUserForm" @submit.prevent="createUser">
                     <div class="space-y-4">
                         <div>
@@ -170,16 +174,16 @@
                             <input type="password" id="confirmPassword" required
                                    @input="checkPasswordMatch"
                                    class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                            <p x-show="passwordMatch === true" class="text-xs text-green-600 mt-1">✅ Passwords match</p>
-                            <p x-show="passwordMatch === false" class="text-xs text-red-600 mt-1">❌ Passwords do not match</p>
+                            <p x-show="passwordMatch === true" class="text-xs text-green-600 mt-1">Passwords match</p>
+                            <p x-show="passwordMatch === false" class="text-xs text-red-600 mt-1">Passwords do not match</p>
                         </div>
                         <div class="flex items-center">
-                            <input type="checkbox" id="isSuperuser" 
+                            <input type="checkbox" id="isSuperuser"
                                    class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500">
                             <label for="isSuperuser" class="ml-2 text-sm text-gray-700">Make Superuser</label>
                         </div>
                     </div>
-                    
+
                     <div class="flex gap-2 mt-6">
                         <button type="button" @click="showCreateModal = false"
                                 class="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
@@ -196,9 +200,6 @@
     </div>
 </div>
 
-<style>
-    [x-cloak] { display: none !important; }
-</style>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -211,25 +212,36 @@
             accessLoading: false,
             accessUser: null,
             accessServers: [],
-            
+
             init() {
-                // Load users on component init
-                window.usersManager = this;
-                loadUsers();
+                this.loadUsers();
             },
-            
+
+            handleAction(event) {
+                const btn = event.target.closest('[data-action]');
+                if (!btn) return;
+                const action = btn.dataset.action;
+                const id = parseInt(btn.dataset.id);
+                const name = btn.dataset.name || '';
+
+                if (action === 'access') this.openAccessModal(id, name);
+                else if (action === 'toggle-status') this.toggleUserStatus(id, btn.dataset.active === 'true');
+                else if (action === 'superuser') this.makeSuperuser(id);
+                else if (action === 'delete') this.deleteUser(id, name);
+            },
+
             checkPasswordMatch() {
                 const password = document.getElementById('password').value;
                 const confirmPassword = document.getElementById('confirmPassword').value;
-                
+
                 if (confirmPassword === '') {
                     this.passwordMatch = null;
                     return;
                 }
-                
+
                 this.passwordMatch = password === confirmPassword;
             },
-            
+
             async createUser() {
                 const username = document.getElementById('username').value;
                 const email = document.getElementById('email').value;
@@ -238,7 +250,7 @@
                 const is_superuser = document.getElementById('isSuperuser').checked;
 
                 if (password !== confirmPassword) {
-                    alert('Passwords do not match!');
+                    showToast('Passwords do not match!', 'error');
                     return;
                 }
 
@@ -253,16 +265,149 @@
                         this.showCreateModal = false;
                         document.getElementById('createUserForm').reset();
                         this.passwordMatch = null;
-                        await loadUsers();
-                        alert('User created successfully!');
+                        await this.loadUsers();
+                        showToast('User created successfully!');
                     } else {
                         const error = await response.json();
-                        alert('Error: ' + (error.error || error.detail || 'Failed to create user'));
+                        showToast(error.error || error.detail || 'Failed to create user', 'error');
                     }
                 } catch (error) {
-                    alert('Error: ' + error.message);
+                    showToast(error.message, 'error');
                 }
             },
+
+            async loadUsers() {
+                try {
+                    const response = await fetch('/admin/api/users');
+                    const users = await response.json();
+
+                    const tbody = document.getElementById('usersTableBody');
+                    tbody.innerHTML = users.map(user => `
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.id}</td>
+                            <td class="px-6 py-4 whitespace-nowrap"><span class="font-semibold text-gray-900">${esc(user.username)}</span></td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${esc(user.email || 'N/A')}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 py-1 text-xs font-semibold rounded-full ${user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                                    ${user.is_active ? 'Active' : 'Inactive'}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                ${user.is_superuser ? '<span class="px-2 py-1 text-xs font-semibold rounded-full bg-gradient-to-r from-orange-400 to-orange-600 text-white">Superuser</span>' : '<span class="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">User</span>'}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${user.last_login_at ? new Date(user.last_login_at).toLocaleString() : 'Never'}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${new Date(user.created_at).toLocaleDateString()}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm space-x-2">
+                                <button data-action="access" data-id="${user.id}" data-name="${esc(user.username)}" title="MCP Access"
+                                        class="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded transition-colors">
+                                    <i data-lucide="shield" class="w-4 h-4"></i>
+                                </button>
+                                <button data-action="toggle-status" data-id="${user.id}" data-active="${user.is_active}" title="Toggle Status"
+                                        class="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors">
+                                    <i data-lucide="power" class="w-4 h-4"></i>
+                                </button>
+                                ${!user.is_superuser ? `
+                                    <button data-action="superuser" data-id="${user.id}" title="Make Superuser"
+                                            class="p-1.5 text-orange-600 hover:bg-orange-50 rounded transition-colors">
+                                        <i data-lucide="shield-check" class="w-4 h-4"></i>
+                                    </button>
+                                ` : ''}
+                                <button data-action="delete" data-id="${user.id}" data-name="${esc(user.username)}" title="Delete User"
+                                        class="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors">
+                                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `).join('');
+
+                    lucide.createIcons();
+                } catch (error) {
+                    console.error('Failed to load users:', error);
+                    document.getElementById('usersTableBody').innerHTML = '<tr><td colspan="8" class="px-6 py-4 text-center text-red-600">Failed to load users</td></tr>';
+                }
+            },
+
+            async toggleUserStatus(userId, currentStatus) {
+                if (!confirm(`Are you sure you want to ${currentStatus ? 'deactivate' : 'activate'} this user?`)) return;
+
+                try {
+                    const response = await fetch(`/admin/api/users/${userId}/status`, {
+                        method: 'PATCH',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({is_active: !currentStatus})
+                    });
+
+                    if (response.ok) {
+                        await this.loadUsers();
+                    } else {
+                        const error = await response.json();
+                        showToast(error.error || error.detail || 'Failed to update user status', 'error');
+                    }
+                } catch (error) {
+                    showToast(error.message, 'error');
+                }
+            },
+
+            async openAccessModal(userId, username) {
+                this.showAccessModal = true;
+                this.accessLoading = true;
+                this.accessUser = { id: userId, username };
+                this.accessServers = [];
+
+                try {
+                    const response = await fetch(`/admin/api/users/${userId}/mcp-permissions`);
+                    if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.error || error.detail || 'Failed to load permissions');
+                    }
+                    const data = await response.json();
+                    this.accessUser = data.user || { id: userId, username };
+                    this.accessServers = data.servers || [];
+                } catch (error) {
+                    showToast(error.message, 'error');
+                } finally {
+                    this.accessLoading = false;
+                    lucide.createIcons();
+                }
+            },
+
+            async makeSuperuser(userId) {
+                if (!confirm('Are you sure you want to make this user a superuser?')) return;
+
+                try {
+                    const response = await fetch(`/admin/api/users/${userId}/superuser`, {
+                        method: 'PATCH'
+                    });
+
+                    if (response.ok) {
+                        await this.loadUsers();
+                    } else {
+                        showToast('Failed to make user superuser', 'error');
+                    }
+                } catch (error) {
+                    showToast(error.message, 'error');
+                }
+            },
+
+            async deleteUser(userId, username) {
+                if (!confirm(`Are you sure you want to delete user "${username}"?\n\nThis action cannot be undone!`)) return;
+
+                try {
+                    const response = await fetch(`/admin/api/users/${userId}`, {
+                        method: 'DELETE'
+                    });
+
+                    if (response.ok) {
+                        await this.loadUsers();
+                    } else {
+                        const error = await response.json();
+                        showToast(error.error || error.detail || 'Failed to delete user', 'error');
+                    }
+                } catch (error) {
+                    showToast(error.message, 'error');
+                }
+            },
+
             async updateServerAccess(server, canAccess) {
                 const userId = this.accessUser?.id;
                 if (!userId) return;
@@ -283,154 +428,10 @@
                     server.can_access = canAccess;
                     server.source = 'explicit';
                 } catch (error) {
-                    alert('Error: ' + error.message);
+                    showToast(error.message, 'error');
                     server.can_access = !canAccess;
                 }
             }
-        }
-    }
-
-    async function loadUsers() {
-        try {
-            const response = await fetch('/admin/api/users');
-            const users = await response.json();
-
-            const tbody = document.getElementById('usersTableBody');
-            tbody.innerHTML = users.map(user => `
-                <tr class="hover:bg-gray-50 transition-colors">
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${user.id}</td>
-                    <td class="px-6 py-4 whitespace-nowrap"><span class="font-semibold text-gray-900">${esc(user.username)}</span></td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${esc(user.email || 'N/A')}</td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="px-2 py-1 text-xs font-semibold rounded-full ${user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
-                            ${user.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        ${user.is_superuser ? '<span class="px-2 py-1 text-xs font-semibold rounded-full bg-gradient-to-r from-orange-400 to-orange-600 text-white">Superuser</span>' : '<span class="px-2 py-1 text-xs font-semibold rounded-full bg-blue-100 text-blue-800">User</span>'}
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${user.last_login_at ? new Date(user.last_login_at).toLocaleString() : 'Never'}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${new Date(user.created_at).toLocaleDateString()}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm space-x-2">
-                        <button onclick="openAccessModal(${user.id}, '${esc(user.username)}')" title="MCP Access"
-                                class="p-1.5 text-indigo-600 hover:bg-indigo-50 rounded transition-colors">
-                            <i data-lucide="shield" class="w-4 h-4"></i>
-                        </button>
-                        <button onclick="toggleUserStatus(${user.id}, ${user.is_active})" title="Toggle Status"
-                                class="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors">
-                            <i data-lucide="power" class="w-4 h-4"></i>
-                        </button>
-                        ${!user.is_superuser ? `
-                            <button onclick="makeSuperuser(${user.id})" title="Make Superuser"
-                                    class="p-1.5 text-orange-600 hover:bg-orange-50 rounded transition-colors">
-                                <i data-lucide="shield-check" class="w-4 h-4"></i>
-                            </button>
-                        ` : ''}
-                        <button onclick="deleteUser(${user.id}, '${esc(user.username)}')" title="Delete User"
-                                class="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors">
-                            <i data-lucide="trash-2" class="w-4 h-4"></i>
-                        </button>
-                    </td>
-                </tr>
-            `).join('');
-            
-            lucide.createIcons();
-        } catch (error) {
-            console.error('Failed to load users:', error);
-            document.getElementById('usersTableBody').innerHTML = '<tr><td colspan="8" class="px-6 py-4 text-center text-red-600">Failed to load users</td></tr>';
-        }
-    }
-
-    async function toggleUserStatus(userId, currentStatus) {
-        if (!confirm(`Are you sure you want to ${currentStatus ? 'deactivate' : 'activate'} this user?`)) {
-            return;
-        }
-
-        try {
-            const response = await fetch(`/admin/api/users/${userId}/status`, {
-                method: 'PATCH',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({is_active: !currentStatus})
-            });
-
-            if (response.ok) {
-                await loadUsers();
-            } else {
-                const error = await response.json();
-                alert(error.error || error.detail || 'Failed to update user status');
-            }
-        } catch (error) {
-            alert('Error: ' + error.message);
-        }
-    }
-
-    async function openAccessModal(userId, username) {
-        const state = window.usersManager;
-        if (!state) {
-            alert('Access control UI not initialized');
-            return;
-        }
-        state.showAccessModal = true;
-        state.accessLoading = true;
-        state.accessUser = { id: userId, username };
-        state.accessServers = [];
-
-        try {
-            const response = await fetch(`/admin/api/users/${userId}/mcp-permissions`);
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error || error.detail || 'Failed to load permissions');
-            }
-            const data = await response.json();
-            state.accessUser = data.user || { id: userId, username };
-            state.accessServers = data.servers || [];
-        } catch (error) {
-            alert('Error: ' + error.message);
-        } finally {
-            state.accessLoading = false;
-            lucide.createIcons();
-        }
-    }
-
-
-    async function makeSuperuser(userId) {
-        if (!confirm('Are you sure you want to make this user a superuser?')) {
-            return;
-        }
-
-        try {
-            const response = await fetch(`/admin/api/users/${userId}/superuser`, {
-                method: 'PATCH'
-            });
-
-            if (response.ok) {
-                await loadUsers();
-            } else {
-                alert('Failed to make user superuser');
-            }
-        } catch (error) {
-            alert('Error: ' + error.message);
-        }
-    }
-
-    async function deleteUser(userId, username) {
-        if (!confirm(`Are you sure you want to delete user "${username}"?\n\nThis action cannot be undone!`)) {
-            return;
-        }
-
-        try {
-            const response = await fetch(`/admin/api/users/${userId}`, {
-                method: 'DELETE'
-            });
-
-            if (response.ok) {
-                await loadUsers();
-            } else {
-                const error = await response.json();
-                alert(error.error || error.detail || 'Failed to delete user');
-            }
-        } catch (error) {
-            alert('Error: ' + error.message);
         }
     }
 

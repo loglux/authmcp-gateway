@@ -286,10 +286,10 @@
                     const response = await fetch('/admin/api/logs/cleanup', { method: 'POST' });
                     const data = await response.json();
                     
-                    alert(`Cleanup complete! Deleted ${data.deleted} old log entries.`);
+                    showToast(`Cleanup complete! Deleted ${data.deleted} old entries.`);
                     this.loadLogs(true);
                 } catch (error) {
-                    alert('Failed to cleanup logs: ' + error.message);
+                    showToast('Failed to cleanup logs: ' + error.message, 'error');
                 }
             },
             

@@ -164,3 +164,6 @@ authmcp-gateway.wiki/
 scripts/check_acl.sh
 CLAUDE.md
 PRE_COMMIT_SETUP.md
+
+# Build artifacts
+src/authmcp_gateway/static/tailwind.css

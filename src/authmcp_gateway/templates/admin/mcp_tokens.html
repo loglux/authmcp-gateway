@@ -3,7 +3,7 @@
 {% block title %}Backend Tokens - AuthMCP Gateway{% endblock %}
 
 {% block content %}
-<div x-data="tokenManager()">
+<div x-data="tokenManager()" @click="handleAction($event)">
     <!-- Header -->
     <div class="flex items-center justify-between mb-8">
         <div>
@@ -59,295 +59,233 @@
             </table>
         </div>
     </div>
-
-    <!-- Toast Notification -->
-    <div x-show="showToast" x-cloak
-         class="fixed bottom-4 right-4 z-50 bg-white rounded-lg shadow-lg border border-gray-200 p-4 max-w-sm"
-         x-transition:enter="transition ease-out duration-300"
-         x-transition:enter-start="opacity-0 transform translate-y-2"
-         x-transition:enter-end="opacity-100 transform translate-y-0">
-        <div class="flex items-start gap-3">
-            <div :class="toastType === 'success' ? 'text-green-600' : 'text-red-600'">
-                <i :data-lucide="toastType === 'success' ? 'check-circle' : 'alert-circle'" class="w-5 h-5"></i>
-            </div>
-            <div class="flex-1">
-                <p class="font-semibold text-gray-900">Notification</p>
-                <p class="text-sm text-gray-600" x-text="toastMessage"></p>
-            </div>
-            <button @click="showToast = false" class="text-gray-400 hover:text-gray-600">
-                <i data-lucide="x" class="w-5 h-5"></i>
-            </button>
-        </div>
-    </div>
 </div>
 
-<style>
-    [x-cloak] { display: none !important; }
-</style>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
     function tokenManager() {
         return {
-            showToast: false,
-            toastType: 'info',
-            toastMessage: '',
-            
+            tokenStatuses: [],
+            auditLogs: [],
+
             init() {
-                // Load data on component init
                 this.loadData();
-                // Auto-refresh every 30 seconds
-                setInterval(() => this.loadData(), 30000);
+                this._poller = pollWhileVisible(() => this.loadData(), 30000);
             },
-            
+
+            handleAction(event) {
+                const btn = event.target.closest('[data-action]');
+                if (!btn) return;
+                if (btn.dataset.action === 'refresh') {
+                    this.refreshToken(parseInt(btn.dataset.id));
+                }
+            },
+
             async loadData() {
-                await loadTokenStatuses();
-                await loadAuditLogs();
+                await this.loadTokenStatuses();
+                await this.loadAuditLogs();
             },
-            
-            showToastNotification(message, type = 'info') {
-                this.toastMessage = message;
-                this.toastType = type;
-                this.showToast = true;
-                setTimeout(() => this.showToast = false, 5000);
+
+            async loadTokenStatuses() {
+                try {
+                    const response = await fetch('/admin/api/mcp-servers/token-statuses');
+                    if (!response.ok) throw new Error('Failed to load token statuses');
+                    this.tokenStatuses = await response.json();
+                    this.renderTokenCards();
+                } catch (error) {
+                    console.error('Error loading token statuses:', error);
+                }
+            },
+
+            async loadAuditLogs() {
+                try {
+                    const response = await fetch('/admin/api/mcp-servers/token-audit-logs?limit=50');
+                    if (!response.ok) throw new Error('Failed to load audit logs');
+                    this.auditLogs = await response.json();
+                    this.renderAuditLog();
+                } catch (error) {
+                    console.error('Error loading audit logs:', error);
+                }
+            },
+
+            renderTokenCards() {
+                const container = document.getElementById('tokenStatusCards');
+                if (this.tokenStatuses.length === 0) {
+                    container.innerHTML = '<div class="col-span-full text-center text-gray-500">No backend MCP servers configured.</div>';
+                    return;
+                }
+
+                container.innerHTML = this.tokenStatuses.map(server => {
+                    const statusInfo = this.getStatusInfo(server);
+                    return `
+                        <div class="bg-white rounded-xl shadow-sm border-l-4 ${statusInfo.borderClass} overflow-hidden hover:shadow-md transition-shadow">
+                            <div class="p-6">
+                                <div class="flex items-center justify-between mb-4">
+                                    <h3 class="font-bold text-gray-900">${esc(server.server_name)}</h3>
+                                    <span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-700">${esc(server.auth_type)}</span>
+                                </div>
+
+                                <div class="space-y-3 text-sm">
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-gray-600">Status:</span>
+                                        <span class="${statusInfo.textClass} flex items-center gap-1">
+                                            <i data-lucide="${statusInfo.icon}" class="w-4 h-4"></i>
+                                            ${statusInfo.text}
+                                        </span>
+                                    </div>
+
+                                    ${server.token_expires_at ? `
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-gray-600">Expires:</span>
+                                            <span class="text-gray-900 text-xs">${this.formatDateTime(server.token_expires_at)}</span>
+                                        </div>
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-gray-600">Time left:</span>
+                                            <span class="text-gray-900 text-xs">${this.formatDuration(server.time_until_expiry_seconds)}</span>
+                                        </div>
+                                    ` : ''}
+
+                                    ${server.last_refreshed ? `
+                                        <div class="flex items-center justify-between">
+                                            <span class="text-gray-600">Last Refreshed:</span>
+                                            <span class="text-gray-900 text-xs">${this.formatDateTime(server.last_refreshed)}</span>
+                                        </div>
+                                    ` : ''}
+
+                                    <div class="flex items-center justify-between">
+                                        <span class="text-gray-600">Auto-refresh:</span>
+                                        <span class="px-2 py-1 text-xs font-semibold rounded-full ${server.can_auto_refresh ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">
+                                            ${server.can_auto_refresh ? 'Enabled' : 'Disabled'}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                ${server.can_auto_refresh ? `
+                                    <button
+                                        data-action="refresh" data-id="${server.server_id}"
+                                        id="refreshBtn${server.server_id}"
+                                        class="w-full mt-4 px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2">
+                                        <i data-lucide="rotate-cw" class="w-4 h-4"></i>
+                                        Refresh Now
+                                    </button>
+                                ` : `
+                                    <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                                        <p class="text-xs text-yellow-800 flex items-start gap-2">
+                                            <i data-lucide="alert-triangle" class="w-4 h-4 mt-0.5"></i>
+                                            No refresh token configured. Edit server to add refresh token.
+                                        </p>
+                                    </div>
+                                `}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
                 setTimeout(() => lucide.createIcons(), 100);
+            },
+
+            getStatusInfo(server) {
+                if (!server.has_refresh_token) {
+                    return { borderClass: 'border-gray-300', textClass: 'text-gray-600', icon: 'minus-circle', text: 'Static Token' };
+                }
+                if (server.token_expired) {
+                    return { borderClass: 'border-red-500', textClass: 'text-red-600', icon: 'x-circle', text: 'Expired' };
+                }
+                if (server.time_until_expiry_seconds && server.time_until_expiry_seconds < 3600) {
+                    return { borderClass: 'border-yellow-500', textClass: 'text-yellow-600', icon: 'alert-circle', text: 'Expiring Soon' };
+                }
+                return { borderClass: 'border-green-500', textClass: 'text-green-600', icon: 'check-circle', text: 'Valid' };
+            },
+
+            async refreshToken(serverId) {
+                const server = this.tokenStatuses.find(s => s.server_id === serverId);
+                const serverName = server ? server.server_name : `#${serverId}`;
+                const btn = document.getElementById(`refreshBtn${serverId}`);
+                const originalHtml = btn.innerHTML;
+
+                btn.disabled = true;
+                btn.innerHTML = '<span class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span> Refreshing...';
+
+                try {
+                    const response = await fetch(`/admin/api/mcp-servers/${serverId}/refresh-token`, {
+                        method: 'POST'
+                    });
+                    const data = await response.json();
+
+                    if (response.ok) {
+                        showToast(`Token refreshed successfully for ${serverName}`);
+                        await this.loadData();
+                    } else {
+                        showToast(`Failed to refresh token: ${data.detail}`, 'error');
+                    }
+                } catch (error) {
+                    console.error('Error refreshing token:', error);
+                    showToast('Error refreshing token', 'error');
+                } finally {
+                    btn.disabled = false;
+                    btn.innerHTML = originalHtml;
+                    setTimeout(() => lucide.createIcons(), 100);
+                }
+            },
+
+            renderAuditLog() {
+                const tbody = document.getElementById('auditLogBody');
+
+                if (this.auditLogs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" class="px-6 py-4 text-center text-gray-500">No audit logs yet</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = this.auditLogs.map(log => {
+                    const bgClass = log.success ? 'bg-green-50' : 'bg-red-50';
+                    return `
+                        <tr class="${bgClass} hover:bg-opacity-75 transition-colors">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${this.formatDateTime(log.timestamp)}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${esc(log.server_name)}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-cyan-100 text-cyan-800">${esc(log.event_type)}</span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">${esc(log.triggered_by)}</span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm">
+                                ${log.success
+                                    ? '<span class="text-green-600 flex items-center gap-1"><i data-lucide="check-circle" class="w-4 h-4"></i> Success</span>'
+                                    : '<span class="text-red-600 flex items-center gap-1"><i data-lucide="x-circle" class="w-4 h-4"></i> Failed</span>'}
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${log.old_expires_at ? this.formatDateTime(log.old_expires_at) : '-'}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${log.new_expires_at ? this.formatDateTime(log.new_expires_at) : '-'}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-red-600">${esc(log.error_message) || '-'}</td>
+                        </tr>
+                    `;
+                }).join('');
+
+                setTimeout(() => lucide.createIcons(), 100);
+            },
+
+            formatDateTime(isoString) {
+                if (!isoString) return '-';
+                const date = new Date(isoString);
+                return date.toLocaleString('en-US', {
+                    month: 'short', day: 'numeric',
+                    hour: '2-digit', minute: '2-digit'
+                });
+            },
+
+            formatDuration(seconds) {
+                if (!seconds || seconds < 0) return 'Expired';
+                const hours = Math.floor(seconds / 3600);
+                const minutes = Math.floor((seconds % 3600) / 60);
+                if (hours > 24) {
+                    const days = Math.floor(hours / 24);
+                    return `${days}d ${hours % 24}h`;
+                }
+                if (hours > 0) return `${hours}h ${minutes}m`;
+                return `${minutes}m`;
             }
         }
-    }
-
-    let tokenStatuses = [];
-    let auditLogs = [];
-
-    async function loadTokenStatuses() {
-        try {
-            const response = await fetch('/admin/api/mcp-servers/token-statuses');
-            if (!response.ok) throw new Error('Failed to load token statuses');
-
-            tokenStatuses = await response.json();
-            renderTokenCards();
-        } catch (error) {
-            console.error('Error loading token statuses:', error);
-        }
-    }
-
-    async function loadAuditLogs() {
-        try {
-            const response = await fetch('/admin/api/mcp-servers/token-audit-logs?limit=50');
-            if (!response.ok) throw new Error('Failed to load audit logs');
-
-            auditLogs = await response.json();
-            renderAuditLog();
-        } catch (error) {
-            console.error('Error loading audit logs:', error);
-        }
-    }
-
-    function renderTokenCards() {
-        const container = document.getElementById('tokenStatusCards');
-        if (tokenStatuses.length === 0) {
-            container.innerHTML = '<div class="col-span-full text-center text-gray-500">No backend MCP servers configured.</div>';
-            return;
-        }
-
-        container.innerHTML = tokenStatuses.map(server => {
-            const statusInfo = getStatusInfo(server);
-            return `
-                <div class="bg-white rounded-xl shadow-sm border-l-4 ${statusInfo.borderClass} overflow-hidden hover:shadow-md transition-shadow">
-                    <div class="p-6">
-                        <div class="flex items-center justify-between mb-4">
-                            <h3 class="font-bold text-gray-900">${server.server_name}</h3>
-                            <span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-700">${server.auth_type}</span>
-                        </div>
-
-                        <div class="space-y-3 text-sm">
-                            <div class="flex items-center justify-between">
-                                <span class="text-gray-600">Status:</span>
-                                <span class="${statusInfo.textClass} flex items-center gap-1">
-                                    <i data-lucide="${statusInfo.icon}" class="w-4 h-4"></i>
-                                    ${statusInfo.text}
-                                </span>
-                            </div>
-
-                            ${server.token_expires_at ? `
-                                <div class="flex items-center justify-between">
-                                    <span class="text-gray-600">Expires:</span>
-                                    <span class="text-gray-900 text-xs">${formatDateTime(server.token_expires_at)}</span>
-                                </div>
-                                <div class="flex items-center justify-between">
-                                    <span class="text-gray-600">Time left:</span>
-                                    <span class="text-gray-900 text-xs">${formatDuration(server.time_until_expiry_seconds)}</span>
-                                </div>
-                            ` : ''}
-
-                            ${server.last_refreshed ? `
-                                <div class="flex items-center justify-between">
-                                    <span class="text-gray-600">Last Refreshed:</span>
-                                    <span class="text-gray-900 text-xs">${formatDateTime(server.last_refreshed)}</span>
-                                </div>
-                            ` : ''}
-
-                            <div class="flex items-center justify-between">
-                                <span class="text-gray-600">Auto-refresh:</span>
-                                <span class="px-2 py-1 text-xs font-semibold rounded-full ${server.can_auto_refresh ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">
-                                    ${server.can_auto_refresh ? 'Enabled' : 'Disabled'}
-                                </span>
-                            </div>
-                        </div>
-
-                        ${server.can_auto_refresh ? `
-                            <button
-                                onclick="refreshToken(${server.server_id}, '${server.server_name}')"
-                                id="refreshBtn${server.server_id}"
-                                class="w-full mt-4 px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2">
-                                <i data-lucide="rotate-cw" class="w-4 h-4"></i>
-                                Refresh Now
-                            </button>
-                        ` : `
-                            <div class="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                                <p class="text-xs text-yellow-800 flex items-start gap-2">
-                                    <i data-lucide="alert-triangle" class="w-4 h-4 mt-0.5"></i>
-                                    No refresh token configured. Edit server to add refresh token.
-                                </p>
-                            </div>
-                        `}
-                    </div>
-                </div>
-            `;
-        }).join('');
-        
-        setTimeout(() => lucide.createIcons(), 100);
-    }
-
-    function getStatusInfo(server) {
-        if (!server.has_refresh_token) {
-            return {
-                borderClass: 'border-gray-300',
-                textClass: 'text-gray-600',
-                icon: 'minus-circle',
-                text: 'Static Token'
-            };
-        }
-
-        if (server.token_expired) {
-            return {
-                borderClass: 'border-red-500',
-                textClass: 'text-red-600',
-                icon: 'x-circle',
-                text: 'Expired'
-            };
-        }
-
-        if (server.time_until_expiry_seconds && server.time_until_expiry_seconds < 3600) {
-            return {
-                borderClass: 'border-yellow-500',
-                textClass: 'text-yellow-600',
-                icon: 'alert-circle',
-                text: 'Expiring Soon'
-            };
-        }
-
-        return {
-            borderClass: 'border-green-500',
-            textClass: 'text-green-600',
-            icon: 'check-circle',
-            text: 'Valid'
-        };
-    }
-
-    async function refreshToken(serverId, serverName) {
-        const btn = document.getElementById(`refreshBtn${serverId}`);
-        const originalHtml = btn.innerHTML;
-
-        btn.disabled = true;
-        btn.innerHTML = '<span class="inline-block animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span> Refreshing...';
-
-        try {
-            const response = await fetch(`/admin/api/mcp-servers/${serverId}/refresh-token`, {
-                method: 'POST'
-            });
-
-            const data = await response.json();
-
-            if (response.ok) {
-                Alpine.store('tokenManager').showToastNotification(`Token refreshed successfully for ${serverName}`, 'success');
-                await loadTokenStatuses();
-                await loadAuditLogs();
-            } else {
-                Alpine.store('tokenManager').showToastNotification(`Failed to refresh token: ${data.detail}`, 'error');
-            }
-        } catch (error) {
-            console.error('Error refreshing token:', error);
-            Alpine.store('tokenManager').showToastNotification('Error refreshing token', 'error');
-        } finally {
-            btn.disabled = false;
-            btn.innerHTML = originalHtml;
-            setTimeout(() => lucide.createIcons(), 100);
-        }
-    }
-
-    function renderAuditLog() {
-        const tbody = document.getElementById('auditLogBody');
-
-        if (auditLogs.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="px-6 py-4 text-center text-gray-500">No audit logs yet</td></tr>';
-            return;
-        }
-
-        tbody.innerHTML = auditLogs.map(log => {
-            const bgClass = log.success ? 'bg-green-50' : 'bg-red-50';
-            return `
-                <tr class="${bgClass} hover:bg-opacity-75 transition-colors">
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${formatDateTime(log.timestamp)}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${log.server_name}</td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-cyan-100 text-cyan-800">${log.event_type}</span>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap">
-                        <span class="px-2 py-1 text-xs font-semibold rounded-full bg-gray-100 text-gray-800">${log.triggered_by}</span>
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm">
-                        ${log.success
-                            ? '<span class="text-green-600 flex items-center gap-1"><i data-lucide="check-circle" class="w-4 h-4"></i> Success</span>'
-                            : '<span class="text-red-600 flex items-center gap-1"><i data-lucide="x-circle" class="w-4 h-4"></i> Failed</span>'}
-                    </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${log.old_expires_at ? formatDateTime(log.old_expires_at) : '-'}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-600">${log.new_expires_at ? formatDateTime(log.new_expires_at) : '-'}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm text-red-600">${log.error_message || '-'}</td>
-                </tr>
-            `;
-        }).join('');
-        
-        setTimeout(() => lucide.createIcons(), 100);
-    }
-
-    function formatDateTime(isoString) {
-        if (!isoString) return '-';
-        const date = new Date(isoString);
-        return date.toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
-    }
-
-    function formatDuration(seconds) {
-        if (!seconds || seconds < 0) return 'Expired';
-
-        const hours = Math.floor(seconds / 3600);
-        const minutes = Math.floor((seconds % 3600) / 60);
-
-        if (hours > 24) {
-            const days = Math.floor(hours / 24);
-            return `${days}d ${hours % 24}h`;
-        }
-
-        if (hours > 0) {
-            return `${hours}h ${minutes}m`;
-        }
-
-        return `${minutes}m`;
     }
 </script>
 {% endblock %}

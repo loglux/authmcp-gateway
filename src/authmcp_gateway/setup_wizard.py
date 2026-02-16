@@ -45,161 +45,125 @@ async def setup_page(_: Request) -> HTMLResponse:
 
     html = """
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="h-full">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Initial Setup - AuthMCP Gateway</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
-    <style>
-        body {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .setup-card {
-            max-width: 500px;
-            width: 100%;
-            background: white;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-        }
-        .setup-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 2rem;
-            border-radius: 16px 16px 0 0;
-            text-align: center;
-        }
-        .setup-body {
-            padding: 2rem;
-        }
-        .form-control:focus {
-            border-color: #667eea;
-            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
-        }
-        .btn-primary {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
-            padding: 12px;
-            font-weight: 600;
-        }
-        .btn-primary:hover {
-            background: linear-gradient(135deg, #5568d3 0%, #6a3f8c 100%);
-        }
-        .password-requirements {
-            font-size: 0.875rem;
-            color: #6c757d;
-            margin-top: 0.5rem;
-        }
-        .password-requirements li {
-            margin-bottom: 0.25rem;
-        }
-        .alert {
-            border-radius: 8px;
-        }
-    </style>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="stylesheet" href="/static/tailwind.css">
+    <script src="/static/lucide.min.js"></script>
 </head>
-<body>
-    <div class="setup-card">
-        <div class="setup-header">
-            <i class="bi bi-shield-lock" style="font-size: 3rem; margin-bottom: 1rem;"></i>
-            <h1 class="h3 mb-2">Welcome to AuthMCP Gateway</h1>
-            <p class="mb-0">Initial Setup - Create Administrator Account</p>
-        </div>
-        
-        <div class="setup-body">
-            <div id="errorAlert" class="alert alert-danger d-none" role="alert">
-                <i class="bi bi-exclamation-triangle"></i>
-                <span id="errorMessage"></span>
+<body class="h-full bg-gradient-to-br from-blue-600 via-cyan-600 to-cyan-700">
+    <div class="min-h-full flex items-center justify-center px-4 py-12">
+        <div class="max-w-md w-full bg-white rounded-2xl shadow-2xl overflow-hidden">
+            <!-- Header -->
+            <div class="bg-gradient-to-r from-blue-600 to-cyan-600 text-white px-8 py-6 text-center">
+                <div class="flex justify-center mb-3">
+                    <div class="p-3 bg-white/20 rounded-full">
+                        <i data-lucide="shield-check" class="w-10 h-10"></i>
+                    </div>
+                </div>
+                <h1 class="text-2xl font-bold mb-1">Welcome to AuthMCP Gateway</h1>
+                <p class="text-white/80 text-sm">Initial Setup &mdash; Create Administrator Account</p>
             </div>
-            
-            <form id="setupForm">
-                <div class="mb-3">
-                    <label class="form-label">
-                        <i class="bi bi-person"></i> Username
-                    </label>
-                    <input type="text" class="form-control" id="username" required 
-                           pattern="[a-zA-Z0-9_-]+" minlength="3" maxlength="50"
-                           placeholder="admin">
-                    <small class="text-muted">3-50 characters, alphanumeric, _ or -</small>
+
+            <!-- Body -->
+            <div class="p-8">
+                <!-- Error Alert -->
+                <div id="errorAlert" class="hidden bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4 flex items-start gap-2 text-sm" role="alert">
+                    <i data-lucide="alert-circle" class="w-5 h-5 mt-0.5 flex-shrink-0"></i>
+                    <span id="errorMessage"></span>
                 </div>
-                
-                <div class="mb-3">
-                    <label class="form-label">
-                        <i class="bi bi-envelope"></i> Email
-                    </label>
-                    <input type="email" class="form-control" id="email" required
-                           placeholder="admin@example.com">
-                </div>
-                
-                <div class="mb-3">
-                    <label class="form-label">
-                        <i class="bi bi-key"></i> Password
-                    </label>
-                    <ul class="password-requirements mb-2" style="font-size: 0.875rem;">
-                        <li>📏 At least 8 characters</li>
-                        <li>🔠 Contains uppercase letter</li>
-                        <li>🔡 Contains lowercase letter</li>
-                        <li>🔢 Contains number</li>
-                        <li>✅ Special characters allowed</li>
-                    </ul>
-                    <input type="password" class="form-control" id="password" required
-                           minlength="8" placeholder="••••••••">
-                </div>
-                
-                <div class="mb-3">
-                    <label class="form-label">
-                        <i class="bi bi-key-fill"></i> Confirm Password
-                    </label>
-                    <input type="password" class="form-control" id="confirmPassword" required
-                           minlength="8" placeholder="••••••••">
-                    <small id="passwordMatch" class="d-none"></small>
-                </div>
-                
-                <div class="mb-3">
-                    <label class="form-label">
-                        <i class="bi bi-person-badge"></i> Full Name (optional)
-                    </label>
-                    <input type="text" class="form-control" id="fullName"
-                           placeholder="Administrator">
-                </div>
-                
-                <button type="submit" class="btn btn-primary w-100" id="submitBtn">
-                    <i class="bi bi-check-circle"></i> Create Administrator Account
-                </button>
-            </form>
+
+                <form id="setupForm" class="space-y-5">
+                    <!-- Username -->
+                    <div>
+                        <label for="username" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
+                        <input type="text" id="username" required
+                               pattern="[a-zA-Z0-9_-]+" minlength="3" maxlength="50"
+                               placeholder="admin"
+                               class="block w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors">
+                        <p class="text-xs text-gray-500 mt-1">3-50 characters, alphanumeric, _ or -</p>
+                    </div>
+
+                    <!-- Email -->
+                    <div>
+                        <label for="email" class="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                        <input type="email" id="email" required
+                               placeholder="admin@example.com"
+                               class="block w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors">
+                    </div>
+
+                    <!-- Password -->
+                    <div>
+                        <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                        <ul class="text-xs text-gray-500 space-y-0.5 mb-2 ml-1">
+                            <li>At least 8 characters</li>
+                            <li>Contains uppercase letter</li>
+                            <li>Contains lowercase letter</li>
+                            <li>Contains number</li>
+                            <li>Special characters allowed</li>
+                        </ul>
+                        <input type="password" id="password" required
+                               minlength="8" placeholder="••••••••"
+                               class="block w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors">
+                    </div>
+
+                    <!-- Confirm Password -->
+                    <div>
+                        <label for="confirmPassword" class="block text-sm font-medium text-gray-700 mb-1">Confirm Password</label>
+                        <input type="password" id="confirmPassword" required
+                               minlength="8" placeholder="••••••••"
+                               class="block w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors">
+                        <p id="passwordMatch" class="hidden text-xs mt-1"></p>
+                    </div>
+
+                    <!-- Full Name -->
+                    <div>
+                        <label for="fullName" class="block text-sm font-medium text-gray-700 mb-1">Full Name <span class="text-gray-400">(optional)</span></label>
+                        <input type="text" id="fullName"
+                               placeholder="Administrator"
+                               class="block w-full px-3 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors">
+                    </div>
+
+                    <!-- Submit -->
+                    <button type="submit" id="submitBtn"
+                            class="w-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white py-3 px-4 rounded-lg font-semibold hover:from-blue-700 hover:to-cyan-700 transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2">
+                        <i data-lucide="check-circle" class="w-5 h-5"></i>
+                        Create Administrator Account
+                    </button>
+                </form>
+            </div>
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        lucide.createIcons();
+
         document.getElementById('setupForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            
+
             const username = document.getElementById('username').value;
             const email = document.getElementById('email').value;
             const password = document.getElementById('password').value;
             const confirmPassword = document.getElementById('confirmPassword').value;
             const fullName = document.getElementById('fullName').value;
-            
+
             // Hide previous errors
-            document.getElementById('errorAlert').classList.add('d-none');
-            
+            document.getElementById('errorAlert').classList.add('hidden');
+
             // Validate passwords match
             if (password !== confirmPassword) {
                 showError('Passwords do not match');
                 return;
             }
-            
+
             // Disable submit button
             const submitBtn = document.getElementById('submitBtn');
             submitBtn.disabled = true;
-            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Creating...';
-            
+            submitBtn.innerHTML = '<span class="inline-block animate-spin rounded-full h-5 w-5 border-b-2 border-white"></span> Creating...';
+
             try {
                 const response = await fetch('/setup/create-admin', {
                     method: 'POST',
@@ -212,50 +176,52 @@ async def setup_page(_: Request) -> HTMLResponse:
                         is_superuser: true
                     })
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (response.ok) {
-                    // Success - redirect to admin login
                     window.location.href = '/admin?setup=success';
                 } else {
                     showError(data.detail || 'Failed to create administrator account');
-                    submitBtn.disabled = false;
-                    submitBtn.innerHTML = '<i class="bi bi-check-circle"></i> Create Administrator Account';
+                    resetBtn(submitBtn);
                 }
             } catch (error) {
                 showError('Network error: ' + error.message);
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = '<i class="bi bi-check-circle"></i> Create Administrator Account';
+                resetBtn(submitBtn);
             }
         });
-        
-        function showError(message) {
-            document.getElementById('errorMessage').textContent = message;
-            document.getElementById('errorAlert').classList.remove('d-none');
+
+        function resetBtn(btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i data-lucide="check-circle" class="w-5 h-5"></i> Create Administrator Account';
+            lucide.createIcons({ nodes: [btn] });
         }
 
-        // Live password match validation
+        function showError(message) {
+            document.getElementById('errorMessage').textContent = message;
+            document.getElementById('errorAlert').classList.remove('hidden');
+        }
+
         function checkPasswordMatch() {
             const password = document.getElementById('password').value;
             const confirmPassword = document.getElementById('confirmPassword').value;
-            const matchElement = document.getElementById('passwordMatch');
+            const el = document.getElementById('passwordMatch');
 
             if (confirmPassword === '') {
-                matchElement.classList.add('d-none');
+                el.classList.add('hidden');
                 return;
             }
 
+            el.classList.remove('hidden');
             if (password === confirmPassword) {
-                matchElement.textContent = '✅ Passwords match';
-                matchElement.className = 'text-success d-block';
+                el.textContent = 'Passwords match';
+                el.className = 'text-xs mt-1 text-green-600';
             } else {
-                matchElement.textContent = '❌ Passwords do not match';
-                matchElement.className = 'text-danger d-block';
+                el.textContent = 'Passwords do not match';
+                el.className = 'text-xs mt-1 text-red-600';
             }
         }
 
-        // Add event listeners
         document.getElementById('password').addEventListener('input', checkPasswordMatch);
         document.getElementById('confirmPassword').addEventListener('input', checkPasswordMatch);
     </script>

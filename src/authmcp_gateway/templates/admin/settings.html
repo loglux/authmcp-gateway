@@ -394,7 +394,7 @@
             navigator.clipboard.writeText(text).then(() => {
                 showToast(message);
             }).catch(() => {
-                alert('Failed to copy. Please select and copy manually.');
+                showToast('Failed to copy', 'error');
             });
             return;
         }
@@ -410,7 +410,7 @@
             document.body.removeChild(textarea);
             showToast(message);
         } catch (err) {
-            alert('Failed to copy. Please select and copy manually.');
+            showToast('Failed to copy', 'error');
         }
     }
 
@@ -441,17 +441,8 @@
             }
             showToast('Token rotated!');
         } catch (err) {
-            alert(err.message || 'Failed to rotate token');
+            showToast(err.message || 'Failed to rotate token', 'error');
         }
-    }
-
-    function showToast(message) {
-        const toast = document.createElement('div');
-        toast.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 flex items-center gap-2';
-        toast.innerHTML = `<i data-lucide="check" class="w-5 h-5"></i><span>${message}</span>`;
-        document.body.appendChild(toast);
-        lucide.createIcons();
-        setTimeout(() => toast.remove(), 2000);
     }
 
     document.addEventListener('DOMContentLoaded', function() {

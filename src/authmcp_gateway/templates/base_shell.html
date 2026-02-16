@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full bg-gray-50">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <title>{% block title %}Auth MCP{% endblock %}</title>
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+
+    <!-- Tailwind CSS (pre-built) -->
+    <link rel="stylesheet" href="/static/tailwind.css">
+
+    <!-- Alpine.js v3.15.8 -->
+    <script defer src="/static/alpine.min.js"></script>
+
+    <!-- Lucide Icons v0.469.0 -->
+    <script src="/static/lucide.min.js"></script>
+
+    <style>{% block extra_styles %}{% endblock %}</style>
+</head>
+<body class="h-full" x-data="{ sidebarOpen: true, mobileMenuOpen: false }">
+    <div class="flex h-screen bg-gray-50">
+
+        <!-- Mobile Menu Button -->
+        <button
+            @click="mobileMenuOpen = !mobileMenuOpen"
+            class="lg:hidden fixed top-4 left-4 z-50 p-3 bg-gradient-to-br from-blue-600 to-cyan-600 text-white rounded-lg shadow-lg hover:shadow-xl transition-all"
+        >
+            <i data-lucide="menu" class="w-6 h-6"></i>
+        </button>
+
+        <!-- Mobile Overlay -->
+        <div
+            x-show="mobileMenuOpen"
+            @click="mobileMenuOpen = false"
+            x-transition:enter="transition-opacity ease-out duration-300"
+            x-transition:enter-start="opacity-0"
+            x-transition:enter-end="opacity-100"
+            x-transition:leave="transition-opacity ease-in duration-200"
+            x-transition:leave-start="opacity-100"
+            x-transition:leave-end="opacity-0"
+            class="lg:hidden fixed inset-0 bg-black/50 z-30"
+        ></div>
+
+        <!-- Sidebar -->
+        <aside
+            :class="sidebarOpen ? 'w-64' : 'w-20'"
+            class="bg-gradient-to-br from-blue-600 via-cyan-600 to-cyan-700 text-white transition-all duration-300 shadow-2xl flex flex-col
+                   lg:relative fixed top-0 left-0 h-full z-40
+                   lg:translate-x-0"
+            x-bind:class="mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
+        >
+            <!-- Header -->
+            <div class="p-6 border-b border-white/10">
+                <div class="flex items-center justify-between">
+                    <div x-show="sidebarOpen" class="flex items-center space-x-3 slide-in">
+                        <i data-lucide="shield-check" class="w-8 h-8"></i>
+                        <div>
+                            <h2 class="text-xl font-bold">Auth MCP</h2>
+                            <p class="text-xs text-white/70">{% block sidebar_subtitle %}{% endblock %}</p>
+                        </div>
+                    </div>
+                    <button
+                        @click="sidebarOpen = !sidebarOpen"
+                        class="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                        :class="!sidebarOpen ? 'mx-auto' : ''"
+                    >
+                        <i data-lucide="panel-left" class="w-5 h-5"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Navigation -->
+            <nav class="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
+                {% block sidebar_nav %}{% endblock %}
+            </nav>
+
+            <!-- Logout -->
+            <div class="p-3 border-t border-white/10">
+                <a
+                    href="{% block logout_url %}/admin/logout{% endblock %}"
+                    @click="if (!confirm('Are you sure you want to logout?')) { $event.preventDefault(); }"
+                    class="flex items-center px-3 py-3 rounded-lg hover:bg-red-500/20 transition-all group"
+                >
+                    <i data-lucide="log-out" class="w-5 h-5 min-w-[20px]"></i>
+                    <span x-show="sidebarOpen" class="ml-3 font-medium slide-in">Logout</span>
+                </a>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 overflow-y-auto" {% block main_attrs %}{% endblock %}>
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-8 pt-20 lg:pt-8">
+                {% block content %}{% endblock %}
+            </div>
+        </main>
+    </div>
+
+    <!-- Global Toast Container -->
+    <div id="toastContainer" class="fixed top-4 right-4 z-[100] space-y-2 pointer-events-none"></div>
+
+    <!-- Initialize Lucide icons -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+        });
+
+        // Re-initialize icons after Alpine updates
+        document.addEventListener('alpine:initialized', () => {
+            setTimeout(() => lucide.createIcons(), 100);
+        });
+
+        // Global HTML escape helper to prevent XSS in innerHTML
+        function esc(str) {
+            if (str == null) return '';
+            const d = document.createElement('div');
+            d.appendChild(document.createTextNode(String(str)));
+            return d.innerHTML;
+        }
+
+        // Global toast notification.
+        // Usage: showToast('Message') or showToast('Error!', 'error')
+        // Types: 'success' (default), 'error', 'info', 'warning'
+        function showToast(message, type = 'success', durationMs = 4000) {
+            const container = document.getElementById('toastContainer');
+            const colors = {
+                success: 'bg-green-600',
+                error: 'bg-red-600',
+                warning: 'bg-yellow-500',
+                info: 'bg-blue-600'
+            };
+            const icons = {
+                success: 'check-circle',
+                error: 'alert-circle',
+                warning: 'alert-triangle',
+                info: 'info'
+            };
+            const toast = document.createElement('div');
+            toast.className = `${colors[type] || colors.success} text-white px-5 py-3 rounded-lg shadow-lg pointer-events-auto flex items-center gap-2 text-sm font-medium transform transition-all duration-300 translate-x-full opacity-0`;
+            toast.innerHTML = `<i data-lucide="${icons[type] || icons.success}" class="w-4 h-4 flex-shrink-0"></i><span>${esc(message)}</span>`;
+            container.appendChild(toast);
+            lucide.createIcons({ nodes: [toast] });
+            // Animate in
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-x-full', 'opacity-0');
+            });
+            // Animate out and remove
+            setTimeout(() => {
+                toast.classList.add('translate-x-full', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, durationMs);
+        }
+
+        // Focus trap for modals. Call trapFocus(modalEl) when opening,
+        // returns release() to call when closing.
+        function trapFocus(modal) {
+            const focusable = modal.querySelectorAll(
+                'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+            );
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (first) first.focus();
+            function handler(e) {
+                if (e.key !== 'Tab') return;
+                if (focusable.length === 0) { e.preventDefault(); return; }
+                if (e.shiftKey) {
+                    if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+                } else {
+                    if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+                }
+            }
+            modal.addEventListener('keydown', handler);
+            return { release() { modal.removeEventListener('keydown', handler); } };
+        }
+
+        // Visibility-aware polling helper.
+        // Pauses when tab is hidden, resumes when visible.
+        function pollWhileVisible(fn, intervalMs) {
+            let id = setInterval(() => {
+                if (!document.hidden) fn();
+            }, intervalMs);
+            const onVisChange = () => {
+                if (!document.hidden) fn();
+            };
+            document.addEventListener('visibilitychange', onVisChange);
+            return { stop() { clearInterval(id); document.removeEventListener('visibilitychange', onVisChange); } };
+        }
+    </script>
+
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

@@ -1,306 +1,230 @@
-<!DOCTYPE html>
-<html lang="en" class="h-full bg-gray-50">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Account - Auth MCP</title>
-    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        @keyframes slideIn {
-            from { transform: translateX(-10px); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-        .slide-in { animation: slideIn 0.3s ease-out; }
-    </style>
-</head>
-<body class="h-full" x-data="{ sidebarOpen: true, mobileMenuOpen: false }">
-    <div class="flex h-screen bg-gray-50">
-        <button 
-            @click="mobileMenuOpen = !mobileMenuOpen"
-            class="lg:hidden fixed top-4 left-4 z-50 p-3 bg-gradient-to-br from-blue-600 to-cyan-600 text-white rounded-lg shadow-lg hover:shadow-xl transition-all"
-        >
-            <i data-lucide="menu" class="w-6 h-6"></i>
-        </button>
+{% extends "base_shell.html" %}
 
-        <div 
-            x-show="mobileMenuOpen" 
-            @click="mobileMenuOpen = false"
-            x-transition:enter="transition-opacity ease-out duration-300"
-            x-transition:enter-start="opacity-0"
-            x-transition:enter-end="opacity-100"
-            x-transition:leave="transition-opacity ease-in duration-200"
-            x-transition:leave-start="opacity-100"
-            x-transition:leave-end="opacity-0"
-            class="lg:hidden fixed inset-0 bg-black/50 z-30"
-        ></div>
+{% block title %}Account - Auth MCP{% endblock %}
 
-        <aside 
-            :class="sidebarOpen ? 'w-64' : 'w-20'" 
-            class="bg-gradient-to-br from-blue-600 via-cyan-600 to-cyan-700 text-white transition-all duration-300 shadow-2xl flex flex-col
-                   lg:relative fixed top-0 left-0 h-full z-40
-                   lg:translate-x-0"
-            x-bind:class="mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
-        >
-            <div class="p-6 border-b border-white/10">
-                <div class="flex items-center justify-between">
-                    <div x-show="sidebarOpen" class="flex items-center space-x-3 slide-in">
-                        <i data-lucide="shield-check" class="w-8 h-8"></i>
-                        <div>
-                            <h2 class="text-xl font-bold">Auth MCP</h2>
-                            <p class="text-xs text-white/70">Account</p>
-                        </div>
-                    </div>
-                    <button 
-                        @click="sidebarOpen = !sidebarOpen"
-                        class="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                        :class="!sidebarOpen ? 'mx-auto' : ''"
-                    >
-                        <i data-lucide="panel-left" class="w-5 h-5"></i>
-                    </button>
+{% block sidebar_subtitle %}Account{% endblock %}
+
+{% block sidebar_nav %}
+    <a
+        href="/account"
+        @click="mobileMenuOpen = false"
+        class="flex items-center px-3 py-3 rounded-lg transition-all group bg-white/20 shadow-lg"
+    >
+        <i data-lucide="key-round" class="w-5 h-5 min-w-[20px]"></i>
+        <span x-show="sidebarOpen" class="ml-3 font-medium slide-in">Account Access</span>
+        <span x-show="sidebarOpen" class="ml-auto w-1.5 h-1.5 bg-white rounded-full"></span>
+    </a>
+{% endblock %}
+
+{% block logout_url %}/account/logout{% endblock %}
+
+{% block main_attrs %}x-data="accountPortal()" x-init="window.accountPortalInstance = $data; loadInfo()"{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <div class="flex items-center justify-between mb-8">
+        <div class="flex items-center gap-3">
+            <div class="p-3 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-600 text-white shadow-sm">
+                <i data-lucide="key-round" class="w-6 h-6"></i>
+            </div>
+            <div>
+                <h1 class="text-3xl font-bold text-gray-900">Account Access</h1>
+                <p class="text-gray-600">Get your access token for MCP clients</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <div class="flex items-center justify-between mb-4">
+                <div class="text-sm text-gray-600">
+                    Signed in as <span class="font-semibold text-gray-900">{{ username or "user" }}</span>
                 </div>
             </div>
 
-            <nav class="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
-                <a 
-                    href="/account"
-                    @click="mobileMenuOpen = false"
-                    class="flex items-center px-3 py-3 rounded-lg transition-all group
-                           bg-white/20 shadow-lg"
-                >
-                    <i data-lucide="key-round" class="w-5 h-5 min-w-[20px]"></i>
-                    <span x-show="sidebarOpen" class="ml-3 font-medium slide-in">Account Access</span>
-                    <span x-show="sidebarOpen" class="ml-auto w-1.5 h-1.5 bg-white rounded-full"></span>
-                </a>
-            </nav>
-
-            <div class="p-3 border-t border-white/10">
-                <a 
-                    href="/account/logout" 
-                    @click="if (!confirm('Are you sure you want to logout?')) { $event.preventDefault(); }"
-                    class="flex items-center px-3 py-3 rounded-lg hover:bg-red-500/20 transition-all group"
-                >
-                    <i data-lucide="log-out" class="w-5 h-5 min-w-[20px]"></i>
-                    <span x-show="sidebarOpen" class="ml-3 font-medium slide-in">Logout</span>
-                </a>
+            <div class="mb-4 text-sm text-gray-600">
+                This page does not provide admin access.
             </div>
-        </aside>
 
-        <main class="flex-1 overflow-y-auto" x-data="accountPortal()" x-init="window.accountPortalInstance = $data; loadInfo()">
-            <div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-8 pt-20 lg:pt-8">
-                <div class="flex items-center justify-between mb-8">
-                    <div class="flex items-center gap-3">
-                        <div class="p-3 rounded-xl bg-gradient-to-br from-blue-600 to-cyan-600 text-white shadow-sm">
-                            <i data-lucide="key-round" class="w-6 h-6"></i>
-                        </div>
-                        <div>
-                            <h1 class="text-3xl font-bold text-gray-900">Account Access</h1>
-                            <p class="text-gray-600">Get your access token for MCP clients</p>
-                        </div>
+            <div class="mb-6 text-sm text-gray-700" x-show="expiresAt">
+                Token expires: <span class="font-medium" x-text="expiresAt"></span>
+                <span class="text-gray-500" x-text="expiresIn"></span>
+            </div>
+
+            <div class="flex items-center gap-3">
+                <button type="button" @click="loadToken"
+                        class="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg transition-colors">
+                    Show Token
+                </button>
+                <button type="button" @click="rotateToken"
+                        class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
+                    Rotate Token
+                </button>
+                <span x-show="loading" class="text-sm text-gray-500">Loading...</span>
+            </div>
+
+            <template x-if="error">
+                <div class="mt-4 text-sm text-red-600" x-text="error"></div>
+            </template>
+
+            <template x-if="token">
+                <div class="mt-6 space-y-3">
+                    <div class="text-sm text-gray-700 font-medium">Access Token</div>
+                    <textarea readonly rows="4"
+                              class="w-full text-xs font-mono bg-gray-50 border border-gray-200 rounded-lg p-3"
+                              x-text="token"></textarea>
+
+                    <div class="text-sm text-gray-700 font-medium">Authorization Header</div>
+                    <input readonly
+                           class="w-full text-xs font-mono bg-gray-50 border border-gray-200 rounded-lg p-2"
+                           :value="`Authorization: Bearer ${token}`">
+
+                    <div class="flex gap-2">
+                        <button type="button" @click="copyToken"
+                                class="px-3 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">
+                            Copy Token
+                        </button>
+                        <button type="button" @click="copyHeader"
+                                class="px-3 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">
+                            Copy Header
+                        </button>
                     </div>
                 </div>
+            </template>
 
-                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-                        <div class="flex items-center justify-between mb-4">
-                            <div class="text-sm text-gray-600">
-                                Signed in as <span class="font-semibold text-gray-900">{{ username or "user" }}</span>
+            <div class="mt-8">
+                <div class="text-sm font-medium text-gray-700 mb-2">Available MCP Servers</div>
+                <template x-if="servers.length === 0">
+                    <div class="text-sm text-gray-500">No servers available.</div>
+                </template>
+                <ul class="space-y-2">
+                    <template x-for="s in servers" :key="s.id">
+                        <li class="flex items-center justify-between text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                            <div class="flex flex-col">
+                                <span class="font-medium text-gray-900" x-text="s.name"></span>
+                                <span class="text-xs text-gray-500" x-text="s.endpoint"></span>
                             </div>
-                        </div>
-
-                        <div class="mb-4 text-sm text-gray-600">
-                            This page does not provide admin access.
-                        </div>
-
-                        <div class="mb-6 text-sm text-gray-700" x-show="expiresAt">
-                            Token expires: <span class="font-medium" x-text="expiresAt"></span>
-                            <span class="text-gray-500" x-text="expiresIn"></span>
-                        </div>
-
-                        <div class="flex items-center gap-3">
-                            <button type="button" @click="loadToken"
-                                    class="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white rounded-lg transition-colors">
-                                Show Token
-                            </button>
-                            <button type="button" @click="rotateToken"
-                                    class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors">
-                                Rotate Token
-                            </button>
-                            <span x-show="loading" class="text-sm text-gray-500">Loading...</span>
-                        </div>
-
-                        <template x-if="error">
-                            <div class="mt-4 text-sm text-red-600" x-text="error"></div>
-                        </template>
-
-                        <template x-if="token">
-                            <div class="mt-6 space-y-3">
-                                <div class="text-sm text-gray-700 font-medium">Access Token</div>
-                                <textarea readonly rows="4"
-                                          class="w-full text-xs font-mono bg-gray-50 border border-gray-200 rounded-lg p-3"
-                                          x-text="token"></textarea>
-
-                                <div class="text-sm text-gray-700 font-medium">Authorization Header</div>
-                                <input readonly
-                                       class="w-full text-xs font-mono bg-gray-50 border border-gray-200 rounded-lg p-2"
-                                       :value="`Authorization: Bearer ${token}`">
-
-                                <div class="flex gap-2">
-                                    <button type="button" @click="copyToken"
-                                            class="px-3 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">
-                                        Copy Token
-                                    </button>
-                                    <button type="button" @click="copyHeader"
-                                            class="px-3 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm">
-                                        Copy Header
-                                    </button>
-                                </div>
-                            </div>
-                        </template>
-
-                        <div class="mt-8">
-                            <div class="text-sm font-medium text-gray-700 mb-2">Available MCP Servers</div>
-                            <template x-if="servers.length === 0">
-                                <div class="text-sm text-gray-500">No servers available.</div>
-                            </template>
-                            <ul class="space-y-2">
-                                <template x-for="s in servers" :key="s.id">
-                                    <li class="flex items-center justify-between text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-                                        <div class="flex flex-col">
-                                            <span class="font-medium text-gray-900" x-text="s.name"></span>
-                                            <span class="text-xs text-gray-500" x-text="s.endpoint"></span>
-                                        </div>
-                                        <button type="button" @click="copyEndpoint(s.endpoint)"
-                                                class="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded">
-                                            <i data-lucide="copy" class="w-4 h-4"></i>
-                                        </button>
-                                    </li>
-                                </template>
-                            </ul>
-                        </div>
-                    </div>
-
-                    <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-                        <div class="text-sm font-medium text-gray-700 mb-2">Gateway Endpoint</div>
-                        <div class="flex items-center justify-between text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-                            <span class="text-xs text-gray-600" x-text="gatewayEndpoint || '/mcp'">/mcp</span>
-                            <button type="button" @click="copyEndpoint(gatewayEndpoint || '/mcp')"
+                            <button type="button" @click="copyEndpoint(s.endpoint)"
                                     class="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded">
                                 <i data-lucide="copy" class="w-4 h-4"></i>
                             </button>
-                        </div>
-                        <div class="mt-4 text-xs text-gray-500">
-                            Use this endpoint with your token in the Authorization header.
-                        </div>
-                    </div>
-                </div>
-
-                <div class="mt-6 text-xs text-gray-500">
-                    Use the MCP endpoint <span class="font-mono" x-text="gatewayEndpointDisplay || '/mcp'">/mcp</span> with your token in the
-                    <span class="font-mono">Authorization</span> header.
-                </div>
+                        </li>
+                    </template>
+                </ul>
             </div>
-        </main>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+            <div class="text-sm font-medium text-gray-700 mb-2">Gateway Endpoint</div>
+            <div class="flex items-center justify-between text-sm bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                <span class="text-xs text-gray-600" x-text="gatewayEndpoint || '/mcp'">/mcp</span>
+                <button type="button" @click="copyEndpoint(gatewayEndpoint || '/mcp')"
+                        class="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded">
+                    <i data-lucide="copy" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <div class="mt-4 text-xs text-gray-500">
+                Use this endpoint with your token in the Authorization header.
+            </div>
+        </div>
     </div>
 
-    <script>
-        function accountPortal() {
-            return {
-                token: '',
-                error: '',
-                loading: false,
-                servers: [],
-                gatewayEndpoint: '',
-                gatewayEndpointDisplay: '',
-                expiresAt: '',
-                expiresIn: '',
-                async loadInfo() {
-                    try {
-                        const response = await fetch('/account/info');
-                        const data = await response.json();
-                        if (!response.ok) {
-                            throw new Error(data.detail || 'Failed to load account info');
-                        }
-                        this.servers = data.servers || [];
-                        this.gatewayEndpoint = data.gateway_endpoint || '/mcp';
-                        if (this.gatewayEndpoint.startsWith('http://') || this.gatewayEndpoint.startsWith('https://')) {
-                            this.gatewayEndpointDisplay = this.gatewayEndpoint;
-                        } else {
-                            const origin = window.location.origin || '';
-                            this.gatewayEndpointDisplay = `${origin}${this.gatewayEndpoint}`;
-                        }
-                        this.expiresAt = data.expires_at || '';
-                        if (data.expires_in_seconds != null) {
-                            const secs = Math.max(0, parseInt(data.expires_in_seconds, 10));
-                            const mins = Math.floor(secs / 60);
-                            const hrs = Math.floor(mins / 60);
-                            const days = Math.floor(hrs / 24);
-                            let label = '';
-                            if (days > 0) label = `(${days}d ${hrs % 24}h left)`;
-                            else if (hrs > 0) label = `(${hrs}h ${mins % 60}m left)`;
-                            else label = `(${mins}m left)`;
-                            this.expiresIn = label;
-                        }
-                    } catch (err) {
-                        this.error = err.message || 'Failed to load account info';
-                    }
-                },
-                async loadToken() {
-                    this.error = '';
-                    this.loading = true;
-                    try {
-                        const response = await fetch('/account/token');
-                        const data = await response.json();
-                        if (!response.ok) {
-                            throw new Error(data.detail || 'Failed to fetch token');
-                        }
-                        this.token = data.access_token || '';
-                    } catch (err) {
-                        this.error = err.message || 'Failed to fetch token';
-                    } finally {
-                        this.loading = false;
-                    }
-                },
-                async copyToken() {
-                    if (!this.token) return;
-                    await navigator.clipboard.writeText(this.token);
-                },
-                async copyHeader() {
-                    if (!this.token) return;
-                    await navigator.clipboard.writeText(`Authorization: Bearer ${this.token}`);
-                },
-                async rotateToken() {
-                    this.error = '';
-                    this.loading = true;
-                    try {
-                        const response = await fetch('/account/rotate', { method: 'POST' });
-                        const data = await response.json();
-                        if (!response.ok) {
-                            throw new Error(data.detail || 'Failed to rotate token');
-                        }
-                        this.token = data.access_token || '';
-                        await this.loadInfo();
-                    } catch (err) {
-                        this.error = err.message || 'Failed to rotate token';
-                    } finally {
-                        this.loading = false;
-                    }
-                },
-                async copyEndpoint(value) {
-                    if (!value) return;
-                    await navigator.clipboard.writeText(value);
-                }
-            };
-        }
+    <div class="mt-6 text-xs text-gray-500">
+        Use the MCP endpoint <span class="font-mono" x-text="gatewayEndpointDisplay || '/mcp'">/mcp</span> with your token in the
+        <span class="font-mono">Authorization</span> header.
+    </div>
+</div>
+{% endblock %}
 
-        document.addEventListener('DOMContentLoaded', () => {
-            lucide.createIcons();
-        });
-        document.addEventListener('alpine:initialized', () => {
-            setTimeout(() => lucide.createIcons(), 100);
-        });
-    </script>
-</body>
-</html>
+{% block extra_scripts %}
+<script>
+    function accountPortal() {
+        return {
+            token: '',
+            error: '',
+            loading: false,
+            servers: [],
+            gatewayEndpoint: '',
+            gatewayEndpointDisplay: '',
+            expiresAt: '',
+            expiresIn: '',
+            async loadInfo() {
+                try {
+                    const response = await fetch('/account/info');
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.detail || 'Failed to load account info');
+                    }
+                    this.servers = data.servers || [];
+                    this.gatewayEndpoint = data.gateway_endpoint || '/mcp';
+                    if (this.gatewayEndpoint.startsWith('http://') || this.gatewayEndpoint.startsWith('https://')) {
+                        this.gatewayEndpointDisplay = this.gatewayEndpoint;
+                    } else {
+                        const origin = window.location.origin || '';
+                        this.gatewayEndpointDisplay = `${origin}${this.gatewayEndpoint}`;
+                    }
+                    this.expiresAt = data.expires_at || '';
+                    if (data.expires_in_seconds != null) {
+                        const secs = Math.max(0, parseInt(data.expires_in_seconds, 10));
+                        const mins = Math.floor(secs / 60);
+                        const hrs = Math.floor(mins / 60);
+                        const days = Math.floor(hrs / 24);
+                        let label = '';
+                        if (days > 0) label = `(${days}d ${hrs % 24}h left)`;
+                        else if (hrs > 0) label = `(${hrs}h ${mins % 60}m left)`;
+                        else label = `(${mins}m left)`;
+                        this.expiresIn = label;
+                    }
+                } catch (err) {
+                    this.error = err.message || 'Failed to load account info';
+                }
+            },
+            async loadToken() {
+                this.error = '';
+                this.loading = true;
+                try {
+                    const response = await fetch('/account/token');
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.detail || 'Failed to fetch token');
+                    }
+                    this.token = data.access_token || '';
+                } catch (err) {
+                    this.error = err.message || 'Failed to fetch token';
+                } finally {
+                    this.loading = false;
+                }
+            },
+            async copyToken() {
+                if (!this.token) return;
+                await navigator.clipboard.writeText(this.token);
+            },
+            async copyHeader() {
+                if (!this.token) return;
+                await navigator.clipboard.writeText(`Authorization: Bearer ${this.token}`);
+            },
+            async rotateToken() {
+                this.error = '';
+                this.loading = true;
+                try {
+                    const response = await fetch('/account/rotate', { method: 'POST' });
+                    const data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.detail || 'Failed to rotate token');
+                    }
+                    this.token = data.access_token || '';
+                    await this.loadInfo();
+                } catch (err) {
+                    this.error = err.message || 'Failed to rotate token';
+                } finally {
+                    this.loading = false;
+                }
+            },
+            async copyEndpoint(value) {
+                if (!value) return;
+                await navigator.clipboard.writeText(value);
+            }
+        };
+    }
+</script>
+{% endblock %}

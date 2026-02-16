@@ -3,17 +3,17 @@
 {% block title %}OAuth Clients - Auth MCP Admin{% endblock %}
 
 {% block content %}
-<div x-data="oauthClientsManager()">
+<div x-data="oauthClientsManager()" @click="handleAction($event)">
     <!-- Header -->
     <div class="flex items-center justify-between mb-8">
         <div>
             <h1 class="text-3xl font-bold text-gray-900 flex items-center gap-3">
-                <i data-lucide="shield-lock" class="w-8 h-8 text-blue-600"></i>
+                <i data-lucide="shield-check" class="w-8 h-8 text-blue-600"></i>
                 OAuth Clients
             </h1>
             <p class="text-gray-600 mt-1">Manage dynamic client registrations</p>
         </div>
-        <button 
+        <button
             @click="loadClients()"
             class="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-2"
         >
@@ -56,13 +56,15 @@
     <!-- Token Modal -->
     <div x-show="showTokenModal"
          x-cloak
+         role="dialog" aria-modal="true" aria-labelledby="tokenModalTitle"
+         x-effect="if (showTokenModal) { $nextTick(() => { window._tokenTrap = trapFocus($el); }) } else if (window._tokenTrap) { window._tokenTrap.release(); }"
          class="fixed inset-0 z-50 overflow-y-auto"
          @keydown.escape.window="showTokenModal = false">
         <div class="flex items-center justify-center min-h-screen px-4">
             <div class="fixed inset-0 bg-black opacity-30" @click="showTokenModal = false"></div>
             <div class="bg-white rounded-lg shadow-xl z-10 max-w-lg w-full p-6 relative">
                 <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-xl font-bold text-gray-900 flex items-center gap-2">
+                    <h3 id="tokenModalTitle" class="text-xl font-bold text-gray-900 flex items-center gap-2">
                         <i data-lucide="key" class="w-5 h-5 text-blue-600"></i>
                         Registration Token
                     </h3>
@@ -83,9 +85,6 @@
     </div>
 </div>
 
-<style>
-    [x-cloak] { display: none !important; }
-</style>
 {% endblock %}
 
 {% block extra_scripts %}
@@ -96,8 +95,17 @@
             tokenValue: '',
 
             init() {
-                window.oauthClientsManager = this;
                 this.loadClients();
+            },
+
+            handleAction(event) {
+                const btn = event.target.closest('[data-action]');
+                if (!btn) return;
+                const action = btn.dataset.action;
+                const clientId = btn.dataset.clientId;
+
+                if (action === 'rotate') this.rotateToken(clientId);
+                else if (action === 'delete') this.deleteClient(clientId);
             },
 
             async loadClients() {
@@ -168,11 +176,13 @@
                             <td class="px-6 py-4 text-sm text-gray-600">
                                 <div class="flex items-center gap-2">
                                     <button class="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
-                                            onclick="rotateOauthClientToken('${c.client_id}')">
+                                            data-action="rotate"
+                                            data-client-id="${esc(c.client_id)}">
                                         Rotate Token
                                     </button>
                                     <button class="px-3 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700"
-                                            onclick="deleteOauthClient('${c.client_id}')">
+                                            data-action="delete"
+                                            data-client-id="${esc(c.client_id)}">
                                         Delete
                                     </button>
                                 </div>
@@ -189,7 +199,29 @@
                 }
             },
 
-            async showToken(token) {
+            async rotateToken(clientId) {
+                if (!confirm('Rotate registration token for this client?')) return;
+                const resp = await fetch(`/admin/api/oauth-clients/${clientId}/rotate`, { method: 'POST' });
+                const data = await resp.json();
+                if (!resp.ok) {
+                    showToast(data.error || 'Failed to rotate token', 'error');
+                    return;
+                }
+                this.showToken(data.registration_access_token);
+            },
+
+            async deleteClient(clientId) {
+                if (!confirm('Delete this OAuth client? This cannot be undone.')) return;
+                const resp = await fetch(`/admin/api/oauth-clients/${clientId}`, { method: 'DELETE' });
+                const data = await resp.json();
+                if (!resp.ok) {
+                    showToast(data.error || 'Failed to delete client', 'error');
+                    return;
+                }
+                this.loadClients();
+            },
+
+            showToken(token) {
                 this.tokenValue = token;
                 this.showTokenModal = true;
                 setTimeout(() => lucide.createIcons(), 50);
@@ -202,36 +234,6 @@
                     console.error(e);
                 }
             }
-        }
-    }
-
-    async function rotateOauthClientToken(clientId) {
-        if (!confirm('Rotate registration token for this client?')) {
-            return;
-        }
-        const resp = await fetch(`/admin/api/oauth-clients/${clientId}/rotate`, { method: 'POST' });
-        const data = await resp.json();
-        if (!resp.ok) {
-            alert(data.error || 'Failed to rotate token');
-            return;
-        }
-        if (window.oauthClientsManager) {
-            window.oauthClientsManager.showToken(data.registration_access_token);
-        }
-    }
-
-    async function deleteOauthClient(clientId) {
-        if (!confirm('Delete this OAuth client? This cannot be undone.')) {
-            return;
-        }
-        const resp = await fetch(`/admin/api/oauth-clients/${clientId}`, { method: 'DELETE' });
-        const data = await resp.json();
-        if (!resp.ok) {
-            alert(data.error || 'Failed to delete client');
-            return;
-        }
-        if (window.oauthClientsManager) {
-            window.oauthClientsManager.loadClients();
         }
     }
 </script>

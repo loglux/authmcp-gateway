@@ -3,7 +3,7 @@
 {% block title %}Dashboard - Auth MCP Admin{% endblock %}
 
 {% block content %}
-<div x-data="dashboardManager()" x-init="init()">
+<div x-data="dashboardManager()">
     <!-- Header -->
     <div class="flex items-center justify-between mb-8">
         <div>
@@ -235,7 +235,7 @@
                 <a href="/admin/mcp-activity" class="text-xs text-white/80 hover:text-white">View all →</a>
             </div>
             <div class="divide-y divide-gray-100">
-                <template x-for="request in recentRequests" :key="request.timestamp">
+                <template x-for="(request, rIdx) in recentRequests" :key="rIdx">
                     <div class="p-4 hover:bg-gray-50 transition-colors">
                         <div class="flex items-start justify-between gap-4">
                             <div class="flex-1 min-w-0">
@@ -274,7 +274,7 @@
                 <a href="/admin/logs" class="text-xs text-white/80 hover:text-white">View all →</a>
             </div>
             <div class="divide-y divide-gray-100">
-                <template x-for="event in mcpAuthEvents" :key="event.timestamp">
+                <template x-for="(event, eIdx) in mcpAuthEvents" :key="eIdx">
                     <div class="p-4 hover:bg-gray-50 transition-colors">
                         <div class="flex items-start justify-between gap-4">
                             <div class="flex-1 min-w-0">
@@ -324,10 +324,8 @@
             
             init() {
                 this.loadAll();
-                // Auto-refresh every 5 seconds
-                this.autoRefreshInterval = setInterval(() => {
-                    this.loadAll();
-                }, 5000);
+                // Auto-refresh every 15 seconds (pauses when tab hidden)
+                this._poller = pollWhileVisible(() => this.loadAll(), 15000);
             },
             
             async loadAll() {

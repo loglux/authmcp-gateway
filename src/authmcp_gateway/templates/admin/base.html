@@ -1,161 +1,40 @@
-<!DOCTYPE html>
-<html lang="en" class="h-full bg-gray-50">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
-    <title>{% block title %}Auth MCP Admin{% endblock %}</title>
-    
-    <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-    
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- Alpine.js -->
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-    
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    
-    <style>
-        /* Custom animations */
-        @keyframes slideIn {
-            from { transform: translateX(-10px); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
-        }
-        .slide-in { animation: slideIn 0.3s ease-out; }
-        
-        {% block extra_styles %}{% endblock %}
-    </style>
-</head>
-<body class="h-full" x-data="{ sidebarOpen: true, mobileMenuOpen: false }">
-    <div class="flex h-screen bg-gray-50">
-        
-        <!-- Mobile Menu Button -->
-        <button 
-            @click="mobileMenuOpen = !mobileMenuOpen"
-            class="lg:hidden fixed top-4 left-4 z-50 p-3 bg-gradient-to-br from-blue-600 to-cyan-600 text-white rounded-lg shadow-lg hover:shadow-xl transition-all"
-        >
-            <i data-lucide="menu" class="w-6 h-6"></i>
-        </button>
-        
-        <!-- Mobile Overlay -->
-        <div 
-            x-show="mobileMenuOpen" 
-            @click="mobileMenuOpen = false"
-            x-transition:enter="transition-opacity ease-out duration-300"
-            x-transition:enter-start="opacity-0"
-            x-transition:enter-end="opacity-100"
-            x-transition:leave="transition-opacity ease-in duration-200"
-            x-transition:leave-start="opacity-100"
-            x-transition:leave-end="opacity-0"
-            class="lg:hidden fixed inset-0 bg-black/50 z-30"
-        ></div>
-        
-        <!-- Sidebar -->
-        <aside 
-            :class="sidebarOpen ? 'w-64' : 'w-20'" 
-            class="bg-gradient-to-br from-blue-600 via-cyan-600 to-cyan-700 text-white transition-all duration-300 shadow-2xl flex flex-col
-                   lg:relative fixed top-0 left-0 h-full z-40
-                   lg:translate-x-0"
-            x-bind:class="mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
-        >
-            <!-- Header -->
-            <div class="p-6 border-b border-white/10">
-                <div class="flex items-center justify-between">
-                    <div x-show="sidebarOpen" class="flex items-center space-x-3 slide-in">
-                        <i data-lucide="shield-check" class="w-8 h-8"></i>
-                        <div>
-                            <h2 class="text-xl font-bold">Auth MCP</h2>
-                            <p class="text-xs text-white/70">Admin Panel</p>
-                        </div>
-                    </div>
-                    <button 
-                        @click="sidebarOpen = !sidebarOpen"
-                        class="p-2 hover:bg-white/10 rounded-lg transition-colors"
-                        :class="!sidebarOpen ? 'mx-auto' : ''"
-                    >
-                        <i data-lucide="panel-left" class="w-5 h-5"></i>
-                    </button>
-                </div>
-            </div>
-            
-            <!-- Navigation -->
-            <nav class="flex-1 px-3 py-6 space-y-1 overflow-y-auto">
-                {% set menu_items = [
-                    ('dashboard', '/admin', 'gauge', 'Dashboard'),
-                    ('mcp-servers', '/admin/mcp-servers', 'server', 'MCP Servers'),
-                    ('mcp-activity', '/admin/mcp-activity', 'activity', 'MCP Activity'),
-                    ('users', '/admin/users', 'users', 'Users'),
-                    ('oauth-clients', '/admin/oauth-clients', 'key-round', 'OAuth Clients'),
-                    ('logs', '/admin/logs', 'clock', 'Auth Logs'),
-                    ('security-logs', '/admin/security-logs', 'shield-alert', 'Security Events'),
-                    ('mcp-audit', '/admin/mcp-audit', 'shield-check', 'Security Audit'),
-                    ('settings', '/admin/settings', 'settings', 'Settings')
-                ] %}
-                {# Hidden: ('mcp-tokens', '/admin/mcp-tokens', 'key', 'Backend Tokens') - investigating OAuth2 refresh #}
-                
-                {% for page_id, url, icon, label in menu_items %}
-                <a 
-                    href="{{ url }}"
-                    @click="mobileMenuOpen = false"
-                    class="flex items-center px-3 py-3 rounded-lg transition-all group
-                           {% if active_page == page_id %}
-                           bg-white/20 shadow-lg
-                           {% else %}
-                           hover:bg-white/10
-                           {% endif %}"
-                >
-                    <i data-lucide="{{ icon }}" class="w-5 h-5 min-w-[20px]"></i>
-                    <span x-show="sidebarOpen" class="ml-3 font-medium slide-in">{{ label }}</span>
-                    {% if active_page == page_id %}
-                    <span x-show="sidebarOpen" class="ml-auto w-1.5 h-1.5 bg-white rounded-full"></span>
-                    {% endif %}
-                </a>
-                {% endfor %}
-            </nav>
-            
-            <!-- Logout -->
-            <div class="p-3 border-t border-white/10">
-                <a 
-                    href="/admin/logout" 
-                    @click="if (!confirm('Are you sure you want to logout?')) { $event.preventDefault(); }"
-                    class="flex items-center px-3 py-3 rounded-lg hover:bg-red-500/20 transition-all group"
-                >
-                    <i data-lucide="log-out" class="w-5 h-5 min-w-[20px]"></i>
-                    <span x-show="sidebarOpen" class="ml-3 font-medium slide-in">Logout</span>
-                </a>
-            </div>
-        </aside>
+{% extends "base_shell.html" %}
 
-        <!-- Main Content -->
-        <main class="flex-1 overflow-y-auto">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-8 pt-20 lg:pt-8">
-                {% block content %}{% endblock %}
-            </div>
-        </main>
-    </div>
+{# Child templates override 'title' block directly #}
 
-    <!-- Initialize Lucide icons -->
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            lucide.createIcons();
-        });
+{% block sidebar_subtitle %}Admin Panel{% endblock %}
 
-        // Re-initialize icons after Alpine updates
-        document.addEventListener('alpine:initialized', () => {
-            setTimeout(() => lucide.createIcons(), 100);
-        });
+{% block sidebar_nav %}
+    {% set menu_items = [
+        ('dashboard', '/admin', 'gauge', 'Dashboard'),
+        ('mcp-servers', '/admin/mcp-servers', 'server', 'MCP Servers'),
+        ('mcp-activity', '/admin/mcp-activity', 'activity', 'MCP Activity'),
+        ('users', '/admin/users', 'users', 'Users'),
+        ('oauth-clients', '/admin/oauth-clients', 'key-round', 'OAuth Clients'),
+        ('logs', '/admin/logs', 'clock', 'Auth Logs'),
+        ('security-logs', '/admin/security-logs', 'shield-alert', 'Security Events'),
+        ('mcp-audit', '/admin/mcp-audit', 'shield-check', 'Security Audit'),
+        ('settings', '/admin/settings', 'settings', 'Settings')
+    ] %}
 
-        // Global HTML escape helper to prevent XSS in innerHTML
-        function esc(str) {
-            if (str == null) return '';
-            const d = document.createElement('div');
-            d.appendChild(document.createTextNode(String(str)));
-            return d.innerHTML;
-        }
-    </script>
-    
-    {% block extra_scripts %}{% endblock %}
-</body>
-</html>
+    {% for page_id, url, icon, label in menu_items %}
+    <a
+        href="{{ url }}"
+        @click="mobileMenuOpen = false"
+        class="flex items-center px-3 py-3 rounded-lg transition-all group
+               {% if active_page == page_id %}
+               bg-white/20 shadow-lg
+               {% else %}
+               hover:bg-white/10
+               {% endif %}"
+    >
+        <i data-lucide="{{ icon }}" class="w-5 h-5 min-w-[20px]"></i>
+        <span x-show="sidebarOpen" class="ml-3 font-medium slide-in">{{ label }}</span>
+        {% if active_page == page_id %}
+        <span x-show="sidebarOpen" class="ml-auto w-1.5 h-1.5 bg-white rounded-full"></span>
+        {% endif %}
+    </a>
+    {% endfor %}
+{% endblock %}
+
+{% block logout_url %}/admin/logout{% endblock %}

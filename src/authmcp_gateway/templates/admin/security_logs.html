@@ -304,7 +304,7 @@
         return icons[severity] || 'help-circle';
     }
 
-    // Auto-refresh every 30 seconds
-    setInterval(loadEvents, 30000);
+    // Auto-refresh every 30 seconds (pauses when tab hidden)
+    pollWhileVisible(loadEvents, 30000);
 </script>
 {% endblock %}

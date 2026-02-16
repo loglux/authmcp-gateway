@@ -29,15 +29,8 @@ async def admin_login_page(request: Request) -> HTMLResponse:
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Login - MCP Auth</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <style>
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-        .fade-in { animation: fadeIn 0.5s ease-out; }
-    </style>
+    <link rel="stylesheet" href="/static/tailwind.css">
+    <script src="/static/lucide.min.js"></script>
 </head>
 <body class="h-full bg-gradient-to-br from-blue-600 via-cyan-600 to-cyan-700">
     <div class="min-h-full flex items-center justify-center px-4 py-12">
