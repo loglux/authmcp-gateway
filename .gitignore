@@ -163,3 +163,4 @@ scripts/deploy-wiki.sh
 authmcp-gateway.wiki/
 scripts/check_acl.sh
 CLAUDE.md
+PRE_COMMIT_SETUP.md
