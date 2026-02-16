@@ -614,13 +614,30 @@ app = Starlette(
 # Store database path in app state for authorize endpoint
 app.state.auth_db_path = config.auth.sqlite_path
 
-# Mount static files for favicon and other assets
+# Mount static files with cache headers
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
-    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+    class CachedStaticFiles(StaticFiles):
+        """StaticFiles with Cache-Control headers for browser caching."""
+
+        async def __call__(self, scope, receive, send):
+            async def send_with_cache(message):
+                if message.get("type") == "http.response.start":
+                    headers = list(message.get("headers", []))
+                    headers.append((b"cache-control", b"public, max-age=86400, immutable"))
+                    message = {**message, "headers": headers}
+                await send(message)
+
+            await super().__call__(scope, receive, send_with_cache)
+
+    app.mount("/static", CachedStaticFiles(directory=static_dir), name="static")
     logger.info(f"✓ Static files mounted from {static_dir}")
 
 # Add middleware (order matters: last added = first executed)
+from starlette.middleware.gzip import GZipMiddleware
+
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(ContentTypeFixMiddleware)
 app.add_middleware(
     McpAuthMiddleware,
