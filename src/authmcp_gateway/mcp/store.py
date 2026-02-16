@@ -83,6 +83,13 @@ def init_mcp_database(db_path: str) -> None:
             )
         """)
 
+        # Add refresh_token_encrypted column if missing (migration for existing DBs)
+        try:
+            cursor.execute("ALTER TABLE mcp_servers ADD COLUMN refresh_token_encrypted TEXT")
+            logger.info("Added refresh_token_encrypted column to mcp_servers")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
         # Create indexes for performance
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_mcp_servers_enabled ON mcp_servers(enabled)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_mcp_servers_status ON mcp_servers(status)")
@@ -285,6 +292,7 @@ def update_mcp_server(db_path: str, server_id: int, **fields) -> bool:
         "tools_count",
         "updated_at",
         "refresh_token_hash",
+        "refresh_token_encrypted",
         "token_expires_at",
         "token_last_refreshed",
         "refresh_endpoint",

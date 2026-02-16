@@ -122,6 +122,12 @@ admin_login.set_config(config)
 setup_wizard.initialize(config)
 logger.info("✓ Setup wizard initialized")
 
+# Initialize token encryption
+from .mcp.crypto import initialize_crypto
+
+initialize_crypto(config.jwt.secret_key)
+logger.info("✓ Token encryption initialized")
+
 # Initialize MCP Gateway components
 mcp_proxy = McpProxy(config.auth.sqlite_path, timeout=config.request_timeout_seconds)
 mcp_handler = McpHandler(config.auth.sqlite_path)
@@ -415,6 +421,9 @@ async def lifespan(app):
 
     await health_checker.stop()
     logger.info("✓ Health checker stopped")
+
+    await mcp_proxy.close()
+    logger.info("✓ MCP proxy HTTP client closed")
 
 
 app = Starlette(

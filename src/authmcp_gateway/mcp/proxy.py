@@ -62,6 +62,19 @@ class McpProxy:
         self._tools_cache: Dict[int, List[Dict[str, Any]]] = {}
         self._cache_timestamp: Dict[int, datetime] = {}
         self._cache_ttl = 60  # Cache TTL in seconds
+        self._http_client: Optional[httpx.AsyncClient] = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Get or create shared httpx.AsyncClient."""
+        if self._http_client is None or self._http_client.is_closed:
+            self._http_client = httpx.AsyncClient(timeout=self.timeout)
+        return self._http_client
+
+    async def close(self) -> None:
+        """Close shared HTTP client."""
+        if self._http_client and not self._http_client.is_closed:
+            await self._http_client.aclose()
+            self._http_client = None
 
     async def list_tools(
         self, user_id: Optional[int] = None, server_name: Optional[str] = None
@@ -132,79 +145,79 @@ class McpProxy:
             headers = self._get_auth_headers(server)
 
             # Request tools from backend
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
+            client = await self._get_client()
+            response = await client.post(
+                server_url,
+                json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+                headers=headers,
+            )
+            if _MCP_DEBUG:
+                snippet = response.text[:300] if response.text else ""
+                logger.debug(
+                    "MCP_DEBUG tools/list %s -> HTTP %s in proxy. Body: %s",
                     server_url,
-                    json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
-                    headers=headers,
+                    response.status_code,
+                    snippet,
                 )
-                if _MCP_DEBUG:
-                    snippet = response.text[:300] if response.text else ""
-                    logger.debug(
-                        "MCP_DEBUG tools/list %s -> HTTP %s in proxy. Body: %s",
-                        server_url,
-                        response.status_code,
-                        snippet,
+
+            # Handle 401 with token refresh
+            if response.status_code == 401 and server.get("refresh_token_hash"):
+                logger.warning(f"Got 401 from {server_name}, attempting token refresh")
+
+                try:
+                    from .token_manager import get_token_manager
+
+                    token_mgr = get_token_manager()
+                    success, error = await token_mgr.refresh_server_token(
+                        server_id, triggered_by="reactive_401"
                     )
 
-                # Handle 401 with token refresh (NEW)
-                if response.status_code == 401 and server.get("refresh_token_hash"):
-                    logger.warning(f"Got 401 from {server_name}, attempting token refresh")
-
-                    try:
-                        from .token_manager import get_token_manager
-
-                        token_mgr = get_token_manager()
-                        success, error = await token_mgr.refresh_server_token(
-                            server_id, triggered_by="reactive_401"
+                    if success:
+                        # Reload server with new token and retry
+                        server = get_mcp_server(self.db_path, server_id)
+                        headers = self._get_auth_headers(server)
+                        response = await client.post(
+                            server_url,
+                            json={
+                                "jsonrpc": "2.0",
+                                "id": 1,
+                                "method": "tools/list",
+                                "params": {},
+                            },
+                            headers=headers,
                         )
+                        logger.info(f"Retry after token refresh succeeded for {server_name}")
+                    else:
+                        logger.error(f"Token refresh failed for {server_name}: {error}")
+                except Exception as refresh_error:
+                    logger.error(f"Exception during token refresh: {refresh_error}")
 
-                        if success:
-                            # Reload server with new token and retry
-                            server = get_mcp_server(self.db_path, server_id)
-                            headers = self._get_auth_headers(server)
-                            response = await client.post(
-                                server_url,
-                                json={
-                                    "jsonrpc": "2.0",
-                                    "id": 1,
-                                    "method": "tools/list",
-                                    "params": {},
-                                },
-                                headers=headers,
-                            )
-                            logger.info(f"Retry after token refresh succeeded for {server_name}")
-                        else:
-                            logger.error(f"Token refresh failed for {server_name}: {error}")
-                    except Exception as refresh_error:
-                        logger.error(f"Exception during token refresh: {refresh_error}")
+            response.raise_for_status()
+            data = response.json()
 
-                response.raise_for_status()
-                data = response.json()
+            if "result" in data and "tools" in data["result"]:
+                tools = data["result"]["tools"]
 
-                if "result" in data and "tools" in data["result"]:
-                    tools = data["result"]["tools"]
+                # Add server metadata to each tool
+                for tool in tools:
+                    tool["_server_id"] = server_id
+                    tool["_server_name"] = server_name
 
-                    # Add server metadata to each tool
-                    for tool in tools:
-                        tool["_server_id"] = server_id
-                        tool["_server_name"] = server_name
+                # Update cache
+                self._tools_cache[server_id] = tools
+                self._cache_timestamp[server_id] = datetime.now(timezone.utc)
 
-                    # Update cache
-                    self._tools_cache[server_id] = tools
-                    self._cache_timestamp[server_id] = datetime.now(timezone.utc)
+                # Update server health
+                update_server_health(
+                    self.db_path, server_id, status="online", tools_count=len(tools)
+                )
 
-                    # Update server health
-                    update_server_health(
-                        self.db_path, server_id, status="online", tools_count=len(tools)
-                    )
+                logger.info(f"Fetched {len(tools)} tools from {server_name}")
+                return tools
 
-                    logger.info(f"Fetched {len(tools)} tools from {server_name}")
-                    return tools
-
-                else:
-                    logger.warning(f"Invalid response from server {server_name}: {data}")
-                    return []
+            else:
+                logger.warning(f"Invalid response from server {server_name}: {data}")
+                return []
 
         except httpx.HTTPError as e:
             logger.error(f"HTTP error fetching tools from {server_name}: {e}")
@@ -360,77 +373,77 @@ class McpProxy:
         try:
             headers = self._get_auth_headers(server)
 
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
+            client = await self._get_client()
+            response = await client.post(
+                server_url,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "tools/call",
+                    "params": {"name": tool_name, "arguments": arguments or {}},
+                },
+                headers=headers,
+            )
+            if _MCP_DEBUG:
+                snippet = response.text[:300] if response.text else ""
+                logger.debug(
+                    "MCP_DEBUG tools/call %s tool=%s -> HTTP %s. Body: %s",
                     server_url,
-                    json={
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "method": "tools/call",
-                        "params": {"name": tool_name, "arguments": arguments or {}},
-                    },
-                    headers=headers,
+                    tool_name,
+                    response.status_code,
+                    snippet,
                 )
-                if _MCP_DEBUG:
-                    snippet = response.text[:300] if response.text else ""
-                    logger.debug(
-                        "MCP_DEBUG tools/call %s tool=%s -> HTTP %s. Body: %s",
-                        server_url,
-                        tool_name,
-                        response.status_code,
-                        snippet,
+
+            # Handle 401 with token refresh
+            if response.status_code == 401 and server.get("refresh_token_hash"):
+                logger.warning(
+                    f"Got 401 calling '{tool_name}' on {server_name}, attempting token refresh"
+                )
+
+                try:
+                    from .token_manager import get_token_manager
+
+                    token_mgr = get_token_manager()
+                    success, error = await token_mgr.refresh_server_token(
+                        server["id"], triggered_by="reactive_401"
                     )
 
-                # Handle 401 with token refresh (NEW)
-                if response.status_code == 401 and server.get("refresh_token_hash"):
-                    logger.warning(
-                        f"Got 401 calling '{tool_name}' on {server_name}, attempting token refresh"
-                    )
-
-                    try:
-                        from .token_manager import get_token_manager
-
-                        token_mgr = get_token_manager()
-                        success, error = await token_mgr.refresh_server_token(
-                            server["id"], triggered_by="reactive_401"
+                    if success:
+                        # Reload server with new token and retry
+                        server = get_mcp_server(self.db_path, server["id"])
+                        headers = self._get_auth_headers(server)
+                        response = await client.post(
+                            server_url,
+                            json={
+                                "jsonrpc": "2.0",
+                                "id": 1,
+                                "method": "tools/call",
+                                "params": {"name": tool_name, "arguments": arguments or {}},
+                            },
+                            headers=headers,
                         )
+                        logger.info(
+                            f"Retry after token refresh succeeded for '{tool_name}' on {server_name}"
+                        )
+                    else:
+                        logger.error(f"Token refresh failed for {server_name}: {error}")
+                except Exception as refresh_error:
+                    logger.error(f"Exception during token refresh: {refresh_error}")
 
-                        if success:
-                            # Reload server with new token and retry
-                            server = get_mcp_server(self.db_path, server["id"])
-                            headers = self._get_auth_headers(server)
-                            response = await client.post(
-                                server_url,
-                                json={
-                                    "jsonrpc": "2.0",
-                                    "id": 1,
-                                    "method": "tools/call",
-                                    "params": {"name": tool_name, "arguments": arguments or {}},
-                                },
-                                headers=headers,
-                            )
-                            logger.info(
-                                f"Retry after token refresh succeeded for '{tool_name}' on {server_name}"
-                            )
-                        else:
-                            logger.error(f"Token refresh failed for {server_name}: {error}")
-                    except Exception as refresh_error:
-                        logger.error(f"Exception during token refresh: {refresh_error}")
+            response.raise_for_status()
+            data = response.json()
 
-                response.raise_for_status()
-                data = response.json()
+            # Add metadata about which server handled the request
+            if "result" in data:
+                if "_meta" not in data["result"]:
+                    data["result"]["_meta"] = {}
 
-                # Add metadata about which server handled the request
-                if "result" in data:
-                    if "_meta" not in data["result"]:
-                        data["result"]["_meta"] = {}
+                data["result"]["_meta"]["server_id"] = server["id"]
+                data["result"]["_meta"]["server_name"] = server_name
+                data["result"]["_meta"]["tool_name"] = tool_name
 
-                    data["result"]["_meta"]["server_id"] = server["id"]
-                    data["result"]["_meta"]["server_name"] = server_name
-                    data["result"]["_meta"]["tool_name"] = tool_name
-
-                logger.info(f"Tool '{tool_name}' executed on {server_name}")
-                return data
+            logger.info(f"Tool '{tool_name}' executed on {server_name}")
+            return data
 
         except httpx.HTTPError as e:
             logger.error(f"HTTP error calling tool '{tool_name}' on {server_name}: {e}")

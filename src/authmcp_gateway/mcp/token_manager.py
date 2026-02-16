@@ -11,7 +11,8 @@ from typing import Any, Dict, Optional, Tuple
 
 import httpx
 
-from .store import get_mcp_server, log_token_audit, update_mcp_server_token
+from .crypto import decrypt_token_safe, encrypt_token
+from .store import get_mcp_server, log_token_audit, update_mcp_server, update_mcp_server_token
 
 logger = logging.getLogger(__name__)
 
@@ -49,25 +50,51 @@ class TokenManager:
         self._refresh_locks: Dict[int, asyncio.Lock] = {}
 
     def cache_refresh_token(self, server_id: int, refresh_token: str) -> None:
-        """Cache plaintext refresh token in memory.
+        """Cache plaintext refresh token in memory and persist encrypted to DB.
 
         Args:
             server_id: MCP server ID
             refresh_token: Plaintext refresh token
         """
         self._refresh_tokens_cache[server_id] = refresh_token
-        logger.debug(f"Cached refresh token for server {server_id}")
+
+        # Persist encrypted refresh token to DB for restart survival
+        try:
+            encrypted = encrypt_token(refresh_token)
+            update_mcp_server(self.db_path, server_id, refresh_token_encrypted=encrypted)
+            logger.debug(f"Cached and persisted encrypted refresh token for server {server_id}")
+        except Exception as e:
+            logger.warning(f"Failed to persist encrypted refresh token for server {server_id}: {e}")
+            logger.debug(f"Cached refresh token for server {server_id} (memory only)")
 
     def get_cached_refresh_token(self, server_id: int) -> Optional[str]:
         """Get cached plaintext refresh token.
+
+        Falls back to decrypting the persisted token from DB if not in memory.
 
         Args:
             server_id: MCP server ID
 
         Returns:
-            Optional[str]: Plaintext refresh token or None if not cached
+            Optional[str]: Plaintext refresh token or None if not available
         """
-        return self._refresh_tokens_cache.get(server_id)
+        token = self._refresh_tokens_cache.get(server_id)
+        if token:
+            return token
+
+        # Try loading from DB (encrypted)
+        try:
+            server = get_mcp_server(self.db_path, server_id)
+            if server and server.get("refresh_token_encrypted"):
+                decrypted = decrypt_token_safe(server["refresh_token_encrypted"])
+                if decrypted:
+                    self._refresh_tokens_cache[server_id] = decrypted
+                    logger.info(f"Loaded encrypted refresh token from DB for server {server_id}")
+                    return decrypted
+        except Exception as e:
+            logger.warning(f"Failed to load encrypted refresh token for server {server_id}: {e}")
+
+        return None
 
     def clear_cached_token(self, server_id: int) -> None:
         """Clear cached refresh token.

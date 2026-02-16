@@ -216,7 +216,6 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
 
         # Parse request body to get MCP method
         body = await request.body()
-        request._body = body
         method = None
         request_id = None
         try:
