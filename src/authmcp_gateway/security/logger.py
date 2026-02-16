@@ -236,8 +236,13 @@ def cleanup_old_logs(db_path: str, days_to_keep: int = 30) -> Dict[str, int]:
         archive_path = getattr(config, "mcp_log_db_archive_path", None)
         archive_enabled = getattr(config, "mcp_log_db_archive_enabled", False)
 
+        ALLOWED_TABLES = {"security_events", "mcp_requests", "auth_audit_log"}
+
         def _archive_table(table_name: str) -> int:
             if not (archive_enabled and archive_path):
+                return 0
+            if table_name not in ALLOWED_TABLES:
+                logger.error(f"Rejected invalid table name in cleanup: {table_name}")
                 return 0
             cursor.execute(f"SELECT * FROM {table_name} WHERE timestamp < ?", (cutoff_date,))
             columns = [d[0] for d in cursor.description]

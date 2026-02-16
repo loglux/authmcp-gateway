@@ -1045,6 +1045,14 @@ async def api_save_settings(request: Request) -> JSONResponse:
             _config.auth.allow_dcr = bool(sys_s["allow_dcr"])
         if "auth_required" in sys_s:
             _config.auth_required = bool(sys_s["auth_required"])
+            # Propagate to middleware global so the change takes effect immediately
+            try:
+                import authmcp_gateway.middleware as _mw
+
+                _mw._auth_required = _config.auth_required
+                logger.info(f"Propagated auth_required={_config.auth_required} to middleware")
+            except Exception as e:
+                logger.warning(f"Failed to propagate auth_required to middleware: {e}")
 
         rl = body.get("rate_limit") or {}
         if "mcp_limit" in rl:

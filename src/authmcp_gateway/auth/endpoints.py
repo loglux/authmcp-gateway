@@ -275,7 +275,7 @@ async def register(request: Request) -> JSONResponse:
             email=user_data.email,
             password_hash=password_hash,
             full_name=user_data.full_name,
-            is_superuser=user_data.is_superuser,
+            is_superuser=False,  # Public registration never grants superuser
         )
     except sqlite3.IntegrityError as e:
         error_msg = str(e).lower()

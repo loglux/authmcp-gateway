@@ -257,7 +257,7 @@ def update_mcp_server(db_path: str, server_id: int, **fields) -> bool:
     Args:
         db_path: Path to SQLite database
         server_id: Server ID
-        **fields: Fields to update
+        **fields: Fields to update (must be valid column names)
 
     Returns:
         bool: True if updated, False if not found
@@ -265,10 +265,37 @@ def update_mcp_server(db_path: str, server_id: int, **fields) -> bool:
     if not fields:
         return False
 
+    # Whitelist of allowed column names to prevent SQL injection
+    ALLOWED_COLUMNS = {
+        "name",
+        "description",
+        "url",
+        "tool_prefix",
+        "enabled",
+        "auth_type",
+        "auth_token",
+        "routing_strategy",
+        "status",
+        "last_health_check",
+        "last_error",
+        "tools_count",
+        "updated_at",
+        "refresh_token_hash",
+        "token_expires_at",
+        "token_last_refreshed",
+        "refresh_endpoint",
+    }
+
+    # Reject any keys not in the whitelist
+    invalid_keys = set(fields.keys()) - ALLOWED_COLUMNS - {"updated_at"}
+    if invalid_keys:
+        logger.error(f"Rejected invalid column names in update_mcp_server: {invalid_keys}")
+        raise ValueError(f"Invalid column names: {invalid_keys}")
+
     # Add updated_at timestamp
     fields["updated_at"] = datetime.now(timezone.utc).isoformat()
 
-    # Build SET clause
+    # Build SET clause (safe — keys validated against whitelist)
     set_clause = ", ".join([f"{key} = ?" for key in fields.keys()])
     values = list(fields.values()) + [server_id]
 

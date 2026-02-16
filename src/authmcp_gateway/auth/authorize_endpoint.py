@@ -1,5 +1,6 @@
 """OAuth Authorization endpoint."""
 
+import html
 import logging
 from urllib.parse import urlencode, urlparse
 
@@ -7,6 +8,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse, Response
 
 from ..config import get_config
+from ..rate_limiter import get_rate_limiter
 from .client_store import (
     get_oauth_client_by_client_id,
     is_redirect_uri_allowed,
@@ -115,10 +117,11 @@ def _show_login_form(
     resource: str,
 ) -> HTMLResponse:
     """Show HTML login form."""
-    # Parse client_id to show friendly name
-    client_name = urlparse(client_id).netloc or client_id
+    # Parse client_id to show friendly name (escaped to prevent XSS)
+    client_name = html.escape(urlparse(client_id).netloc or client_id)
+    scope = html.escape(scope)
 
-    html = f"""
+    page_html = f"""
     <!DOCTYPE html>
     <html>
     <head>
@@ -270,7 +273,7 @@ def _show_login_form(
     </body>
     </html>
     """
-    return HTMLResponse(html)
+    return HTMLResponse(page_html)
 
 
 async def _process_login(
@@ -285,6 +288,31 @@ async def _process_login(
     """Process login and generate authorization code."""
     # Get database path from app state
     db_path = request.app.state.auth_db_path
+
+    # Rate limiting check
+    try:
+        config = get_config()
+        if config.rate_limit.enabled:
+            limiter = get_rate_limiter()
+            client_ip = request.client.host if request.client else "unknown"
+            identifier = f"authorize:{client_ip}"
+
+            allowed, retry_after = limiter.check_limit(
+                identifier=identifier,
+                limit=config.rate_limit.login_limit,
+                window=config.rate_limit.login_window,
+            )
+
+            if not allowed:
+                logger.warning(f"Rate limit exceeded for /authorize from {client_ip}")
+                return HTMLResponse(
+                    "<h1>Too Many Requests</h1>"
+                    "<p>Too many login attempts. Please try again later.</p>",
+                    status_code=429,
+                    headers={"Retry-After": str(retry_after)},
+                )
+    except Exception as e:
+        logger.debug(f"Rate limit check failed for /authorize: {e}")
 
     # Parse form data
     form = await request.form()
@@ -424,8 +452,8 @@ def _show_login_form_with_error(
         client_id, redirect_uri, code_challenge, code_challenge_method, state, scope, ""
     )
 
-    # Inject error message
-    error_html = f'<div class="error">{error}</div>'
+    # Inject error message (escaped to prevent XSS)
+    error_html = f'<div class="error">{html.escape(error)}</div>'
     html_with_error = form_html.body.decode("utf-8").replace(
         '<form method="POST"', f'{error_html}<form method="POST"'
     )
