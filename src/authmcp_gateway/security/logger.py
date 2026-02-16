@@ -4,8 +4,8 @@ import json
 import logging
 import sqlite3
 import time
-from datetime import datetime, timezone, timedelta
-from typing import Optional, Dict, Any
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +21,13 @@ def log_security_event(
     username: Optional[str] = None,
     ip_address: Optional[str] = None,
     endpoint: Optional[str] = None,
-    method: Optional[str] = None
+    method: Optional[str] = None,
 ) -> None:
     """Log security-related event.
 
     Args:
         db_path: Path to SQLite database
-        event_type: Type of security event (unauthorized_access, rate_limited, 
+        event_type: Type of security event (unauthorized_access, rate_limited,
                    suspicious_payload, auth_failed, etc.)
         severity: Severity level (low, medium, high, critical)
         details: Optional dictionary with additional context (will be JSON-encoded)
@@ -39,10 +39,10 @@ def log_security_event(
     """
     try:
         import json
-        
+
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        
+
         cursor.execute(
             """
             INSERT INTO security_events (
@@ -60,18 +60,18 @@ def log_security_event(
                 endpoint,
                 method,
                 json.dumps(details) if details else None,
-                datetime.now(timezone.utc).isoformat()
-            )
+                datetime.now(timezone.utc).isoformat(),
+            ),
         )
-        
+
         conn.commit()
         conn.close()
-        
+
         logger.info(
             f"Security event logged: {event_type} (severity={severity}, "
             f"user={username or 'N/A'}, ip={ip_address or 'N/A'})"
         )
-        
+
     except Exception as e:
         logger.error(f"Failed to log security event: {e}")
 
@@ -86,7 +86,7 @@ def log_mcp_request(
     error_message: Optional[str] = None,
     response_time_ms: Optional[int] = None,
     ip_address: Optional[str] = None,
-    is_suspicious: bool = False
+    is_suspicious: bool = False,
 ) -> None:
     """Log MCP request to file.
 
@@ -103,31 +103,31 @@ def log_mcp_request(
         is_suspicious: Whether request was flagged as suspicious
     """
     try:
-        from authmcp_gateway.logging_config import get_mcp_logger, log_mcp_request_to_file
         from authmcp_gateway.config import get_config
-        
+        from authmcp_gateway.logging_config import get_mcp_logger, log_mcp_request_to_file
+
         # Get username and server_name from database
         username = None
         server_name = None
-        
+
         if user_id or mcp_server_id:
             conn = sqlite3.connect(db_path)
             cursor = conn.cursor()
-            
+
             if user_id:
                 cursor.execute("SELECT username FROM users WHERE id = ?", (user_id,))
                 row = cursor.fetchone()
                 if row:
                     username = row[0]
-            
+
             if mcp_server_id:
                 cursor.execute("SELECT name FROM mcp_servers WHERE id = ?", (mcp_server_id,))
                 row = cursor.fetchone()
                 if row:
                     server_name = row[0]
-            
+
             conn.close()
-        
+
         # Log to file (default, low overhead)
         mcp_logger = get_mcp_logger()
         log_mcp_request_to_file(
@@ -141,9 +141,9 @@ def log_mcp_request(
             response_time_ms=response_time_ms,
             success=success,
             error=error_message,
-            suspicious=is_suspicious
+            suspicious=is_suspicious,
         )
-        
+
         config = get_config()
 
         # Optional DB logging for MCP requests (future internal storage)
@@ -167,8 +167,8 @@ def log_mcp_request(
                     error_message,
                     response_time_ms,
                     ip_address,
-                    is_suspicious
-                )
+                    is_suspicious,
+                ),
             )
             conn_db.commit()
             conn_db.close()
@@ -203,12 +203,12 @@ def log_mcp_request(
                         cleanup_old_logs(db_path, days_to_keep=days)
                 except Exception as e:
                     logger.debug(f"MCP DB size check failed: {e}")
-        
+
         logger.debug(
             f"MCP request logged: {method} (tool={tool_name or 'N/A'}, "
             f"success={success}, time={response_time_ms}ms)"
         )
-        
+
     except Exception as e:
         logger.error(f"Failed to log MCP request: {e}")
 
@@ -226,11 +226,12 @@ def cleanup_old_logs(db_path: str, days_to_keep: int = 30) -> Dict[str, int]:
     try:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        
+
         cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days_to_keep)).isoformat()
-        
+
         # Optional archive to file before deletion
         from authmcp_gateway.config import get_config
+
         config = get_config()
         archive_path = getattr(config, "mcp_log_db_archive_path", None)
         archive_enabled = getattr(config, "mcp_log_db_archive_enabled", False)
@@ -238,10 +239,7 @@ def cleanup_old_logs(db_path: str, days_to_keep: int = 30) -> Dict[str, int]:
         def _archive_table(table_name: str) -> int:
             if not (archive_enabled and archive_path):
                 return 0
-            cursor.execute(
-                f"SELECT * FROM {table_name} WHERE timestamp < ?",
-                (cutoff_date,)
-            )
+            cursor.execute(f"SELECT * FROM {table_name} WHERE timestamp < ?", (cutoff_date,))
             columns = [d[0] for d in cursor.description]
             archived = 0
             with open(archive_path, "a", encoding="utf-8") as f:
@@ -250,10 +248,7 @@ def cleanup_old_logs(db_path: str, days_to_keep: int = 30) -> Dict[str, int]:
                     if not rows:
                         break
                     for row in rows:
-                        payload = {
-                            "table": table_name,
-                            "row": dict(zip(columns, row))
-                        }
+                        payload = {"table": table_name, "row": dict(zip(columns, row))}
                         f.write(json.dumps(payload, ensure_ascii=False) + "\n")
                         archived += 1
             return archived
@@ -263,49 +258,40 @@ def cleanup_old_logs(db_path: str, days_to_keep: int = 30) -> Dict[str, int]:
         archived_auth = _archive_table("auth_audit_log")
 
         # Delete old security events
-        cursor.execute(
-            "DELETE FROM security_events WHERE timestamp < ?",
-            (cutoff_date,)
-        )
+        cursor.execute("DELETE FROM security_events WHERE timestamp < ?", (cutoff_date,))
         security_deleted = cursor.rowcount
-        
+
         # Delete old MCP requests
-        cursor.execute(
-            "DELETE FROM mcp_requests WHERE timestamp < ?",
-            (cutoff_date,)
-        )
+        cursor.execute("DELETE FROM mcp_requests WHERE timestamp < ?", (cutoff_date,))
         mcp_deleted = cursor.rowcount
-        
+
         # Delete old auth audit logs
-        cursor.execute(
-            "DELETE FROM auth_audit_log WHERE timestamp < ?",
-            (cutoff_date,)
-        )
+        cursor.execute("DELETE FROM auth_audit_log WHERE timestamp < ?", (cutoff_date,))
         auth_deleted = cursor.rowcount
-        
+
         conn.commit()
         conn.close()
-        
+
         result = {
             "security_events": security_deleted,
             "mcp_requests": mcp_deleted,
             "auth_audit_log": auth_deleted,
-            "total": security_deleted + mcp_deleted + auth_deleted
+            "total": security_deleted + mcp_deleted + auth_deleted,
         }
         if archive_enabled and archive_path:
             result["archived"] = {
                 "security_events": archived_security,
                 "mcp_requests": archived_mcp,
-                "auth_audit_log": archived_auth
+                "auth_audit_log": archived_auth,
             }
-        
+
         logger.info(
             f"Cleanup completed: deleted {result['total']} old log entries "
             f"(security={security_deleted}, mcp={mcp_deleted}, auth={auth_deleted})"
         )
-        
+
         return result
-        
+
     except Exception as e:
         logger.error(f"Failed to cleanup old logs: {e}")
         return {"error": str(e)}
@@ -316,7 +302,7 @@ def get_security_events(
     severity: Optional[str] = None,
     event_type: Optional[str] = None,
     limit: int = 100,
-    last_hours: Optional[int] = None
+    last_hours: Optional[int] = None,
 ) -> list[Dict[str, Any]]:
     """Get security events with optional filters.
 
@@ -334,32 +320,32 @@ def get_security_events(
         conn = sqlite3.connect(db_path)
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        
+
         query = "SELECT * FROM security_events WHERE 1=1"
         params = []
-        
+
         if severity:
             query += " AND severity = ?"
             params.append(severity)
-        
+
         if event_type:
             query += " AND event_type = ?"
             params.append(event_type)
-        
+
         if last_hours:
             cutoff = (datetime.now(timezone.utc) - timedelta(hours=last_hours)).isoformat()
             query += " AND timestamp >= ?"
             params.append(cutoff)
-        
+
         query += " ORDER BY timestamp DESC LIMIT ?"
         params.append(limit)
-        
+
         cursor.execute(query, params)
         events = [dict(row) for row in cursor.fetchall()]
-        
+
         conn.close()
         return events
-        
+
     except Exception as e:
         logger.error(f"Failed to get security events: {e}")
         return []
@@ -378,44 +364,39 @@ def get_mcp_request_stats(db_path: str, last_hours: int = 24) -> Dict[str, Any]:
     try:
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
-        
+
         cutoff = (datetime.now(timezone.utc) - timedelta(hours=last_hours)).isoformat()
-        
+
         # Total requests
-        cursor.execute(
-            "SELECT COUNT(*) FROM mcp_requests WHERE timestamp >= ?",
-            (cutoff,)
-        )
+        cursor.execute("SELECT COUNT(*) FROM mcp_requests WHERE timestamp >= ?", (cutoff,))
         total_requests = cursor.fetchone()[0]
-        
+
         # Successful requests
         cursor.execute(
-            "SELECT COUNT(*) FROM mcp_requests WHERE timestamp >= ? AND success = 1",
-            (cutoff,)
+            "SELECT COUNT(*) FROM mcp_requests WHERE timestamp >= ? AND success = 1", (cutoff,)
         )
         successful_requests = cursor.fetchone()[0]
-        
+
         # Failed requests
         cursor.execute(
-            "SELECT COUNT(*) FROM mcp_requests WHERE timestamp >= ? AND success = 0",
-            (cutoff,)
+            "SELECT COUNT(*) FROM mcp_requests WHERE timestamp >= ? AND success = 0", (cutoff,)
         )
         failed_requests = cursor.fetchone()[0]
-        
+
         # Suspicious requests
         cursor.execute(
             "SELECT COUNT(*) FROM mcp_requests WHERE timestamp >= ? AND is_suspicious = 1",
-            (cutoff,)
+            (cutoff,),
         )
         suspicious_requests = cursor.fetchone()[0]
-        
+
         # Average response time
         cursor.execute(
             "SELECT AVG(response_time_ms) FROM mcp_requests WHERE timestamp >= ? AND response_time_ms IS NOT NULL",
-            (cutoff,)
+            (cutoff,),
         )
         avg_response_time = cursor.fetchone()[0]
-        
+
         # Top tools (include server info when available)
         cursor.execute(
             """
@@ -427,7 +408,7 @@ def get_mcp_request_stats(db_path: str, last_hours: int = 24) -> Dict[str, Any]:
             ORDER BY count DESC
             LIMIT 5
             """,
-            (cutoff,)
+            (cutoff,),
         )
         top_tools = [
             {
@@ -438,20 +419,22 @@ def get_mcp_request_stats(db_path: str, last_hours: int = 24) -> Dict[str, Any]:
             }
             for row in cursor.fetchall()
         ]
-        
+
         conn.close()
-        
+
         return {
             "total_requests": total_requests,
             "successful_requests": successful_requests,
             "failed_requests": failed_requests,
             "suspicious_requests": suspicious_requests,
-            "success_rate": round(successful_requests / total_requests * 100, 2) if total_requests > 0 else 0,
+            "success_rate": (
+                round(successful_requests / total_requests * 100, 2) if total_requests > 0 else 0
+            ),
             "avg_response_time_ms": round(avg_response_time, 2) if avg_response_time else 0,
             "top_tools": top_tools,
-            "time_window_hours": last_hours
+            "time_window_hours": last_hours,
         }
-        
+
     except Exception as e:
         logger.error(f"Failed to get MCP request stats: {e}")
         return {
@@ -463,7 +446,7 @@ def get_mcp_request_stats(db_path: str, last_hours: int = 24) -> Dict[str, Any]:
             "success_rate": 0,
             "avg_response_time_ms": 0,
             "top_tools": [],
-            "time_window_hours": last_hours
+            "time_window_hours": last_hours,
         }
 
 
@@ -475,19 +458,20 @@ def get_mcp_requests(
     success: bool = None,
 ) -> list:
     """Get recent MCP requests from DB (fallback to log files).
-    
+
     Args:
         db_path: Path to SQLite database (ignored, kept for compatibility)
         limit: Maximum number of requests to return
         last_seconds: Number of seconds to look back
         method: Filter by method (optional)
         success: Filter by success status (optional)
-        
+
     Returns:
         List of MCP request records
     """
     try:
         from authmcp_gateway.config import get_config
+
         config = get_config()
 
         # Calculate time threshold (match SQLite CURRENT_TIMESTAMP format)
@@ -556,8 +540,8 @@ def get_mcp_requests(
             ]
 
         # Fallback to file-based logs if DB logging disabled
-        from pathlib import Path
         import json
+        from pathlib import Path
 
         log_file = Path("data/logs/mcp_requests.log")
         if not log_file.exists():
@@ -580,28 +564,30 @@ def get_mcp_requests(
                     if success is not None and entry.get("success") != success:
                         continue
 
-                    requests.append({
-                        "id": len(requests) + 1,  # Synthetic ID
-                        "user_id": entry.get("user_id"),
-                        "username": entry.get("username"),
-                        "mcp_server_id": entry.get("server_id"),
-                        "server_name": entry.get("server_name"),
-                        "method": entry.get("method"),
-                        "tool_name": entry.get("tool_name"),
-                        "success": entry.get("success", True),
-                        "error_message": entry.get("error"),
-                        "response_time_ms": entry.get("response_time_ms"),
-                        "ip_address": entry.get("ip_address"),
-                        "is_suspicious": entry.get("suspicious", False),
-                        "timestamp": entry.get("timestamp")
-                    })
+                    requests.append(
+                        {
+                            "id": len(requests) + 1,  # Synthetic ID
+                            "user_id": entry.get("user_id"),
+                            "username": entry.get("username"),
+                            "mcp_server_id": entry.get("server_id"),
+                            "server_name": entry.get("server_name"),
+                            "method": entry.get("method"),
+                            "tool_name": entry.get("tool_name"),
+                            "success": entry.get("success", True),
+                            "error_message": entry.get("error"),
+                            "response_time_ms": entry.get("response_time_ms"),
+                            "ip_address": entry.get("ip_address"),
+                            "is_suspicious": entry.get("suspicious", False),
+                            "timestamp": entry.get("timestamp"),
+                        }
+                    )
                 except (json.JSONDecodeError, ValueError) as e:
                     logger.warning(f"Failed to parse MCP log entry: {e}")
                     continue
 
         requests.sort(key=lambda x: x["timestamp"], reverse=True)
         return requests[:limit]
-        
+
     except Exception as e:
         logger.error(f"Error reading MCP requests: {e}")
         return []

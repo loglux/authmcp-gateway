@@ -82,9 +82,7 @@ def main() -> int:
 
     entry["access_token"] = access_token
     if expires_in:
-        entry["expires_at"] = int(expires_in * 1000) + int(
-            __import__("time").time() * 1000
-        )
+        entry["expires_at"] = int(expires_in * 1000) + int(__import__("time").time() * 1000)
     if new_refresh:
         entry["refresh_token"] = new_refresh
 

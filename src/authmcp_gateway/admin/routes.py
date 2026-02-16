@@ -1,20 +1,24 @@
 """Admin panel routes."""
+
+import json
 import logging
 import sqlite3
-import jwt
-import json
-from pathlib import Path
-from typing import Optional, Callable, Any
-from functools import wraps
 from datetime import datetime, timedelta, timezone
+from functools import wraps
+from pathlib import Path
+from typing import Callable, Optional
+
+import jwt
 from jinja2 import Environment, FileSystemLoader
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, Response, RedirectResponse
+from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+
 from authmcp_gateway.auth.user_store import (
     get_all_users,
     get_auth_logs,
-    update_user_status,
+    get_user_by_id,
     make_user_superuser,
+    update_user_status,
 )
 from authmcp_gateway.config import AppConfig
 
@@ -24,12 +28,15 @@ logger = logging.getLogger(__name__)
 # Admin authentication decorator (simplified version)
 def requires_admin(func):
     """Decorator to require admin authentication for routes."""
+
     @wraps(func)
     async def wrapper(request: Request, *args, **kwargs):
         # Admin auth is handled by AdminAuthMiddleware
         # This decorator is just for marking admin routes
         return await func(request, *args, **kwargs)
+
     return wrapper
+
 
 # Setup Jinja2 templates
 TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
@@ -95,13 +102,13 @@ async def user_login_page(_: Request) -> HTMLResponse:
 
 async def user_login_api(request: Request) -> JSONResponse:
     """Login for non-admin users and set user_token cookie."""
-    from authmcp_gateway.auth.user_store import (
-        get_user_by_username,
-        update_last_login,
-        log_auth_event,
-    )
     from authmcp_gateway.auth.password import verify_password
     from authmcp_gateway.auth.token_service import get_or_create_admin_token
+    from authmcp_gateway.auth.user_store import (
+        get_user_by_username,
+        log_auth_event,
+        update_last_login,
+    )
     from authmcp_gateway.config import load_config
 
     body = await request.json()
@@ -120,15 +127,12 @@ async def user_login_api(request: Request) -> JSONResponse:
             ip_address=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             success=False,
-            details="Invalid credentials"
+            details="Invalid credentials",
         )
         return JSONResponse({"detail": "Invalid username or password"}, status_code=401)
 
     if user.get("is_superuser"):
-        return JSONResponse(
-            {"detail": "Admin accounts must use the admin panel."},
-            status_code=403
-        )
+        return JSONResponse({"detail": "Admin accounts must use the admin panel."}, status_code=403)
 
     update_last_login(_config.auth.sqlite_path, user["id"])
 
@@ -164,9 +168,9 @@ async def user_logout(_: Request) -> Response:
 
 async def user_account_token(request: Request) -> JSONResponse:
     """Return access token for authenticated non-admin user."""
-    from authmcp_gateway.auth.jwt_handler import verify_token, decode_token_unsafe
-    from authmcp_gateway.auth.user_store import is_token_blacklisted, get_user_by_id
+    from authmcp_gateway.auth.jwt_handler import decode_token_unsafe, verify_token
     from authmcp_gateway.auth.token_service import get_or_create_admin_token
+    from authmcp_gateway.auth.user_store import get_user_by_id, is_token_blacklisted
     from authmcp_gateway.config import load_config
 
     token = request.cookies.get("user_token")
@@ -179,7 +183,9 @@ async def user_account_token(request: Request) -> JSONResponse:
         if jti and is_token_blacklisted(_config.auth.sqlite_path, jti):
             return JSONResponse({"detail": "Token revoked"}, status_code=401)
         if payload.get("is_superuser"):
-            return JSONResponse({"detail": "Admin accounts must use the admin panel."}, status_code=403)
+            return JSONResponse(
+                {"detail": "Admin accounts must use the admin panel."}, status_code=403
+            )
     except Exception:
         return JSONResponse({"detail": "Invalid or expired token"}, status_code=401)
 
@@ -214,9 +220,9 @@ async def user_account_token(request: Request) -> JSONResponse:
 
 async def user_account_rotate_token(request: Request) -> JSONResponse:
     """Rotate access token for authenticated non-admin user."""
-    from authmcp_gateway.auth.jwt_handler import verify_token, decode_token_unsafe
-    from authmcp_gateway.auth.user_store import is_token_blacklisted
+    from authmcp_gateway.auth.jwt_handler import decode_token_unsafe, verify_token
     from authmcp_gateway.auth.token_service import rotate_admin_token
+    from authmcp_gateway.auth.user_store import is_token_blacklisted
     from authmcp_gateway.config import load_config
 
     token = request.cookies.get("user_token")
@@ -229,7 +235,9 @@ async def user_account_rotate_token(request: Request) -> JSONResponse:
         if jti and is_token_blacklisted(_config.auth.sqlite_path, jti):
             return JSONResponse({"detail": "Token revoked"}, status_code=401)
         if payload.get("is_superuser"):
-            return JSONResponse({"detail": "Admin accounts must use the admin panel."}, status_code=403)
+            return JSONResponse(
+                {"detail": "Admin accounts must use the admin panel."}, status_code=403
+            )
     except Exception:
         return JSONResponse({"detail": "Invalid or expired token"}, status_code=401)
 
@@ -260,12 +268,13 @@ async def user_account_rotate_token(request: Request) -> JSONResponse:
 
 async def user_account_info(request: Request) -> JSONResponse:
     """Return user info, token expiry, and accessible MCP servers."""
-    from authmcp_gateway.auth.jwt_handler import verify_token, decode_token_unsafe
-    from authmcp_gateway.auth.user_store import is_token_blacklisted, get_user_by_id
-    from authmcp_gateway.auth.token_service import get_or_create_admin_token
-    from authmcp_gateway.mcp.store import list_mcp_servers
     from datetime import datetime, timezone
+
+    from authmcp_gateway.auth.jwt_handler import decode_token_unsafe, verify_token
+    from authmcp_gateway.auth.token_service import get_or_create_admin_token
+    from authmcp_gateway.auth.user_store import get_user_by_id, is_token_blacklisted
     from authmcp_gateway.config import load_config
+    from authmcp_gateway.mcp.store import list_mcp_servers
 
     token = request.cookies.get("user_token")
     if not token:
@@ -277,7 +286,9 @@ async def user_account_info(request: Request) -> JSONResponse:
         if jti and is_token_blacklisted(_config.auth.sqlite_path, jti):
             return JSONResponse({"detail": "Token revoked"}, status_code=401)
         if payload.get("is_superuser"):
-            return JSONResponse({"detail": "Admin accounts must use the admin panel."}, status_code=403)
+            return JSONResponse(
+                {"detail": "Admin accounts must use the admin panel."}, status_code=403
+            )
     except Exception:
         return JSONResponse({"detail": "Invalid or expired token"}, status_code=401)
 
@@ -307,25 +318,34 @@ async def user_account_info(request: Request) -> JSONResponse:
         except Exception:
             pass
 
-    servers = list_mcp_servers(_config.auth.sqlite_path, enabled_only=True, user_id=int(user_id) if user_id else None)
+    servers = list_mcp_servers(
+        _config.auth.sqlite_path, enabled_only=True, user_id=int(user_id) if user_id else None
+    )
     public_base = (_config.mcp_public_url or "").rstrip("/")
     server_list = []
     from authmcp_gateway.mcp.proxy import normalize_server_name
+
     for s in servers:
         server_slug = normalize_server_name(s["name"])
-        server_list.append({
-            "id": s["id"],
-            "name": s["name"],
-            "endpoint": f"{public_base}/mcp/{server_slug}" if public_base else f"/mcp/{server_slug}"
-        })
+        server_list.append(
+            {
+                "id": s["id"],
+                "name": s["name"],
+                "endpoint": (
+                    f"{public_base}/mcp/{server_slug}" if public_base else f"/mcp/{server_slug}"
+                ),
+            }
+        )
 
-    response = JSONResponse({
-        "username": username,
-        "expires_at": expires_at,
-        "expires_in_seconds": expires_in_seconds,
-        "servers": server_list,
-        "gateway_endpoint": f"{public_base}/mcp" if public_base else "/mcp"
-    })
+    response = JSONResponse(
+        {
+            "username": username,
+            "expires_at": expires_at,
+            "expires_in_seconds": expires_in_seconds,
+            "servers": server_list,
+            "gateway_endpoint": f"{public_base}/mcp" if public_base else "/mcp",
+        }
+    )
     response.set_cookie(
         "user_token",
         access_token,
@@ -351,15 +371,13 @@ def api_error_handler(func: Callable) -> Callable:
             # Your code here
             return JSONResponse({"result": "success"})
     """
+
     @wraps(func)
     async def wrapper(*args, **kwargs) -> JSONResponse:
         # Check if config is initialized
         if _config is None:
             logger.error(f"{func.__name__}: Config not initialized")
-            return JSONResponse(
-                {"error": "Config not initialized"},
-                status_code=500
-            )
+            return JSONResponse({"error": "Config not initialized"}, status_code=500)
 
         try:
             # Call the actual function
@@ -367,10 +385,7 @@ def api_error_handler(func: Callable) -> Callable:
         except Exception as e:
             # Log the error with context
             logger.exception(f"{func.__name__} failed: {e}")
-            return JSONResponse(
-                {"error": str(e)},
-                status_code=500
-            )
+            return JSONResponse({"error": str(e)}, status_code=500)
 
     return wrapper
 
@@ -411,10 +426,18 @@ def _get_sidebar_nav(active_page: str = "") -> str:
         ("dashboard", "/admin", '<i class="bi bi-speedometer2"></i> Dashboard'),
         ("mcp-activity", "/admin/mcp-activity", '<i class="bi bi-activity"></i> MCP Activity'),
         ("mcp-servers", "/admin/mcp-servers", '<i class="bi bi-hdd-network"></i> MCP Servers'),
-        ("security-logs", "/admin/security-logs", '<i class="bi bi-shield-exclamation"></i> Security Events'),
+        (
+            "security-logs",
+            "/admin/security-logs",
+            '<i class="bi bi-shield-exclamation"></i> Security Events',
+        ),
         ("mcp-audit", "/admin/mcp-audit", '<i class="bi bi-shield-check"></i> Security Audit'),
         ("settings", "/admin/settings", '<i class="bi bi-gear"></i> Settings'),
-        ("oauth-clients", "/admin/oauth-clients", '<i class="bi bi-shield-lock"></i> OAuth Clients'),
+        (
+            "oauth-clients",
+            "/admin/oauth-clients",
+            '<i class="bi bi-shield-lock"></i> OAuth Clients',
+        ),
         ("users", "/admin/users", '<i class="bi bi-people"></i> Users'),
         ("logs", "/admin/logs", '<i class="bi bi-clock-history"></i> Auth Logs'),
     ]
@@ -422,20 +445,20 @@ def _get_sidebar_nav(active_page: str = "") -> str:
     nav_html = ""
     for page_id, url, label in menu_items:
         active_class = "active" if page_id == active_page else ""
-        nav_html += f'''                    <li class="nav-item mb-2">
+        nav_html += f"""                    <li class="nav-item mb-2">
                         <a class="nav-link {active_class}" href="{url}">
                             {label}
                         </a>
                     </li>
-'''
+"""
 
     # Add external MCP endpoint link
-    nav_html += '''                    <li class="nav-item mt-4">
+    nav_html += """                    <li class="nav-item mt-4">
                         <a class="nav-link" href="/mcp" target="_blank">
                             <i class="bi bi-box-arrow-up-right"></i> MCP Endpoint
                         </a>
                     </li>
-'''
+"""
 
     return nav_html
 
@@ -474,28 +497,34 @@ async def api_stats(_: Request) -> JSONResponse:
     logs = get_auth_logs(_config.auth.sqlite_path, limit=1000)
 
     from datetime import datetime, timedelta, timezone
+
     now = datetime.now(timezone.utc)
     day_ago = now - timedelta(days=1)
 
-    recent_logins = len([
-        log for log in logs
-        if log["event_type"] in ["login", "admin_login"]
-        and log["success"]
-        and datetime.fromisoformat(log["created_at"]).replace(tzinfo=timezone.utc) > day_ago
-    ])
+    recent_logins = len(
+        [
+            log
+            for log in logs
+            if log["event_type"] in ["login", "admin_login"]
+            and log["success"]
+            and datetime.fromisoformat(log["created_at"]).replace(tzinfo=timezone.utc) > day_ago
+        ]
+    )
 
-    return JSONResponse({
-        "total_users": len(users),
-        "active_users": len([u for u in users if u["is_active"]]),
-        "superusers": len([u for u in users if u["is_superuser"]]),
-        "recent_logins": recent_logins,
-        "system": {
-            "jwt_algorithm": _config.jwt.algorithm,
-            "access_token_ttl": f"{_config.jwt.access_token_expire_minutes} min",
-            "refresh_token_ttl": f"{_config.jwt.refresh_token_expire_days} days",
-            "public_url": _config.mcp_public_url,
+    return JSONResponse(
+        {
+            "total_users": len(users),
+            "active_users": len([u for u in users if u["is_active"]]),
+            "superusers": len([u for u in users if u["is_superuser"]]),
+            "recent_logins": recent_logins,
+            "system": {
+                "jwt_algorithm": _config.jwt.algorithm,
+                "access_token_ttl": f"{_config.jwt.access_token_expire_minutes} min",
+                "refresh_token_ttl": f"{_config.jwt.refresh_token_expire_days} days",
+                "public_url": _config.mcp_public_url,
+            },
         }
-    })
+    )
 
 
 @api_error_handler
@@ -515,7 +544,7 @@ async def api_get_user_mcp_permissions(request: Request) -> JSONResponse:
     if not user:
         return JSONResponse({"error": "User not found"}, status_code=404)
 
-    from authmcp_gateway.mcp.store import list_mcp_servers, get_user_mcp_permissions
+    from authmcp_gateway.mcp.store import get_user_mcp_permissions, list_mcp_servers
 
     servers = list_mcp_servers(_config.auth.sqlite_path, enabled_only=False)
     permissions = get_user_mcp_permissions(_config.auth.sqlite_path, user_id)
@@ -525,19 +554,20 @@ async def api_get_user_mcp_permissions(request: Request) -> JSONResponse:
     for server in servers:
         perm = perm_map.get(server["id"])
         can_access = True if perm is None else bool(perm.get("can_access"))
-        response_servers.append({
-            "server_id": server["id"],
-            "name": server["name"],
-            "url": server["url"],
-            "enabled": bool(server.get("enabled", 1)),
-            "can_access": can_access,
-            "source": "default" if perm is None else "explicit"
-        })
+        response_servers.append(
+            {
+                "server_id": server["id"],
+                "name": server["name"],
+                "url": server["url"],
+                "enabled": bool(server.get("enabled", 1)),
+                "can_access": can_access,
+                "source": "default" if perm is None else "explicit",
+            }
+        )
 
-    return JSONResponse({
-        "user": {"id": user["id"], "username": user["username"]},
-        "servers": response_servers
-    })
+    return JSONResponse(
+        {"user": {"id": user["id"], "username": user["username"]}, "servers": response_servers}
+    )
 
 
 @api_error_handler
@@ -561,23 +591,22 @@ async def api_set_user_mcp_permission(request: Request) -> JSONResponse:
         db_path=_config.auth.sqlite_path,
         user_id=user_id,
         mcp_server_id=int(server_id),
-        can_access=bool(can_access)
+        can_access=bool(can_access),
     )
 
-    return JSONResponse({
-        "success": True,
-        "server_id": int(server_id),
-        "can_access": bool(can_access)
-    })
+    return JSONResponse(
+        {"success": True, "server_id": int(server_id), "can_access": bool(can_access)}
+    )
 
 
 @api_error_handler
 async def api_create_user(request: Request) -> JSONResponse:
     """Create new user (admin endpoint - bypasses allow_registration check)."""
-    from authmcp_gateway.auth.user_store import create_user
-    from authmcp_gateway.auth.password import hash_password
-    from authmcp_gateway.settings_manager import get_settings_manager
     import re
+
+    from authmcp_gateway.auth.password import hash_password
+    from authmcp_gateway.auth.user_store import create_user
+    from authmcp_gateway.settings_manager import get_settings_manager
 
     body = await request.json()
     username = body.get("username")
@@ -587,7 +616,9 @@ async def api_create_user(request: Request) -> JSONResponse:
 
     # Validate input
     if not username or not email or not password:
-        return JSONResponse({"error": "Username, email, and password are required"}, status_code=400)
+        return JSONResponse(
+            {"error": "Username, email, and password are required"}, status_code=400
+        )
 
     # Validate password strength using dynamic settings
     settings_manager = get_settings_manager()
@@ -601,15 +632,21 @@ async def api_create_user(request: Request) -> JSONResponse:
 
     # Check minimum length
     if len(password) < min_length:
-        return JSONResponse({"error": f"Password must be at least {min_length} characters long"}, status_code=400)
+        return JSONResponse(
+            {"error": f"Password must be at least {min_length} characters long"}, status_code=400
+        )
 
     # Check for uppercase letter
     if require_uppercase and not re.search(r"[A-Z]", password):
-        return JSONResponse({"error": "Password must contain at least one uppercase letter"}, status_code=400)
+        return JSONResponse(
+            {"error": "Password must contain at least one uppercase letter"}, status_code=400
+        )
 
     # Check for lowercase letter
     if require_lowercase and not re.search(r"[a-z]", password):
-        return JSONResponse({"error": "Password must contain at least one lowercase letter"}, status_code=400)
+        return JSONResponse(
+            {"error": "Password must contain at least one lowercase letter"}, status_code=400
+        )
 
     # Check for digit
     if require_digit and not re.search(r"\d", password):
@@ -617,7 +654,9 @@ async def api_create_user(request: Request) -> JSONResponse:
 
     # Check for special character
     if require_special and not re.search(r"[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>/?]", password):
-        return JSONResponse({"error": "Password must contain at least one special character"}, status_code=400)
+        return JSONResponse(
+            {"error": "Password must contain at least one special character"}, status_code=400
+        )
 
     # Hash password and create user
     password_hash = hash_password(password)
@@ -628,15 +667,13 @@ async def api_create_user(request: Request) -> JSONResponse:
             username=username,
             email=email,
             password_hash=password_hash,
-            is_superuser=is_superuser
+            is_superuser=is_superuser,
         )
 
-        return JSONResponse({
-            "id": user_id,
-            "username": username,
-            "email": email,
-            "is_superuser": is_superuser
-        }, status_code=201)
+        return JSONResponse(
+            {"id": user_id, "username": username, "email": email, "is_superuser": is_superuser},
+            status_code=201,
+        )
 
     except sqlite3.IntegrityError:
         return JSONResponse({"error": "Username or email already exists"}, status_code=400)
@@ -654,6 +691,7 @@ async def api_logs(request: Request) -> JSONResponse:
 
     try:
         import sqlite3
+
         conn = sqlite3.connect(_config.auth.sqlite_path)
         cursor = conn.cursor()
 
@@ -686,21 +724,23 @@ async def api_logs(request: Request) -> JSONResponse:
             ORDER BY timestamp DESC
             LIMIT ? OFFSET ?
             """,
-            params + [limit, offset]
+            params + [limit, offset],
         )
 
         logs = []
         for row in cursor.fetchall():
-            logs.append({
-                "event_type": row[0],
-                "user_id": row[1],
-                "username": row[2],
-                "ip_address": row[3],
-                "user_agent": row[4],
-                "success": bool(row[5]),
-                "details": row[6],
-                "timestamp": row[7]
-            })
+            logs.append(
+                {
+                    "event_type": row[0],
+                    "user_id": row[1],
+                    "username": row[2],
+                    "ip_address": row[3],
+                    "user_agent": row[4],
+                    "success": bool(row[5]),
+                    "details": row[6],
+                    "timestamp": row[7],
+                }
+            )
 
         conn.close()
 
@@ -729,14 +769,16 @@ async def api_mcp_auth_events(request: Request) -> JSONResponse:
     events = []
 
     try:
-        with open(log_file, 'r', encoding='utf-8') as f:
+        with open(log_file, "r", encoding="utf-8") as f:
             for line in f:
                 try:
                     entry = json.loads(line.strip())
                     event_type = entry.get("event_type")
                     details = entry.get("details") or ""
                     if event_type not in allowed_types:
-                        if event_type == "login" and ("Authorization code flow" in details or "password grant" in details):
+                        if event_type == "login" and (
+                            "Authorization code flow" in details or "password grant" in details
+                        ):
                             entry = dict(entry)
                             entry["event_type"] = "mcp_oauth_token"
                         else:
@@ -759,21 +801,21 @@ async def api_mcp_auth_events(request: Request) -> JSONResponse:
 async def api_cleanup_auth_logs_file(request: Request) -> JSONResponse:
     """Cleanup old auth logs (older than 30 days)."""
     log_file = Path("data/logs/auth.log")
-    
+
     if not log_file.exists():
         return JSONResponse({"success": True, "deleted": 0})
-    
+
     cutoff_date = datetime.utcnow() - timedelta(days=30)
     kept_logs = []
     deleted_count = 0
-    
+
     try:
-        with open(log_file, 'r', encoding='utf-8') as f:
+        with open(log_file, "r", encoding="utf-8") as f:
             for line in f:
                 try:
                     log_entry = json.loads(line.strip())
                     log_time = datetime.fromisoformat(log_entry["timestamp"].replace("Z", "+00:00"))
-                    
+
                     if log_time >= cutoff_date:
                         kept_logs.append(line)
                     else:
@@ -781,15 +823,15 @@ async def api_cleanup_auth_logs_file(request: Request) -> JSONResponse:
                 except (json.JSONDecodeError, KeyError, ValueError):
                     # Keep malformed entries to avoid data loss
                     kept_logs.append(line)
-        
+
         # Write back only recent logs
-        with open(log_file, 'w', encoding='utf-8') as f:
+        with open(log_file, "w", encoding="utf-8") as f:
             f.writelines(kept_logs)
-    
+
     except Exception as e:
         logger.error(f"Failed to cleanup logs: {e}")
         return JSONResponse({"error": "Failed to cleanup logs"}, status_code=500)
-    
+
     return JSONResponse({"success": True, "deleted": deleted_count})
 
 
@@ -807,14 +849,12 @@ async def api_update_user_status(request: Request) -> Response:
 
         if user and user["is_superuser"]:
             active_superusers = [
-                u for u in users
-                if u["is_superuser"] and u["is_active"] and u["id"] != user_id
+                u for u in users if u["is_superuser"] and u["is_active"] and u["id"] != user_id
             ]
 
             if len(active_superusers) == 0:
                 return JSONResponse(
-                    {"error": "Cannot deactivate the last active superuser"},
-                    status_code=400
+                    {"error": "Cannot deactivate the last active superuser"}, status_code=400
                 )
 
     update_user_status(_config.auth.sqlite_path, user_id, is_active)
@@ -842,14 +882,12 @@ async def api_delete_user(request: Request) -> JSONResponse:
 
     if user and user["is_superuser"]:
         active_superusers = [
-            u for u in users
-            if u["is_superuser"] and u["is_active"] and u["id"] != user_id
+            u for u in users if u["is_superuser"] and u["is_active"] and u["id"] != user_id
         ]
 
         if len(active_superusers) == 0:
             return JSONResponse(
-                {"error": "Cannot delete the last active superuser"},
-                status_code=400
+                {"error": "Cannot delete the last active superuser"}, status_code=400
             )
 
     # Delete user
@@ -867,13 +905,15 @@ async def admin_settings(request: Request) -> HTMLResponse:
     user_id = request.state.user_id
     username = request.state.username
     is_superuser = request.state.is_superuser
-    
+
     # Reuse stored token or rotate if needed
-    from datetime import datetime, timezone, timedelta
-    from authmcp_gateway.auth.token_service import get_or_create_admin_token, format_expires_in
+    from datetime import datetime, timedelta, timezone
+
+    from authmcp_gateway.auth.token_service import format_expires_in, get_or_create_admin_token
     from authmcp_gateway.config import load_config
+
     config = load_config()
-    
+
     access_token, exp_dt = get_or_create_admin_token(
         _config.auth.sqlite_path,
         user_id,
@@ -888,7 +928,7 @@ async def admin_settings(request: Request) -> HTMLResponse:
         token_expires_in = format_expires_in(
             datetime.now(timezone.utc) + timedelta(minutes=config.jwt.admin_token_expire_minutes)
         )
-    
+
     return render_template(
         "admin/settings.html",
         active_page="settings",
@@ -903,7 +943,7 @@ async def api_admin_access_token(request: Request) -> JSONResponse:
     user_id = request.state.user_id
     username = request.state.username
     is_superuser = request.state.is_superuser
-    from authmcp_gateway.auth.token_service import get_or_create_admin_token, format_expires_in
+    from authmcp_gateway.auth.token_service import format_expires_in, get_or_create_admin_token
     from authmcp_gateway.config import load_config
 
     config = load_config()
@@ -927,7 +967,7 @@ async def api_admin_rotate_token(request: Request) -> JSONResponse:
     user_id = request.state.user_id
     username = request.state.username
     is_superuser = request.state.is_superuser
-    from authmcp_gateway.auth.token_service import rotate_admin_token, format_expires_in
+    from authmcp_gateway.auth.token_service import format_expires_in, rotate_admin_token
     from authmcp_gateway.config import load_config
 
     config = load_config()
@@ -944,10 +984,7 @@ async def api_admin_rotate_token(request: Request) -> JSONResponse:
     token_expires_in = format_expires_in(exp_dt)
 
     response = JSONResponse({"access_token": new_token, "token_expires_in": token_expires_in})
-    is_https = (
-        request.url.scheme == "https" or
-        request.headers.get("x-forwarded-proto") == "https"
-    )
+    is_https = request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
     response.set_cookie(
         key="admin_token",
         value=new_token,
@@ -955,7 +992,7 @@ async def api_admin_rotate_token(request: Request) -> JSONResponse:
         httponly=True,
         secure=is_https,
         samesite="lax",
-        max_age=config.jwt.admin_token_expire_minutes * 60
+        max_age=config.jwt.admin_token_expire_minutes * 60,
     )
     return response
 
@@ -963,6 +1000,7 @@ async def api_admin_rotate_token(request: Request) -> JSONResponse:
 async def api_get_settings(_: Request) -> JSONResponse:
     """Get current settings."""
     from authmcp_gateway.settings_manager import get_settings_manager
+
     settings_manager = get_settings_manager()
     return JSONResponse(settings_manager.get_all())
 
@@ -971,6 +1009,7 @@ async def api_get_settings(_: Request) -> JSONResponse:
 async def api_save_settings(request: Request) -> JSONResponse:
     """Save settings."""
     from authmcp_gateway.settings_manager import get_settings_manager
+
     settings_manager = get_settings_manager()
 
     body = await request.json()
@@ -1032,10 +1071,12 @@ async def api_save_settings(request: Request) -> JSONResponse:
 # OAUTH CLIENTS MANAGEMENT
 # ============================================================================
 
+
 @api_error_handler
 async def api_list_oauth_clients(_: Request) -> JSONResponse:
     """List OAuth clients."""
     from authmcp_gateway.auth.client_store import list_oauth_clients
+
     clients = list_oauth_clients(_config.auth.sqlite_path)
     return JSONResponse(clients)
 
@@ -1045,6 +1086,7 @@ async def api_rotate_oauth_client_token(request: Request) -> JSONResponse:
     """Rotate registration token for OAuth client."""
     client_id = request.path_params["client_id"]
     from authmcp_gateway.auth.client_store import rotate_registration_token
+
     new_token = rotate_registration_token(_config.auth.sqlite_path, client_id)
     if not new_token:
         return JSONResponse({"error": "Client not found"}, status_code=404)
@@ -1056,6 +1098,7 @@ async def api_delete_oauth_client(request: Request) -> JSONResponse:
     """Delete OAuth client."""
     client_id = request.path_params["client_id"]
     from authmcp_gateway.auth.client_store import delete_oauth_client
+
     deleted = delete_oauth_client(_config.auth.sqlite_path, client_id)
     if not deleted:
         return JSONResponse({"error": "Client not found"}, status_code=404)
@@ -1066,6 +1109,7 @@ async def api_delete_oauth_client(request: Request) -> JSONResponse:
 # MCP SERVERS MANAGEMENT
 # ============================================================================
 
+
 async def admin_mcp_servers(_: Request) -> HTMLResponse:
     """MCP servers management page."""
     return render_template("admin/mcp_servers.html", active_page="mcp-servers")
@@ -1073,23 +1117,23 @@ async def admin_mcp_servers(_: Request) -> HTMLResponse:
 
 def parse_jwt_expiration(token: str) -> dict:
     """Parse JWT token to extract expiration info.
-    
+
     Args:
         token: JWT token string
-        
+
     Returns:
         Dict with expires_at, days_left, status or {"status": "unknown"}
     """
     try:
         # Decode without signature verification (we just need exp claim)
         decoded = jwt.decode(token, options={"verify_signature": False})
-        exp = decoded.get('exp')
-        
+        exp = decoded.get("exp")
+
         if exp:
             exp_dt = datetime.fromtimestamp(exp)
             now = datetime.now()
             days_left = (exp_dt - now).days
-            
+
             # Determine status
             if days_left < 0:
                 status = "expired"
@@ -1097,29 +1141,21 @@ def parse_jwt_expiration(token: str) -> dict:
                 status = "warning"
             else:
                 status = "ok"
-            
+
             return {
                 "expires_at": exp_dt.isoformat(),
                 "expires_at_formatted": exp_dt.strftime("%Y-%m-%d %H:%M"),
                 "days_left": days_left,
                 "status": status,
-                "has_expiration": True
+                "has_expiration": True,
             }
         else:
             # JWT without exp claim - never expires
-            return {
-                "status": "never",
-                "has_expiration": False,
-                "message": "No expiration"
-            }
+            return {"status": "never", "has_expiration": False, "message": "No expiration"}
     except Exception as e:
         logger.debug(f"Failed to parse JWT token: {e}")
-    
-    return {
-        "status": "unknown",
-        "has_expiration": False,
-        "message": "Not a JWT token"
-    }
+
+    return {"status": "unknown", "has_expiration": False, "message": "Not a JWT token"}
 
 
 async def api_list_mcp_servers(_: Request) -> JSONResponse:
@@ -1136,22 +1172,24 @@ async def api_mcp_servers_token_status(_: Request) -> JSONResponse:
     from authmcp_gateway.mcp.store import list_mcp_servers
 
     servers = list_mcp_servers(_config.auth.sqlite_path)
-    
+
     result = []
     for server in servers:
         token_info = {"status": "none"}  # Default for servers without auth
-        
+
         # Only check Bearer tokens
         if server.get("auth_type") == "bearer" and server.get("auth_token"):
             token_info = parse_jwt_expiration(server["auth_token"])
-        
-        result.append({
-            "id": server["id"],
-            "name": server["name"],
-            "auth_type": server["auth_type"],
-            "token_status": token_info
-        })
-    
+
+        result.append(
+            {
+                "id": server["id"],
+                "name": server["name"],
+                "auth_type": server["auth_type"],
+                "token_status": token_info,
+            }
+        )
+
     return JSONResponse({"servers": result})
 
 
@@ -1171,14 +1209,16 @@ async def api_create_mcp_server(request: Request) -> JSONResponse:
         enabled=data.get("enabled", True),
         auth_type=data.get("auth_type", "none"),
         auth_token=data.get("auth_token"),
-        routing_strategy=data.get("routing_strategy", "prefix")
+        routing_strategy=data.get("routing_strategy", "prefix"),
     )
 
     # Trigger health check for new server
     from authmcp_gateway.mcp.health import get_health_checker
+
     try:
         health_checker = get_health_checker()
         from authmcp_gateway.mcp.store import get_mcp_server
+
         server = get_mcp_server(_config.auth.sqlite_path, server_id)
         if server:
             await health_checker.check_server(server)
@@ -1201,6 +1241,7 @@ async def api_delete_mcp_server(request: Request) -> JSONResponse:
     if success:
         # Invalidate cache
         from authmcp_gateway.mcp.proxy import McpProxy
+
         proxy = McpProxy(_config.auth.sqlite_path)
         proxy.invalidate_cache(server_id)
 
@@ -1212,26 +1253,24 @@ async def api_delete_mcp_server(request: Request) -> JSONResponse:
 @api_error_handler
 async def api_update_mcp_server(request: Request) -> JSONResponse:
     """API: Update MCP server."""
-    from authmcp_gateway.mcp.store import update_mcp_server, get_mcp_server
+    from authmcp_gateway.mcp.store import get_mcp_server, update_mcp_server
 
     server_id = int(request.path_params["server_id"])
     data = await request.json()
 
     # Update server
-    success = update_mcp_server(
-        db_path=_config.auth.sqlite_path,
-        server_id=server_id,
-        **data
-    )
+    success = update_mcp_server(db_path=_config.auth.sqlite_path, server_id=server_id, **data)
 
     if success:
         # Invalidate cache
         from authmcp_gateway.mcp.proxy import McpProxy
+
         proxy = McpProxy(_config.auth.sqlite_path)
         proxy.invalidate_cache(server_id)
 
         # Trigger health check for updated server
         from authmcp_gateway.mcp.health import get_health_checker
+
         try:
             health_checker = get_health_checker()
             server = get_mcp_server(_config.auth.sqlite_path, server_id)
@@ -1263,8 +1302,8 @@ async def api_test_mcp_server(request: Request) -> JSONResponse:
     result = await health_checker.check_server(server)
 
     # Convert datetime to ISO string for JSON serialization
-    if 'checked_at' in result and result['checked_at']:
-        result['checked_at'] = result['checked_at'].isoformat()
+    if "checked_at" in result and result["checked_at"]:
+        result["checked_at"] = result["checked_at"].isoformat()
 
     return JSONResponse(result)
 
@@ -1273,43 +1312,40 @@ async def api_test_mcp_server(request: Request) -> JSONResponse:
 async def api_security_events(request: Request) -> JSONResponse:
     """Get security events with filters."""
     from authmcp_gateway.security.logger import get_security_events
-    
+
     severity = request.query_params.get("severity")
     event_type = request.query_params.get("event_type")
     limit = int(request.query_params.get("limit", "100"))
     last_hours = request.query_params.get("last_hours")
-    
+
     events = get_security_events(
         db_path=_config.auth.sqlite_path,
         severity=severity,
         event_type=event_type,
         limit=limit,
-        last_hours=int(last_hours) if last_hours else None
+        last_hours=int(last_hours) if last_hours else None,
     )
-    
+
     return JSONResponse(events)
 
 
 @api_error_handler
 async def api_mcp_stats(request: Request) -> JSONResponse:
     """Get MCP request statistics."""
-    from authmcp_gateway.security.logger import get_mcp_request_stats
     from authmcp_gateway.mcp.store import list_mcp_servers
-    
+    from authmcp_gateway.security.logger import get_mcp_request_stats
+
     last_hours = int(request.query_params.get("last_hours", "24"))
     include_top_tools = request.query_params.get("include_top_tools", "false").lower() == "true"
-    
+
     # Get request stats
-    stats = get_mcp_request_stats(
-        db_path=_config.auth.sqlite_path,
-        last_hours=last_hours
-    )
-    
+    stats = get_mcp_request_stats(db_path=_config.auth.sqlite_path, last_hours=last_hours)
+
     # Get server stats
     servers = list_mcp_servers(_config.auth.sqlite_path, enabled_only=False)
-    active_servers = sum(1 for s in servers if s.get('status') == 'online')
+    active_servers = sum(1 for s in servers if s.get("status") == "online")
     total_servers = len(servers)
-    
+
     # Rename fields to match Dashboard expectations
     result = {
         "requests_24h": stats.get("total_requests", 0),
@@ -1319,20 +1355,16 @@ async def api_mcp_stats(request: Request) -> JSONResponse:
         "avg_response_time": stats.get("avg_response_time_ms", 0),
         "trend": "",  # TODO: Calculate trend from previous period
     }
-    
+
     # Add top tools if requested
     if include_top_tools:
         top_tools = stats.get("top_tools", [])
         # Reformat to match Dashboard expectations
         result["top_tools"] = [
-            {
-                "name": t["tool"],
-                "count": t["count"],
-                "server": t.get("server_name") or "Unknown"
-            }
+            {"name": t["tool"], "count": t["count"], "server": t.get("server_name") or "Unknown"}
             for t in top_tools
         ]
-    
+
     return JSONResponse(result)
 
 
@@ -1340,15 +1372,12 @@ async def api_mcp_stats(request: Request) -> JSONResponse:
 async def api_cleanup_db_logs(request: Request) -> JSONResponse:
     """Cleanup old DB logs (security + MCP)."""
     from authmcp_gateway.security.logger import cleanup_old_logs
-    
+
     body = await request.json()
     days_to_keep = body.get("days_to_keep", 30)
-    
-    result = cleanup_old_logs(
-        db_path=_config.auth.sqlite_path,
-        days_to_keep=days_to_keep
-    )
-    
+
+    result = cleanup_old_logs(db_path=_config.auth.sqlite_path, days_to_keep=days_to_keep)
+
     return JSONResponse(result)
 
 
@@ -1378,6 +1407,7 @@ async def api_get_mcp_server_tools(request: Request) -> JSONResponse:
 # BACKEND TOKEN MANAGEMENT
 # ============================================================================
 
+
 async def admin_mcp_tokens(request: Request) -> HTMLResponse:
     """Admin page: Backend MCP token management."""
     if _config is None:
@@ -1389,15 +1419,16 @@ async def admin_mcp_tokens(request: Request) -> HTMLResponse:
 @api_error_handler
 async def api_get_token_statuses(request: Request) -> JSONResponse:
     """API: Get token status for all MCP servers."""
-    from authmcp_gateway.mcp.store import list_mcp_servers
     from datetime import datetime, timezone
+
+    from authmcp_gateway.mcp.store import list_mcp_servers
 
     servers = list_mcp_servers(_config.auth.sqlite_path, enabled_only=False)
 
     token_statuses = []
     for server in servers:
         # Calculate token status
-        token_expires_at = server.get('token_expires_at')
+        token_expires_at = server.get("token_expires_at")
         token_expired = False
         time_until_expiry_seconds = None
 
@@ -1405,7 +1436,9 @@ async def api_get_token_statuses(request: Request) -> JSONResponse:
             if isinstance(token_expires_at, str):
                 # Parse ISO format datetime
                 try:
-                    token_expires_at = datetime.fromisoformat(token_expires_at.replace('Z', '+00:00'))
+                    token_expires_at = datetime.fromisoformat(
+                        token_expires_at.replace("Z", "+00:00")
+                    )
                 except (ValueError, TypeError) as e:
                     logger.debug(
                         f"Failed to parse token_expires_at for server {server.get('id')}: {e}"
@@ -1422,18 +1455,17 @@ async def api_get_token_statuses(request: Request) -> JSONResponse:
                 token_expired = time_until_expiry_seconds <= 0
 
         status = {
-            'server_id': server['id'],
-            'server_name': server['name'],
-            'auth_type': server.get('auth_type', 'none'),
-            'has_refresh_token': bool(server.get('refresh_token_hash')),
-            'token_expires_at': server.get('token_expires_at'),
-            'token_expired': token_expired,
-            'time_until_expiry_seconds': time_until_expiry_seconds,
-            'last_refreshed': server.get('token_last_refreshed'),
-            'can_auto_refresh': bool(
-                server.get('refresh_token_hash') and
-                server.get('refresh_endpoint')
-            )
+            "server_id": server["id"],
+            "server_name": server["name"],
+            "auth_type": server.get("auth_type", "none"),
+            "has_refresh_token": bool(server.get("refresh_token_hash")),
+            "token_expires_at": server.get("token_expires_at"),
+            "token_expired": token_expired,
+            "time_until_expiry_seconds": time_until_expiry_seconds,
+            "last_refreshed": server.get("token_last_refreshed"),
+            "can_auto_refresh": bool(
+                server.get("refresh_token_hash") and server.get("refresh_endpoint")
+            ),
         }
         token_statuses.append(status)
 
@@ -1446,16 +1478,14 @@ async def api_get_token_audit_logs(request: Request) -> JSONResponse:
     from authmcp_gateway.mcp.store import get_token_audit_logs
 
     # Get limit from query params
-    limit = int(request.query_params.get('limit', 50))
-    server_id = request.query_params.get('server_id')
+    limit = int(request.query_params.get("limit", 50))
+    server_id = request.query_params.get("server_id")
 
     if server_id:
         server_id = int(server_id)
 
     logs = get_token_audit_logs(
-        db_path=_config.auth.sqlite_path,
-        mcp_server_id=server_id,
-        limit=limit
+        db_path=_config.auth.sqlite_path, mcp_server_id=server_id, limit=limit
     )
 
     return JSONResponse(logs)
@@ -1472,18 +1502,12 @@ async def api_refresh_server_token(request: Request) -> JSONResponse:
     token_mgr = get_token_manager()
 
     # Trigger refresh
-    success, error = await token_mgr.refresh_server_token(
-        server_id,
-        triggered_by='manual'
-    )
+    success, error = await token_mgr.refresh_server_token(server_id, triggered_by="manual")
 
     if success:
         return JSONResponse({"detail": "Token refreshed successfully"})
     else:
-        return JSONResponse(
-            {"detail": f"Failed to refresh token: {error}"},
-            status_code=400
-        )
+        return JSONResponse({"detail": f"Failed to refresh token: {error}"}, status_code=400)
 
 
 @requires_admin
@@ -1496,7 +1520,7 @@ async def admin_mcp_activity(request: Request) -> HTMLResponse:
 async def admin_mcp_requests_api(request: Request) -> Response:
     """API endpoint for live MCP requests."""
     from authmcp_gateway.security.logger import get_mcp_requests
-    
+
     # Get query parameters
     limit = int(request.query_params.get("limit", "50"))
     if limit < 1:
@@ -1506,11 +1530,11 @@ async def admin_mcp_requests_api(request: Request) -> Response:
     last_seconds = int(request.query_params.get("last_seconds", "60"))
     method = request.query_params.get("method")
     success_param = request.query_params.get("success")
-    
+
     success = None
     if success_param is not None:
         success = success_param.lower() == "true"
-    
+
     requests = get_mcp_requests(
         db_path=_config.auth.sqlite_path,
         limit=limit,
@@ -1518,13 +1542,14 @@ async def admin_mcp_requests_api(request: Request) -> Response:
         method=method,
         success=success,
     )
-    
+
     return JSONResponse({"requests": requests})
 
 
 # ============================================================================
 # MCP SECURITY AUDIT
 # ============================================================================
+
 
 @requires_admin
 async def admin_mcp_audit(request: Request) -> HTMLResponse:
@@ -1537,26 +1562,28 @@ async def admin_mcp_audit(request: Request) -> HTMLResponse:
 async def api_run_mcp_audit(request: Request) -> JSONResponse:
     """API: Run security audit on an MCP server."""
     from authmcp_gateway.security.mcp_auditor import MCPSecurityAuditor
-    
+
     body = await request.json()
     url = body.get("url")
     bearer_token = body.get("bearer_token")
-    
+
     if not url:
         return JSONResponse({"error": "URL is required"}, status_code=400)
-    
+
     # Validate URL format
     if not url.startswith(("http://", "https://")):
         return JSONResponse({"error": "URL must start with http:// or https://"}, status_code=400)
-    
+
     # Run security audit (blocking I/O) in a worker thread
     import anyio
+
     auditor = MCPSecurityAuditor(url, bearer_token)
     results = await anyio.to_thread.run_sync(auditor.run_all_tests)
 
     # Ensure details render cleanly in UI
     try:
         import json as _json
+
         for test in results.get("tests", []):
             details = test.get("details")
             if details is None or isinstance(details, str):
@@ -1567,25 +1594,25 @@ async def api_run_mcp_audit(request: Request) -> JSONResponse:
                 test["details"] = str(details)
     except Exception:
         pass
-    
+
     return JSONResponse(results)
 
 
 @requires_admin
-@api_error_handler  
+@api_error_handler
 async def api_export_mcp_audit(request: Request) -> JSONResponse:
     """API: Export MCP security audit results as JSON."""
     from authmcp_gateway.security.mcp_auditor import MCPSecurityAuditor
-    
+
     body = await request.json()
     url = body.get("url")
     bearer_token = body.get("bearer_token")
-    
+
     if not url:
         return JSONResponse({"error": "URL is required"}, status_code=400)
-    
+
     # Run audit and export
     auditor = MCPSecurityAuditor(url, bearer_token)
     export_data = auditor.export_json()
-    
+
     return JSONResponse(export_data)

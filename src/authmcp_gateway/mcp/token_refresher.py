@@ -20,7 +20,7 @@ class TokenRefresher:
         self,
         db_path: str,
         interval: int = 300,  # Check every 5 minutes
-        threshold_minutes: int = 5  # Refresh if expires within 5 minutes
+        threshold_minutes: int = 5,  # Refresh if expires within 5 minutes
     ):
         """Initialize token refresher.
 
@@ -82,10 +82,7 @@ class TokenRefresher:
         """Check all servers and refresh tokens that expire soon."""
         try:
             # Get servers with expiring tokens
-            servers = get_servers_needing_refresh(
-                self.db_path,
-                self.threshold_minutes
-            )
+            servers = get_servers_needing_refresh(self.db_path, self.threshold_minutes)
 
             if not servers:
                 logger.debug("No tokens need refresh")
@@ -103,10 +100,7 @@ class TokenRefresher:
             # Refresh in parallel
             tasks = []
             for server in servers:
-                task = token_mgr.refresh_server_token(
-                    server['id'],
-                    triggered_by='proactive'
-                )
+                task = token_mgr.refresh_server_token(server["id"], triggered_by="proactive")
                 tasks.append(task)
 
             # Wait for all refreshes to complete
@@ -116,16 +110,11 @@ class TokenRefresher:
             success_count = 0
             for i, result in enumerate(results):
                 if isinstance(result, Exception):
-                    logger.error(
-                        f"Exception refreshing server {servers[i]['name']}: {result}"
-                    )
+                    logger.error(f"Exception refreshing server {servers[i]['name']}: {result}")
                 elif result[0]:  # result = (success, error_message)
                     success_count += 1
 
-            logger.info(
-                f"Proactive refresh complete: "
-                f"{success_count}/{len(servers)} succeeded"
-            )
+            logger.info(f"Proactive refresh complete: " f"{success_count}/{len(servers)} succeeded")
 
         except Exception as e:
             logger.error(f"Error checking servers for refresh: {e}", exc_info=True)
@@ -145,14 +134,14 @@ def get_token_refresher() -> TokenRefresher:
         RuntimeError: If not initialized
     """
     if _token_refresher is None:
-        raise RuntimeError("Token refresher not initialized. Call initialize_token_refresher() first.")
+        raise RuntimeError(
+            "Token refresher not initialized. Call initialize_token_refresher() first."
+        )
     return _token_refresher
 
 
 def initialize_token_refresher(
-    db_path: str,
-    interval: int = 300,
-    threshold_minutes: int = 5
+    db_path: str, interval: int = 300, threshold_minutes: int = 5
 ) -> TokenRefresher:
     """Initialize global token refresher.
 

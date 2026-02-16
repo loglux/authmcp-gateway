@@ -5,13 +5,13 @@ import os
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
 from pathlib import Path
+from typing import Any, Dict, Optional
 
 # File-based logging setup
 from authmcp_gateway.logging_config import (
-    setup_file_logger,
     log_auth_event_to_file,
+    setup_file_logger,
 )
 
 # Global loggers (initialized on first use)
@@ -48,11 +48,11 @@ def get_db_connection(db_path: str):
     # Convert to absolute path if relative
     if not os.path.isabs(db_path):
         db_path = os.path.abspath(db_path)
-    
+
     db_dir = os.path.dirname(db_path)
     if db_dir and not os.path.exists(db_dir):
         os.makedirs(db_dir, exist_ok=True)
-    
+
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     try:
@@ -252,6 +252,7 @@ def init_database(db_path: str):
         # OAuth clients (Dynamic Client Registration)
         try:
             from .client_store import init_oauth_clients_table
+
             init_oauth_clients_table(db_path)
         except Exception as e:
             logger = get_auth_logger()
@@ -264,7 +265,7 @@ def create_user(
     email: str,
     password_hash: str,
     full_name: Optional[str] = None,
-    is_superuser: bool = False
+    is_superuser: bool = False,
 ) -> int:
     """Create a new user.
 
@@ -289,7 +290,7 @@ def create_user(
             INSERT INTO users (username, email, password_hash, full_name, is_superuser)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (username, email, password_hash, full_name, is_superuser)
+            (username, email, password_hash, full_name, is_superuser),
         )
         return cursor.lastrowid
 
@@ -306,10 +307,7 @@ def get_user_by_username(db_path: str, username: str) -> Optional[Dict[str, Any]
     """
     with get_db_connection(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT * FROM users WHERE username = ?",
-            (username,)
-        )
+        cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
         row = cursor.fetchone()
         return dict(row) if row else None
 
@@ -326,10 +324,7 @@ def get_user_by_id(db_path: str, user_id: int) -> Optional[Dict[str, Any]]:
     """
     with get_db_connection(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT * FROM users WHERE id = ?",
-            (user_id,)
-        )
+        cursor.execute("SELECT * FROM users WHERE id = ?", (user_id,))
         row = cursor.fetchone()
         return dict(row) if row else None
 
@@ -344,10 +339,7 @@ def update_last_login(db_path: str, user_id: int):
     now = datetime.now(timezone.utc).isoformat()
     with get_db_connection(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE users SET last_login_at = ? WHERE id = ?",
-            (now, user_id)
-        )
+        cursor.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (now, user_id))
 
 
 def save_refresh_token(db_path: str, user_id: int, token_hash: str, expires_at: datetime):
@@ -366,7 +358,7 @@ def save_refresh_token(db_path: str, user_id: int, token_hash: str, expires_at: 
             INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
             VALUES (?, ?, ?)
             """,
-            (user_id, token_hash, expires_at.isoformat())
+            (user_id, token_hash, expires_at.isoformat()),
         )
 
 
@@ -390,7 +382,7 @@ def verify_refresh_token(db_path: str, token_hash: str) -> Optional[int]:
             AND expires_at > ?
             AND revoked = 0
             """,
-            (token_hash, now)
+            (token_hash, now),
         )
         row = cursor.fetchone()
         return row["user_id"] if row else None
@@ -405,10 +397,7 @@ def revoke_refresh_token(db_path: str, token_hash: str):
     """
     with get_db_connection(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?",
-            (token_hash,)
-        )
+        cursor.execute("UPDATE refresh_tokens SET revoked = 1 WHERE token_hash = ?", (token_hash,))
 
 
 def revoke_all_user_tokens(db_path: str, user_id: int):
@@ -420,10 +409,7 @@ def revoke_all_user_tokens(db_path: str, user_id: int):
     """
     with get_db_connection(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            "UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ?",
-            (user_id,)
-        )
+        cursor.execute("UPDATE refresh_tokens SET revoked = 1 WHERE user_id = ?", (user_id,))
 
 
 def blacklist_token(db_path: str, token_jti: str, expires_at: datetime):
@@ -441,7 +427,7 @@ def blacklist_token(db_path: str, token_jti: str, expires_at: datetime):
             INSERT OR IGNORE INTO token_blacklist (token_jti, expires_at)
             VALUES (?, ?)
             """,
-            (token_jti, expires_at.isoformat())
+            (token_jti, expires_at.isoformat()),
         )
 
 
@@ -457,10 +443,7 @@ def is_token_blacklisted(db_path: str, token_jti: str) -> bool:
     """
     with get_db_connection(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT 1 FROM token_blacklist WHERE token_jti = ?",
-            (token_jti,)
-        )
+        cursor.execute("SELECT 1 FROM token_blacklist WHERE token_jti = ?", (token_jti,))
         return cursor.fetchone() is not None
 
 
@@ -475,16 +458,10 @@ def cleanup_expired_tokens(db_path: str):
         cursor = conn.cursor()
 
         # Delete expired refresh tokens
-        cursor.execute(
-            "DELETE FROM refresh_tokens WHERE expires_at <= ?",
-            (now,)
-        )
+        cursor.execute("DELETE FROM refresh_tokens WHERE expires_at <= ?", (now,))
 
         # Delete expired blacklist entries
-        cursor.execute(
-            "DELETE FROM token_blacklist WHERE expires_at <= ?",
-            (now,)
-        )
+        cursor.execute("DELETE FROM token_blacklist WHERE expires_at <= ?", (now,))
 
 
 def log_auth_event(
@@ -495,7 +472,7 @@ def log_auth_event(
     ip_address: Optional[str] = None,
     user_agent: Optional[str] = None,
     success: bool = True,
-    details: Optional[str] = None
+    details: Optional[str] = None,
 ):
     """Log authentication event to database.
 
@@ -532,8 +509,8 @@ def log_auth_event(
                 user_agent,
                 success,
                 details,
-                datetime.now(timezone.utc).isoformat()
-            )
+                datetime.now(timezone.utc).isoformat(),
+            ),
         )
 
         conn.commit()
@@ -549,12 +526,13 @@ def log_auth_event(
             ip_address=ip_address,
             user_agent=user_agent,
             success=success,
-            details=details
+            details=details,
         )
 
     except Exception as e:
         # Fallback to file logging if database fails
         import logging
+
         logging.error(f"Failed to log auth event to database: {e}")
         logger = get_auth_logger()
         log_auth_event_to_file(
@@ -565,7 +543,7 @@ def log_auth_event(
             ip_address=ip_address,
             user_agent=user_agent,
             success=success,
-            details=details
+            details=details,
         )
 
 
@@ -586,8 +564,7 @@ def get_user_access_token(db_path: str, user_id: int) -> Optional[Dict[str, Any]
     with get_db_connection(db_path) as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT token_jti, expires_at FROM user_access_tokens WHERE user_id = ?",
-            (user_id,)
+            "SELECT token_jti, expires_at FROM user_access_tokens WHERE user_id = ?", (user_id,)
         )
         row = cursor.fetchone()
         return dict(row) if row else None
@@ -598,19 +575,14 @@ def get_admin_access_token(db_path: str, user_id: int) -> Optional[Dict[str, Any
     with get_db_connection(db_path) as conn:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT token_jti, expires_at FROM admin_access_tokens WHERE user_id = ?",
-            (user_id,)
+            "SELECT token_jti, expires_at FROM admin_access_tokens WHERE user_id = ?", (user_id,)
         )
         row = cursor.fetchone()
         return dict(row) if row else None
 
 
 def upsert_user_access_token(
-    db_path: str,
-    user_id: int,
-    access_token: str,
-    token_jti: str,
-    expires_at: datetime
+    db_path: str, user_id: int, access_token: str, token_jti: str, expires_at: datetime
 ) -> None:
     """Insert or update the single active access token for a user."""
     expires_value = expires_at.isoformat()
@@ -626,16 +598,12 @@ def upsert_user_access_token(
                 expires_at = excluded.expires_at,
                 updated_at = CURRENT_TIMESTAMP
             """,
-            (user_id, "", token_jti, expires_value)
+            (user_id, "", token_jti, expires_value),
         )
 
 
 def upsert_admin_access_token(
-    db_path: str,
-    user_id: int,
-    access_token: str,
-    token_jti: str,
-    expires_at: datetime
+    db_path: str, user_id: int, access_token: str, token_jti: str, expires_at: datetime
 ) -> None:
     """Insert or update the single active admin access token for a user."""
     expires_value = expires_at.isoformat()
@@ -651,7 +619,7 @@ def upsert_admin_access_token(
                 expires_at = excluded.expires_at,
                 updated_at = CURRENT_TIMESTAMP
             """,
-            (user_id, "", token_jti, expires_value)
+            (user_id, "", token_jti, expires_value),
         )
 
 
@@ -659,10 +627,7 @@ def get_current_user_token_jti(db_path: str, user_id: int) -> Optional[str]:
     """Return the current token JTI for a user, if set."""
     with get_db_connection(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT token_jti FROM user_access_tokens WHERE user_id = ?",
-            (user_id,)
-        )
+        cursor.execute("SELECT token_jti FROM user_access_tokens WHERE user_id = ?", (user_id,))
         row = cursor.fetchone()
         return row["token_jti"] if row else None
 
@@ -671,10 +636,7 @@ def get_current_admin_token_jti(db_path: str, user_id: int) -> Optional[str]:
     """Return the current admin token JTI for a user, if set."""
     with get_db_connection(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            "SELECT token_jti FROM admin_access_tokens WHERE user_id = ?",
-            (user_id,)
-        )
+        cursor.execute("SELECT token_jti FROM admin_access_tokens WHERE user_id = ?", (user_id,))
         row = cursor.fetchone()
         return row["token_jti"] if row else None
 
@@ -690,21 +652,17 @@ def get_all_users(db_path: str) -> list[Dict[str, Any]]:
     """
     with get_db_connection(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT id, username, email, full_name, is_active, is_superuser,
                    created_at, updated_at, last_login_at
             FROM users
             ORDER BY created_at DESC
-            """
-        )
+            """)
         return [dict(row) for row in cursor.fetchall()]
 
 
 def get_auth_logs(
-    db_path: str,
-    event_type: Optional[str] = None,
-    limit: int = 100
+    db_path: str, event_type: Optional[str] = None, limit: int = 100
 ) -> list[Dict[str, Any]]:
     """Get authentication logs.
 
@@ -729,7 +687,7 @@ def get_auth_logs(
                 ORDER BY timestamp DESC
                 LIMIT ?
                 """,
-                (event_type, limit)
+                (event_type, limit),
             )
         else:
             cursor.execute(
@@ -740,7 +698,7 @@ def get_auth_logs(
                 ORDER BY timestamp DESC
                 LIMIT ?
                 """,
-                (limit,)
+                (limit,),
             )
 
         return [dict(row) for row in cursor.fetchall()]
@@ -762,7 +720,7 @@ def update_user_status(db_path: str, user_id: int, is_active: bool):
             SET is_active = ?, updated_at = ?
             WHERE id = ?
             """,
-            (is_active, datetime.now(timezone.utc).isoformat(), user_id)
+            (is_active, datetime.now(timezone.utc).isoformat(), user_id),
         )
 
 
@@ -781,7 +739,7 @@ def make_user_superuser(db_path: str, user_id: int):
             SET is_superuser = 1, updated_at = ?
             WHERE id = ?
             """,
-            (datetime.now(timezone.utc).isoformat(), user_id)
+            (datetime.now(timezone.utc).isoformat(), user_id),
         )
 
 

@@ -3,16 +3,17 @@
 import asyncio
 import logging
 import os
-from typing import List, Dict, Any, Optional, Tuple
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
 from .store import (
-    list_mcp_servers,
-    get_tool_mapping,
     check_user_mcp_access,
-    update_server_health
+    get_mcp_server,
+    get_tool_mapping,
+    list_mcp_servers,
+    update_server_health,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,9 @@ class McpProxy:
         self._cache_timestamp: Dict[int, datetime] = {}
         self._cache_ttl = 60  # Cache TTL in seconds
 
-    async def list_tools(self, user_id: Optional[int] = None, server_name: Optional[str] = None) -> List[Dict[str, Any]]:
+    async def list_tools(
+        self, user_id: Optional[int] = None, server_name: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
         """Aggregate tools list from backend MCP servers.
 
         Args:
@@ -50,16 +53,12 @@ class McpProxy:
         Returns:
             List of tool definitions from enabled servers
         """
-        servers = list_mcp_servers(
-            self.db_path,
-            enabled_only=True,
-            user_id=user_id
-        )
+        servers = list_mcp_servers(self.db_path, enabled_only=True, user_id=user_id)
 
         # Filter by server_name if provided
         if server_name:
             normalized_name = normalize_server_name(server_name)
-            servers = [s for s in servers if normalize_server_name(s['name']) == normalized_name]
+            servers = [s for s in servers if normalize_server_name(s["name"]) == normalized_name]
             if not servers:
                 logger.warning(f"No server found with name: {server_name}")
                 return []
@@ -97,9 +96,9 @@ class McpProxy:
         Returns:
             List of tool definitions
         """
-        server_id = server['id']
-        server_name = server['name']
-        server_url = server['url']
+        server_id = server["id"]
+        server_name = server["name"]
+        server_url = server["url"]
 
         # Check cache
         if self._is_cache_valid(server_id):
@@ -114,13 +113,8 @@ class McpProxy:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
                     server_url,
-                    json={
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "method": "tools/list",
-                        "params": {}
-                    },
-                    headers=headers
+                    json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+                    headers=headers,
                 )
                 if _MCP_DEBUG:
                     snippet = response.text[:300] if response.text else ""
@@ -128,19 +122,19 @@ class McpProxy:
                         "MCP_DEBUG tools/list %s -> HTTP %s in proxy. Body: %s",
                         server_url,
                         response.status_code,
-                        snippet
+                        snippet,
                     )
 
                 # Handle 401 with token refresh (NEW)
-                if response.status_code == 401 and server.get('refresh_token_hash'):
+                if response.status_code == 401 and server.get("refresh_token_hash"):
                     logger.warning(f"Got 401 from {server_name}, attempting token refresh")
 
                     try:
                         from .token_manager import get_token_manager
+
                         token_mgr = get_token_manager()
                         success, error = await token_mgr.refresh_server_token(
-                            server_id,
-                            triggered_by='reactive_401'
+                            server_id, triggered_by="reactive_401"
                         )
 
                         if success:
@@ -153,9 +147,9 @@ class McpProxy:
                                     "jsonrpc": "2.0",
                                     "id": 1,
                                     "method": "tools/list",
-                                    "params": {}
+                                    "params": {},
                                 },
-                                headers=headers
+                                headers=headers,
                             )
                             logger.info(f"Retry after token refresh succeeded for {server_name}")
                         else:
@@ -180,10 +174,7 @@ class McpProxy:
 
                     # Update server health
                     update_server_health(
-                        self.db_path,
-                        server_id,
-                        status="online",
-                        tools_count=len(tools)
+                        self.db_path, server_id, status="online", tools_count=len(tools)
                     )
 
                     logger.info(f"Fetched {len(tools)} tools from {server_name}")
@@ -195,22 +186,12 @@ class McpProxy:
 
         except httpx.HTTPError as e:
             logger.error(f"HTTP error fetching tools from {server_name}: {e}")
-            update_server_health(
-                self.db_path,
-                server_id,
-                status="error",
-                error=str(e)
-            )
+            update_server_health(self.db_path, server_id, status="error", error=str(e))
             return []
 
         except Exception as e:
             logger.error(f"Error fetching tools from {server_name}: {e}")
-            update_server_health(
-                self.db_path,
-                server_id,
-                status="error",
-                error=str(e)
-            )
+            update_server_health(self.db_path, server_id, status="error", error=str(e))
             return []
 
     def _is_cache_valid(self, server_id: int) -> bool:
@@ -233,7 +214,7 @@ class McpProxy:
         tool_name: str,
         arguments: Optional[Dict[str, Any]] = None,
         user_id: Optional[int] = None,
-        server_name: Optional[str] = None
+        server_name: Optional[str] = None,
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """Route tool call to appropriate backend MCP server.
 
@@ -259,7 +240,7 @@ class McpProxy:
             raise ToolNotFoundError(f"Tool '{tool_name}' not found{scope}")
 
         # Check user permissions
-        if user_id and not check_user_mcp_access(self.db_path, user_id, server['id']):
+        if user_id and not check_user_mcp_access(self.db_path, user_id, server["id"]):
             raise PermissionError(f"User {user_id} doesn't have access to server {server['name']}")
 
         # Proxy request to backend server
@@ -267,10 +248,7 @@ class McpProxy:
         return result, server
 
     async def _route_tool_to_server(
-        self,
-        tool_name: str,
-        user_id: Optional[int] = None,
-        server_name: Optional[str] = None
+        self, tool_name: str, user_id: Optional[int] = None, server_name: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """Determine which backend server should handle this tool.
 
@@ -287,23 +265,19 @@ class McpProxy:
         Returns:
             Server dict or None if not found
         """
-        servers = list_mcp_servers(
-            self.db_path,
-            enabled_only=True,
-            user_id=user_id
-        )
+        servers = list_mcp_servers(self.db_path, enabled_only=True, user_id=user_id)
 
         # Filter by server_name if provided
         if server_name:
             normalized_name = normalize_server_name(server_name)
-            servers = [s for s in servers if normalize_server_name(s['name']) == normalized_name]
+            servers = [s for s in servers if normalize_server_name(s["name"]) == normalized_name]
             if not servers:
                 logger.warning(f"No server found with name: {server_name}")
                 return None
 
         # Strategy 1: Prefix match
         for server in servers:
-            prefix = server.get('tool_prefix')
+            prefix = server.get("tool_prefix")
             if prefix and tool_name.startswith(prefix):
                 logger.debug(f"Routed '{tool_name}' to {server['name']} via prefix '{prefix}'")
                 return server
@@ -312,16 +286,16 @@ class McpProxy:
         server_id = get_tool_mapping(self.db_path, tool_name)
         if server_id:
             for server in servers:
-                if server['id'] == server_id:
+                if server["id"] == server_id:
                     logger.debug(f"Routed '{tool_name}' to {server['name']} via explicit mapping")
                     return server
 
         # Strategy 3: Auto-discovery
         for server in servers:
             # Check if we have cached tools for this server
-            if server['id'] in self._tools_cache:
-                tools = self._tools_cache[server['id']]
-                tool_names = [t['name'] for t in tools]
+            if server["id"] in self._tools_cache:
+                tools = self._tools_cache[server["id"]]
+                tool_names = [t["name"] for t in tools]
                 if tool_name in tool_names:
                     logger.debug(f"Routed '{tool_name}' to {server['name']} via auto-discovery")
                     return server
@@ -331,7 +305,7 @@ class McpProxy:
         for server in servers:
             try:
                 tools = await self._fetch_tools_from_server(server)
-                tool_names = [t['name'] for t in tools]
+                tool_names = [t["name"] for t in tools]
                 if tool_name in tool_names:
                     logger.info(f"Found '{tool_name}' in {server['name']} via broadcast")
                     return server
@@ -343,10 +317,7 @@ class McpProxy:
         return None
 
     async def _proxy_tool_call(
-        self,
-        server: Dict[str, Any],
-        tool_name: str,
-        arguments: Optional[Dict[str, Any]] = None
+        self, server: Dict[str, Any], tool_name: str, arguments: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """Proxy tool call to backend MCP server.
 
@@ -361,8 +332,8 @@ class McpProxy:
         Raises:
             httpx.HTTPError: If request fails
         """
-        server_url = server['url']
-        server_name = server['name']
+        server_url = server["url"]
+        server_name = server["name"]
 
         try:
             headers = self._get_auth_headers(server)
@@ -374,12 +345,9 @@ class McpProxy:
                         "jsonrpc": "2.0",
                         "id": 1,
                         "method": "tools/call",
-                        "params": {
-                            "name": tool_name,
-                            "arguments": arguments or {}
-                        }
+                        "params": {"name": tool_name, "arguments": arguments or {}},
                     },
-                    headers=headers
+                    headers=headers,
                 )
                 if _MCP_DEBUG:
                     snippet = response.text[:300] if response.text else ""
@@ -388,24 +356,26 @@ class McpProxy:
                         server_url,
                         tool_name,
                         response.status_code,
-                        snippet
+                        snippet,
                     )
 
                 # Handle 401 with token refresh (NEW)
-                if response.status_code == 401 and server.get('refresh_token_hash'):
-                    logger.warning(f"Got 401 calling '{tool_name}' on {server_name}, attempting token refresh")
+                if response.status_code == 401 and server.get("refresh_token_hash"):
+                    logger.warning(
+                        f"Got 401 calling '{tool_name}' on {server_name}, attempting token refresh"
+                    )
 
                     try:
                         from .token_manager import get_token_manager
+
                         token_mgr = get_token_manager()
                         success, error = await token_mgr.refresh_server_token(
-                            server['id'],
-                            triggered_by='reactive_401'
+                            server["id"], triggered_by="reactive_401"
                         )
 
                         if success:
                             # Reload server with new token and retry
-                            server = get_mcp_server(self.db_path, server['id'])
+                            server = get_mcp_server(self.db_path, server["id"])
                             headers = self._get_auth_headers(server)
                             response = await client.post(
                                 server_url,
@@ -413,14 +383,13 @@ class McpProxy:
                                     "jsonrpc": "2.0",
                                     "id": 1,
                                     "method": "tools/call",
-                                    "params": {
-                                        "name": tool_name,
-                                        "arguments": arguments or {}
-                                    }
+                                    "params": {"name": tool_name, "arguments": arguments or {}},
                                 },
-                                headers=headers
+                                headers=headers,
                             )
-                            logger.info(f"Retry after token refresh succeeded for '{tool_name}' on {server_name}")
+                            logger.info(
+                                f"Retry after token refresh succeeded for '{tool_name}' on {server_name}"
+                            )
                         else:
                             logger.error(f"Token refresh failed for {server_name}: {error}")
                     except Exception as refresh_error:
@@ -434,7 +403,7 @@ class McpProxy:
                     if "_meta" not in data["result"]:
                         data["result"]["_meta"] = {}
 
-                    data["result"]["_meta"]["server_id"] = server['id']
+                    data["result"]["_meta"]["server_id"] = server["id"]
                     data["result"]["_meta"]["server_name"] = server_name
                     data["result"]["_meta"]["tool_name"] = tool_name
 
@@ -443,12 +412,7 @@ class McpProxy:
 
         except httpx.HTTPError as e:
             logger.error(f"HTTP error calling tool '{tool_name}' on {server_name}: {e}")
-            update_server_health(
-                self.db_path,
-                server['id'],
-                status="error",
-                error=str(e)
-            )
+            update_server_health(self.db_path, server["id"], status="error", error=str(e))
             raise
 
         except Exception as e:
@@ -464,18 +428,15 @@ class McpProxy:
         Returns:
             Headers dict
         """
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-        }
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
 
-        auth_type = server.get('auth_type', 'none')
-        auth_token = server.get('auth_token')
+        auth_type = server.get("auth_type", "none")
+        auth_token = server.get("auth_token")
 
-        if auth_type == 'bearer' and auth_token:
-            headers['Authorization'] = f'Bearer {auth_token}'
-        elif auth_type == 'basic' and auth_token:
-            headers['Authorization'] = f'Basic {auth_token}'
+        if auth_type == "bearer" and auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
+        elif auth_type == "basic" and auth_token:
+            headers["Authorization"] = f"Basic {auth_token}"
 
         return headers
 
@@ -497,4 +458,5 @@ class McpProxy:
 
 class ToolNotFoundError(Exception):
     """Raised when tool is not found in any MCP server."""
+
     pass

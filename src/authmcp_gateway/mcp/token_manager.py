@@ -3,19 +3,15 @@
 Handles OAuth2 refresh token flow for automatic token renewal.
 """
 
-import logging
-from datetime import datetime, timezone, timedelta
-from typing import Optional, Dict, Any, Tuple
-from hashlib import sha256
 import asyncio
+import logging
+from datetime import datetime, timedelta, timezone
+from hashlib import sha256
+from typing import Any, Dict, Optional, Tuple
 
 import httpx
 
-from .store import (
-    get_mcp_server,
-    update_mcp_server_token,
-    log_token_audit
-)
+from .store import get_mcp_server, log_token_audit, update_mcp_server_token
 
 logger = logging.getLogger(__name__)
 
@@ -97,9 +93,7 @@ class TokenManager:
         return self._refresh_locks[server_id]
 
     async def refresh_server_token(
-        self,
-        server_id: int,
-        triggered_by: str = "manual"
+        self, server_id: int, triggered_by: str = "manual"
     ) -> Tuple[bool, Optional[str]]:
         """Refresh access token for backend MCP server.
 
@@ -122,11 +116,7 @@ class TokenManager:
         async with lock:
             return await self._do_refresh(server_id, triggered_by)
 
-    async def _do_refresh(
-        self,
-        server_id: int,
-        triggered_by: str
-    ) -> Tuple[bool, Optional[str]]:
+    async def _do_refresh(self, server_id: int, triggered_by: str) -> Tuple[bool, Optional[str]]:
         """Internal refresh implementation (lock already acquired).
 
         Args:
@@ -143,32 +133,32 @@ class TokenManager:
             logger.error(error_msg)
             return False, error_msg
 
-        server_name = server['name']
+        server_name = server["name"]
         old_expires_at = None
-        if server.get('token_expires_at'):
+        if server.get("token_expires_at"):
             try:
-                old_expires_at = datetime.fromisoformat(server['token_expires_at'])
+                old_expires_at = datetime.fromisoformat(server["token_expires_at"])
             except (ValueError, TypeError):
                 logger.debug(
                     f"{server_name}: Invalid token_expires_at format: {server.get('token_expires_at')}"
                 )
 
         # Check if refresh is possible
-        if not server.get('refresh_token_hash'):
+        if not server.get("refresh_token_hash"):
             error_msg = "No refresh token configured"
             logger.warning(f"{server_name}: {error_msg}")
             log_token_audit(
                 self.db_path,
                 server_id,
-                event_type='refresh_failed',
+                event_type="refresh_failed",
                 success=False,
                 error_message=error_msg,
                 old_expires_at=old_expires_at,
-                triggered_by=triggered_by
+                triggered_by=triggered_by,
             )
             return False, error_msg
 
-        refresh_endpoint = server.get('refresh_endpoint') or '/oauth/token'
+        refresh_endpoint = server.get("refresh_endpoint") or "/oauth/token"
 
         # Get cached plaintext refresh token
         refresh_token = self.get_cached_refresh_token(server_id)
@@ -178,16 +168,16 @@ class TokenManager:
             log_token_audit(
                 self.db_path,
                 server_id,
-                event_type='refresh_failed',
+                event_type="refresh_failed",
                 success=False,
                 error_message=error_msg,
                 old_expires_at=old_expires_at,
-                triggered_by=triggered_by
+                triggered_by=triggered_by,
             )
             return False, error_msg
 
         # Build full URL for token endpoint
-        base_url = server['url'].rstrip('/mcp').rstrip('/')
+        base_url = server["url"].rstrip("/mcp").rstrip("/")
         token_url = f"{base_url}{refresh_endpoint}"
 
         try:
@@ -195,8 +185,7 @@ class TokenManager:
             logger.info(f"Refreshing token for {server_name} via {token_url}")
 
             access_token, new_refresh_token, expires_in = await self._call_token_endpoint(
-                token_url,
-                refresh_token
+                token_url, refresh_token
             )
 
             # Calculate new expiration
@@ -212,22 +201,18 @@ class TokenManager:
 
             # Update database
             update_mcp_server_token(
-                self.db_path,
-                server_id,
-                access_token,
-                new_expires_at,
-                refresh_token_hash
+                self.db_path, server_id, access_token, new_expires_at, refresh_token_hash
             )
 
             # Log success
             log_token_audit(
                 self.db_path,
                 server_id,
-                event_type='refresh',
+                event_type="refresh",
                 success=True,
                 old_expires_at=old_expires_at,
                 new_expires_at=new_expires_at,
-                triggered_by=triggered_by
+                triggered_by=triggered_by,
             )
 
             logger.info(
@@ -246,19 +231,17 @@ class TokenManager:
             log_token_audit(
                 self.db_path,
                 server_id,
-                event_type='refresh_failed',
+                event_type="refresh_failed",
                 success=False,
                 error_message=error_msg,
                 old_expires_at=old_expires_at,
-                triggered_by=triggered_by
+                triggered_by=triggered_by,
             )
 
             return False, error_msg
 
     async def _call_token_endpoint(
-        self,
-        token_url: str,
-        refresh_token: str
+        self, token_url: str, refresh_token: str
     ) -> Tuple[str, Optional[str], int]:
         """Call OAuth2 token endpoint to refresh access token.
 
@@ -276,14 +259,11 @@ class TokenManager:
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
                 token_url,
-                data={
-                    'grant_type': 'refresh_token',
-                    'refresh_token': refresh_token
-                },
+                data={"grant_type": "refresh_token", "refresh_token": refresh_token},
                 headers={
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    'Accept': 'application/json'
-                }
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Accept": "application/json",
+                },
             )
 
             # Raise for HTTP errors (4xx, 5xx)
@@ -293,9 +273,9 @@ class TokenManager:
             data = response.json()
 
             # Extract tokens
-            access_token = data.get('access_token')
-            new_refresh_token = data.get('refresh_token')  # May be None (no rotation)
-            expires_in = data.get('expires_in', 3600)  # Default 1 hour
+            access_token = data.get("access_token")
+            new_refresh_token = data.get("refresh_token")  # May be None (no rotation)
+            expires_in = data.get("expires_in", 3600)  # Default 1 hour
 
             if not access_token:
                 raise ValueError("Token endpoint did not return access_token")
@@ -309,11 +289,7 @@ class TokenManager:
 
             return access_token, new_refresh_token, expires_in
 
-    def needs_refresh(
-        self,
-        server: Dict[str, Any],
-        threshold_minutes: int = 5
-    ) -> bool:
+    def needs_refresh(self, server: Dict[str, Any], threshold_minutes: int = 5) -> bool:
         """Check if server token needs proactive refresh.
 
         Args:
@@ -324,15 +300,15 @@ class TokenManager:
             bool: True if token should be refreshed
         """
         # Skip if no refresh support
-        if not server.get('refresh_token_hash'):
+        if not server.get("refresh_token_hash"):
             return False
 
         # Skip if disabled
-        if not server.get('enabled'):
+        if not server.get("enabled"):
             return False
 
         # Check if token expires soon
-        token_expires_at = server.get('token_expires_at')
+        token_expires_at = server.get("token_expires_at")
         if not token_expires_at:
             # No expiration set - skip
             return False
@@ -342,7 +318,9 @@ class TokenManager:
             if expires_at.tzinfo is None:
                 expires_at = expires_at.replace(tzinfo=timezone.utc)
         except (ValueError, TypeError):
-            logger.warning(f"Invalid token_expires_at for server {server['name']}: {token_expires_at}")
+            logger.warning(
+                f"Invalid token_expires_at for server {server['name']}: {token_expires_at}"
+            )
             return False
 
         # Check if expires within threshold

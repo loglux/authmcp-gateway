@@ -2,7 +2,7 @@
 
 import json
 import logging
-from typing import Any, Dict, Optional, Set
+from typing import Optional, Set
 
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
@@ -26,7 +26,7 @@ def set_middleware_config(
     trusted_ips: Set[str],
     allowed_origins: Set[str],
     auth_required: bool,
-    streamable_path: str
+    streamable_path: str,
 ) -> None:
     """Configure middleware globals.
 
@@ -61,7 +61,7 @@ def _auth_challenge_header(
     mcp_public_url: str,
     scopes: Optional[str] = None,
     error: Optional[str] = None,
-    description: Optional[str] = None
+    description: Optional[str] = None,
 ) -> str:
     """Build WWW-Authenticate challenge header for OAuth 2.0.
 
@@ -74,9 +74,7 @@ def _auth_challenge_header(
     Returns:
         WWW-Authenticate header value
     """
-    www_auth = (
-        f'Bearer resource_metadata="{mcp_public_url}/.well-known/oauth-protected-resource"'
-    )
+    www_auth = f'Bearer resource_metadata="{mcp_public_url}/.well-known/oauth-protected-resource"'
     if scopes:
         www_auth += f', scope="{scopes}"'
     if error:
@@ -130,7 +128,9 @@ def _inject_security_schemes(body: bytes, scopes: Optional[str] = None) -> bytes
         return body
 
     parsed_scopes = _parse_scopes(scopes or "")
-    schemes = [{"type": "oauth2", "scopes": parsed_scopes}] if parsed_scopes else [{"type": "oauth2"}]
+    schemes = (
+        [{"type": "oauth2", "scopes": parsed_scopes}] if parsed_scopes else [{"type": "oauth2"}]
+    )
 
     for tool in tools:
         if isinstance(tool, dict) and "securitySchemes" not in tool:
@@ -156,7 +156,7 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
         jwt_config,
         auth_db_path: str,
         mcp_public_url: str,
-        oauth_scopes: Optional[str] = None
+        oauth_scopes: Optional[str] = None,
     ):
         """Initialize authentication middleware.
 
@@ -260,8 +260,8 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
                 # Verify JWT token
                 try:
                     # Import here to avoid circular dependencies
-                    from .auth.jwt_handler import verify_token, get_token_jti
-                    from .auth.user_store import is_token_blacklisted, get_current_user_token_jti
+                    from .auth.jwt_handler import get_token_jti, verify_token
+                    from .auth.user_store import get_current_user_token_jti, is_token_blacklisted
 
                     token_payload = verify_token(token, "access", self.jwt_config)
 
@@ -277,7 +277,9 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
                             user_id_int = int(token_payload["sub"])
                             current_jti = get_current_user_token_jti(self.auth_db_path, user_id_int)
                             if current_jti and jti and jti != current_jti:
-                                logger.warning("Token is not current. jti=%s expected=%s", jti, current_jti)
+                                logger.warning(
+                                    "Token is not current. jti=%s expected=%s", jti, current_jti
+                                )
                                 return _unauthorized(self.mcp_public_url, self.oauth_scopes)
                         except (ValueError, TypeError):
                             pass
@@ -301,11 +303,14 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
         # For gateway endpoint (/mcp): NEVER allow trusted IP bypass
         if is_gateway:
             if not token_payload:
-                logger.info("Unauthorized gateway call (JWT required). method=%s id=%s", method, request_id)
-                
+                logger.info(
+                    "Unauthorized gateway call (JWT required). method=%s id=%s", method, request_id
+                )
+
                 # Log security event
                 try:
                     from .security.logger import log_security_event
+
                     log_security_event(
                         db_path=self.auth_db_path,
                         event_type="unauthorized_access",
@@ -313,11 +318,11 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
                         ip_address=client_host,
                         endpoint=path,
                         method=method,
-                        details={"request_id": request_id, "mcp_method": method}
+                        details={"request_id": request_id, "mcp_method": method},
                     )
                 except Exception as log_err:
                     logger.error(f"Failed to log security event: {log_err}")
-                
+
                 return _unauthorized(self.mcp_public_url, self.oauth_scopes)
         # For internal endpoint (/mcp-internal): Allow trusted IP bypass
         else:
@@ -328,13 +333,14 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
                 # Log security event
                 try:
                     from .security.logger import log_security_event
+
                     log_security_event(
                         db_path=self.auth_db_path,
                         event_type="unauthorized_access",
                         severity="medium",
                         ip_address=client_host,
                         endpoint=path,
-                        details={"request_id": request_id, "mcp_method": method}
+                        details={"request_id": request_id, "mcp_method": method},
                     )
                 except Exception as log_err:
                     logger.error(f"Failed to log security event: {log_err}")
@@ -342,19 +348,24 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
                 return _unauthorized(self.mcp_public_url, self.oauth_scopes)
 
             # Require auth for all MCP methods except initialization
-            if method not in {None, "initialize", "notifications/initialized"} and not token_payload and not trusted_ip:
+            if (
+                method not in {None, "initialize", "notifications/initialized"}
+                and not token_payload
+                and not trusted_ip
+            ):
                 logger.info("Unauthorized MCP call. method=%s id=%s", method, request_id)
 
                 # Log security event
                 try:
                     from .security.logger import log_security_event
+
                     log_security_event(
                         db_path=self.auth_db_path,
                         event_type="unauthorized_access",
                         severity="medium",
                         ip_address=client_host,
                         endpoint=path,
-                        details={"request_id": request_id, "mcp_method": method}
+                        details={"request_id": request_id, "mcp_method": method},
                     )
                 except Exception as log_err:
                     logger.error(f"Failed to log security event: {log_err}")

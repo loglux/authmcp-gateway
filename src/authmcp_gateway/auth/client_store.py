@@ -13,8 +13,7 @@ def init_oauth_clients_table(db_path: str) -> None:
     """Create oauth_clients table if not exists."""
     with get_db_connection(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            """
+        cursor.execute("""
             CREATE TABLE IF NOT EXISTS oauth_clients (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 client_id TEXT UNIQUE NOT NULL,
@@ -43,8 +42,7 @@ def init_oauth_clients_table(db_path: str) -> None:
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 is_active INTEGER DEFAULT 1
             )
-            """
-        )
+            """)
         cursor.execute(
             "CREATE INDEX IF NOT EXISTS idx_oauth_clients_client_id ON oauth_clients(client_id)"
         )
@@ -154,7 +152,7 @@ def create_oauth_client(
                 registration_client_uri,
                 now,
                 now,
-            )
+            ),
         )
 
     return {
@@ -281,8 +279,7 @@ def list_oauth_clients(db_path: str) -> list[Dict[str, Any]]:
     """List all OAuth clients."""
     with get_db_connection(db_path) as conn:
         cursor = conn.cursor()
-        cursor.execute(
-            """
+        cursor.execute("""
             SELECT
                 client_id,
                 client_name,
@@ -302,8 +299,7 @@ def list_oauth_clients(db_path: str) -> list[Dict[str, Any]]:
                 is_active
             FROM oauth_clients
             ORDER BY created_at DESC
-            """
-        )
+            """)
         rows = cursor.fetchall()
         results = []
         for row in rows:

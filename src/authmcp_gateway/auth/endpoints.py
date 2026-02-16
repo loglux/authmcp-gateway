@@ -1,7 +1,7 @@
 """Authentication API endpoints."""
 
-import logging
 import base64
+import logging
 import sqlite3
 from dataclasses import replace
 from typing import Optional, Tuple
@@ -11,9 +11,16 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from authmcp_gateway.config import AppConfig
-from authmcp_gateway.settings_manager import get_settings_manager
 from authmcp_gateway.rate_limiter import get_rate_limiter
+from authmcp_gateway.settings_manager import get_settings_manager
 
+from .client_store import (
+    get_oauth_client_by_client_id,
+    is_redirect_uri_allowed,
+    update_oauth_client_last_seen,
+    update_oauth_client_token_meta,
+    verify_client_secret,
+)
 from .jwt_handler import (
     create_access_token,
     create_refresh_token,
@@ -44,13 +51,6 @@ from .user_store import (
     update_last_login,
     upsert_user_access_token,
     verify_refresh_token,
-)
-from .client_store import (
-    get_oauth_client_by_client_id,
-    is_redirect_uri_allowed,
-    verify_client_secret,
-    update_oauth_client_last_seen,
-    update_oauth_client_token_meta,
 )
 
 logger = logging.getLogger(__name__)
@@ -108,10 +108,16 @@ def _get_password_policy(config: AppConfig):
         return replace(
             config.auth,
             password_min_length=policy.get("min_length", config.auth.password_min_length),
-            password_require_uppercase=policy.get("require_uppercase", config.auth.password_require_uppercase),
-            password_require_lowercase=policy.get("require_lowercase", config.auth.password_require_lowercase),
+            password_require_uppercase=policy.get(
+                "require_uppercase", config.auth.password_require_uppercase
+            ),
+            password_require_lowercase=policy.get(
+                "require_lowercase", config.auth.password_require_lowercase
+            ),
             password_require_digit=policy.get("require_digit", config.auth.password_require_digit),
-            password_require_special=policy.get("require_special", config.auth.password_require_special),
+            password_require_special=policy.get(
+                "require_special", config.auth.password_require_special
+            ),
         )
     except Exception:
         return config.auth
@@ -173,7 +179,9 @@ def _extract_token(request: Request) -> Optional[str]:
     return None
 
 
-def _error_response(status_code: int, detail: str, error_code: Optional[str] = None) -> JSONResponse:
+def _error_response(
+    status_code: int, detail: str, error_code: Optional[str] = None
+) -> JSONResponse:
     """Create error response.
 
     Args:
@@ -185,10 +193,7 @@ def _error_response(status_code: int, detail: str, error_code: Optional[str] = N
         JSONResponse: Error response
     """
     error = ErrorResponse(detail=detail, error_code=error_code)
-    return JSONResponse(
-        status_code=status_code,
-        content=error.model_dump()
-    )
+    return JSONResponse(status_code=status_code, content=error.model_dump())
 
 
 async def register(request: Request) -> JSONResponse:
@@ -228,7 +233,7 @@ async def register(request: Request) -> JSONResponse:
         allowed, retry_after = limiter.check_limit(
             identifier=identifier,
             limit=config.rate_limit.register_limit,
-            window=config.rate_limit.register_window
+            window=config.rate_limit.register_window,
         )
 
         if not allowed:
@@ -238,9 +243,9 @@ async def register(request: Request) -> JSONResponse:
                 content={
                     "detail": "Too many registration attempts. Please try again later.",
                     "error_code": "RATE_LIMIT_EXCEEDED",
-                    "retry_after": retry_after
+                    "retry_after": retry_after,
                 },
-                headers={"Retry-After": str(retry_after)}
+                headers={"Retry-After": str(retry_after)},
             )
 
     # Validate password strength
@@ -270,7 +275,7 @@ async def register(request: Request) -> JSONResponse:
             email=user_data.email,
             password_hash=password_hash,
             full_name=user_data.full_name,
-            is_superuser=user_data.is_superuser
+            is_superuser=user_data.is_superuser,
         )
     except sqlite3.IntegrityError as e:
         error_msg = str(e).lower()
@@ -283,7 +288,7 @@ async def register(request: Request) -> JSONResponse:
         else:
             logger.error("Registration failed with IntegrityError: %s", str(e))
             return _error_response(500, "Failed to create user", "DATABASE_ERROR")
-    except Exception as e:
+    except Exception:
         logger.exception("Unexpected error during user creation")
         return _error_response(500, "Internal server error", "INTERNAL_ERROR")
 
@@ -295,7 +300,7 @@ async def register(request: Request) -> JSONResponse:
         username=user_data.username,
         ip_address=_get_client_ip(request),
         user_agent=_get_user_agent(request),
-        success=True
+        success=True,
     )
 
     # Get created user
@@ -313,14 +318,11 @@ async def register(request: Request) -> JSONResponse:
         is_active=bool(user["is_active"]),
         is_superuser=bool(user["is_superuser"]),
         created_at=user["created_at"],
-        last_login_at=user.get("last_login_at")
+        last_login_at=user.get("last_login_at"),
     )
 
     logger.info("User registered successfully: %s (id=%d)", user_data.username, user_id)
-    return JSONResponse(
-        status_code=201,
-        content=response.model_dump(mode="json")
-    )
+    return JSONResponse(status_code=201, content=response.model_dump(mode="json"))
 
 
 async def login(request: Request) -> JSONResponse:
@@ -355,7 +357,7 @@ async def login(request: Request) -> JSONResponse:
         allowed, retry_after = limiter.check_limit(
             identifier=identifier,
             limit=config.rate_limit.login_limit,
-            window=config.rate_limit.login_window
+            window=config.rate_limit.login_window,
         )
 
         if not allowed:
@@ -365,9 +367,9 @@ async def login(request: Request) -> JSONResponse:
                 content={
                     "detail": "Too many login attempts. Please try again later.",
                     "error_code": "RATE_LIMIT_EXCEEDED",
-                    "retry_after": retry_after
+                    "retry_after": retry_after,
                 },
-                headers={"Retry-After": str(retry_after)}
+                headers={"Retry-After": str(retry_after)},
             )
 
     # Get user by username
@@ -381,7 +383,7 @@ async def login(request: Request) -> JSONResponse:
             ip_address=_get_client_ip(request),
             user_agent=_get_user_agent(request),
             success=False,
-            details="Invalid credentials"
+            details="Invalid credentials",
         )
         return _error_response(401, "Invalid username or password", "INVALID_CREDENTIALS")
 
@@ -396,7 +398,7 @@ async def login(request: Request) -> JSONResponse:
             ip_address=_get_client_ip(request),
             user_agent=_get_user_agent(request),
             success=False,
-            details="Invalid credentials"
+            details="Invalid credentials",
         )
         return _error_response(401, "Invalid username or password", "INVALID_CREDENTIALS")
 
@@ -411,7 +413,7 @@ async def login(request: Request) -> JSONResponse:
             ip_address=_get_client_ip(request),
             user_agent=_get_user_agent(request),
             success=False,
-            details="Account disabled"
+            details="Account disabled",
         )
         return _error_response(403, "Account is disabled", "ACCOUNT_DISABLED")
 
@@ -423,14 +425,12 @@ async def login(request: Request) -> JSONResponse:
             username=user["username"],
             is_superuser=bool(user["is_superuser"]),
             config=config.jwt,
-            expire_minutes=access_ttl
+            expire_minutes=access_ttl,
         )
         refresh_token = create_refresh_token(
-            user_id=user["id"],
-            config=config.jwt,
-            expire_days=refresh_ttl
+            user_id=user["id"], config=config.jwt, expire_days=refresh_ttl
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to create tokens for user '%s'", login_data.username)
         return _error_response(500, "Failed to create tokens", "TOKEN_CREATION_ERROR")
 
@@ -443,15 +443,16 @@ async def login(request: Request) -> JSONResponse:
             raise ValueError("Invalid refresh token payload")
 
         from datetime import datetime, timezone
+
         expires_at = datetime.fromtimestamp(refresh_payload["exp"], tz=timezone.utc)
 
         save_refresh_token(
             db_path=db_path,
             user_id=user["id"],
             token_hash=refresh_token_hash,
-            expires_at=expires_at
+            expires_at=expires_at,
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to save refresh token for user '%s'", login_data.username)
         return _error_response(500, "Failed to save refresh token", "TOKEN_SAVE_ERROR")
 
@@ -470,7 +471,7 @@ async def login(request: Request) -> JSONResponse:
         username=user["username"],
         ip_address=_get_client_ip(request),
         user_agent=_get_user_agent(request),
-        success=True
+        success=True,
     )
 
     # Return token response
@@ -478,14 +479,11 @@ async def login(request: Request) -> JSONResponse:
         access_token=access_token,
         refresh_token=refresh_token,
         token_type="bearer",
-        expires_in=config.jwt.access_token_expire_minutes * 60
+        expires_in=config.jwt.access_token_expire_minutes * 60,
     )
 
     logger.info("User logged in successfully: %s (id=%d)", user["username"], user["id"])
-    return JSONResponse(
-        status_code=200,
-        content=response.model_dump()
-    )
+    return JSONResponse(status_code=200, content=response.model_dump())
 
 
 async def refresh(request: Request) -> JSONResponse:
@@ -558,9 +556,9 @@ async def refresh(request: Request) -> JSONResponse:
             username=user["username"],
             is_superuser=bool(user["is_superuser"]),
             config=config.jwt,
-            expire_minutes=access_ttl
+            expire_minutes=access_ttl,
         )
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to create access token for user %d", user_id)
         return _error_response(500, "Failed to create token", "TOKEN_CREATION_ERROR")
 
@@ -572,7 +570,7 @@ async def refresh(request: Request) -> JSONResponse:
         username=user["username"],
         ip_address=_get_client_ip(request),
         user_agent=_get_user_agent(request),
-        success=True
+        success=True,
     )
 
     # Return new access token
@@ -580,14 +578,11 @@ async def refresh(request: Request) -> JSONResponse:
         access_token=access_token,
         refresh_token=None,  # Don't issue new refresh token
         token_type="bearer",
-        expires_in=config.jwt.access_token_expire_minutes * 60
+        expires_in=config.jwt.access_token_expire_minutes * 60,
     )
 
     logger.info("Token refreshed successfully for user %s (id=%d)", user["username"], user["id"])
-    return JSONResponse(
-        status_code=200,
-        content=response.model_dump(exclude_none=True)
-    )
+    return JSONResponse(status_code=200, content=response.model_dump(exclude_none=True))
 
 
 async def logout(request: Request) -> JSONResponse:
@@ -630,9 +625,10 @@ async def logout(request: Request) -> JSONResponse:
     # Add access token JTI to blacklist
     try:
         from datetime import datetime, timezone
+
         expires_at = datetime.fromtimestamp(access_exp, tz=timezone.utc)
         blacklist_token(db_path, access_jti, expires_at)
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to blacklist access token")
         return _error_response(500, "Failed to blacklist token", "BLACKLIST_ERROR")
 
@@ -654,17 +650,14 @@ async def logout(request: Request) -> JSONResponse:
             user_id=user_id_int,
             ip_address=_get_client_ip(request),
             user_agent=_get_user_agent(request),
-            success=True
+            success=True,
         )
     except Exception as e:
         logger.warning("Failed to log logout event: %s", str(e))
         # Non-critical, continue
 
     logger.info("User logged out successfully (user_id=%s)", user_id)
-    return JSONResponse(
-        status_code=200,
-        content={"detail": "Logged out successfully"}
-    )
+    return JSONResponse(status_code=200, content={"detail": "Logged out successfully"})
 
 
 async def me(request: Request) -> JSONResponse:
@@ -731,13 +724,10 @@ async def me(request: Request) -> JSONResponse:
         is_active=bool(user["is_active"]),
         is_superuser=bool(user["is_superuser"]),
         created_at=user["created_at"],
-        last_login_at=user.get("last_login_at")
+        last_login_at=user.get("last_login_at"),
     )
 
-    return JSONResponse(
-        status_code=200,
-        content=response.model_dump(mode="json")
-    )
+    return JSONResponse(status_code=200, content=response.model_dump(mode="json"))
 
 
 async def oauth_token(request: Request) -> JSONResponse:
@@ -758,8 +748,8 @@ async def oauth_token(request: Request) -> JSONResponse:
             status_code=500,
             content={
                 "error": "server_error",
-                "error_description": "Server configuration not initialized"
-            }
+                "error_description": "Server configuration not initialized",
+            },
         )
 
     try:
@@ -784,8 +774,8 @@ async def oauth_token(request: Request) -> JSONResponse:
                 status_code=400,
                 content={
                     "error": "invalid_request",
-                    "error_description": "Missing grant_type parameter"
-                }
+                    "error_description": "Missing grant_type parameter",
+                },
             )
 
         # Handle password grant (login)
@@ -800,8 +790,8 @@ async def oauth_token(request: Request) -> JSONResponse:
                     status_code=400,
                     content={
                         "error": "invalid_request",
-                        "error_description": "Missing username or password"
-                    }
+                        "error_description": "Missing username or password",
+                    },
                 )
 
             # Rate limiting check
@@ -813,7 +803,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 allowed, retry_after = limiter.check_limit(
                     identifier=identifier,
                     limit=_config.rate_limit.login_limit,
-                    window=_config.rate_limit.login_window
+                    window=_config.rate_limit.login_window,
                 )
 
                 if not allowed:
@@ -823,9 +813,9 @@ async def oauth_token(request: Request) -> JSONResponse:
                         content={
                             "error": "too_many_requests",
                             "error_description": "Too many login attempts. Please try again later.",
-                            "retry_after": retry_after
+                            "retry_after": retry_after,
                         },
-                        headers={"Retry-After": str(retry_after)}
+                        headers={"Retry-After": str(retry_after)},
                     )
 
             # Get user from database
@@ -840,14 +830,14 @@ async def oauth_token(request: Request) -> JSONResponse:
                     request.client.host if request.client else None,
                     request.headers.get("user-agent"),
                     False,
-                    "Password grant: invalid credentials"
+                    "Password grant: invalid credentials",
                 )
                 return JSONResponse(
                     status_code=401,
                     content={
                         "error": "invalid_grant",
-                        "error_description": "Invalid username or password"
-                    }
+                        "error_description": "Invalid username or password",
+                    },
                 )
 
             # Verify password
@@ -861,14 +851,14 @@ async def oauth_token(request: Request) -> JSONResponse:
                     request.client.host if request.client else None,
                     request.headers.get("user-agent"),
                     False,
-                    "Password grant: invalid credentials"
+                    "Password grant: invalid credentials",
                 )
                 return JSONResponse(
                     status_code=401,
                     content={
                         "error": "invalid_grant",
-                        "error_description": "Invalid username or password"
-                    }
+                        "error_description": "Invalid username or password",
+                    },
                 )
 
             # Check if user is active
@@ -878,8 +868,8 @@ async def oauth_token(request: Request) -> JSONResponse:
                     status_code=403,
                     content={
                         "error": "invalid_grant",
-                        "error_description": "User account is disabled"
-                    }
+                        "error_description": "User account is disabled",
+                    },
                 )
 
             # Create tokens with dynamic TTL from settings
@@ -889,7 +879,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 user["username"],
                 bool(user["is_superuser"]),
                 _config.jwt,
-                expire_minutes=access_ttl
+                expire_minutes=access_ttl,
             )
             refresh_token = create_refresh_token(user["id"], _config.jwt, expire_days=refresh_ttl)
 
@@ -899,15 +889,11 @@ async def oauth_token(request: Request) -> JSONResponse:
 
             # Calculate expiration from token
             from datetime import datetime, timezone
+
             refresh_payload = decode_token_unsafe(refresh_token)
             expires_at = datetime.fromtimestamp(refresh_payload["exp"], tz=timezone.utc)
 
-            save_refresh_token(
-                _config.auth.sqlite_path,
-                user["id"],
-                refresh_hash,
-                expires_at
-            )
+            save_refresh_token(_config.auth.sqlite_path, user["id"], refresh_hash, expires_at)
 
             # Update current access token JTI in database
             access_jti = get_token_jti(access_token)
@@ -918,7 +904,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 user["id"],
                 "",  # Don't store full token
                 access_jti,
-                access_expires_at
+                access_expires_at,
             )
 
             # Update last login
@@ -933,7 +919,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 request.client.host if request.client else None,
                 request.headers.get("user-agent"),
                 True,
-                "Token issued via password grant"
+                "Token issued via password grant",
             )
 
             logger.info(f"OAuth login successful: {username}")
@@ -945,36 +931,38 @@ async def oauth_token(request: Request) -> JSONResponse:
                     "access_token": access_token,
                     "token_type": "bearer",
                     "expires_in": _config.jwt.access_token_expire_minutes * 60,
-                    "refresh_token": refresh_token
-                }
+                    "refresh_token": refresh_token,
+                },
             )
 
         # Handle refresh_token grant
         elif grant_type == "refresh_token":
             refresh_token_value = data.get("refresh_token")
 
-            logger.debug(f"OAuth refresh: got refresh_token={bool(refresh_token_value)}, data_keys={list(data.keys())}")
+            logger.debug(
+                f"OAuth refresh: got refresh_token={bool(refresh_token_value)}, data_keys={list(data.keys())}"
+            )
 
             if not refresh_token_value:
                 return JSONResponse(
                     status_code=400,
                     content={
                         "error": "invalid_request",
-                        "error_description": "Missing refresh_token parameter"
-                    }
+                        "error_description": "Missing refresh_token parameter",
+                    },
                 )
 
             # Verify refresh token
             try:
-                payload = verify_token(refresh_token_value, "refresh", _config.jwt)
+                verify_token(refresh_token_value, "refresh", _config.jwt)
             except jwt.ExpiredSignatureError:
                 logger.warning("OAuth refresh failed: token expired")
                 return JSONResponse(
                     status_code=401,
                     content={
                         "error": "invalid_grant",
-                        "error_description": "Refresh token expired"
-                    }
+                        "error_description": "Refresh token expired",
+                    },
                 )
             except jwt.InvalidTokenError as e:
                 logger.error(f"OAuth refresh failed: {e}")
@@ -982,8 +970,8 @@ async def oauth_token(request: Request) -> JSONResponse:
                     status_code=401,
                     content={
                         "error": "invalid_grant",
-                        "error_description": "Invalid refresh token"
-                    }
+                        "error_description": "Invalid refresh token",
+                    },
                 )
 
             # Verify refresh token is not revoked
@@ -997,8 +985,8 @@ async def oauth_token(request: Request) -> JSONResponse:
                     status_code=401,
                     content={
                         "error": "invalid_grant",
-                        "error_description": "Refresh token revoked or invalid"
-                    }
+                        "error_description": "Refresh token revoked or invalid",
+                    },
                 )
 
             # Get user info
@@ -1008,8 +996,8 @@ async def oauth_token(request: Request) -> JSONResponse:
                     status_code=403,
                     content={
                         "error": "invalid_grant",
-                        "error_description": "User not found or inactive"
-                    }
+                        "error_description": "User not found or inactive",
+                    },
                 )
 
             # Create new access token with dynamic TTL from settings
@@ -1019,11 +1007,12 @@ async def oauth_token(request: Request) -> JSONResponse:
                 user["username"],
                 bool(user["is_superuser"]),
                 _config.jwt,
-                expire_minutes=access_ttl
+                expire_minutes=access_ttl,
             )
 
             # Update current access token JTI in database
             from datetime import datetime, timezone
+
             access_jti = get_token_jti(new_access_token)
             access_payload = decode_token_unsafe(new_access_token)
             access_expires_at = datetime.fromtimestamp(access_payload["exp"], tz=timezone.utc)
@@ -1032,7 +1021,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 user["id"],
                 "",  # Don't store full token
                 access_jti,
-                access_expires_at
+                access_expires_at,
             )
             try:
                 refresh_client_id = data.get("client_id")
@@ -1055,8 +1044,8 @@ async def oauth_token(request: Request) -> JSONResponse:
                 content={
                     "access_token": new_access_token,
                     "token_type": "bearer",
-                    "expires_in": _config.jwt.access_token_expire_minutes * 60
-                }
+                    "expires_in": _config.jwt.access_token_expire_minutes * 60,
+                },
             )
 
         # Handle authorization_code grant (OAuth Authorization Code Flow)
@@ -1073,8 +1062,8 @@ async def oauth_token(request: Request) -> JSONResponse:
                     status_code=400,
                     content={
                         "error": "invalid_request",
-                        "error_description": "Missing code parameter"
-                    }
+                        "error_description": "Missing code parameter",
+                    },
                 )
 
             # Enforce registered clients when DCR is enabled
@@ -1084,8 +1073,8 @@ async def oauth_token(request: Request) -> JSONResponse:
                         status_code=400,
                         content={
                             "error": "invalid_request",
-                            "error_description": "Missing client_id or redirect_uri"
-                        }
+                            "error_description": "Missing client_id or redirect_uri",
+                        },
                     )
                 client = get_oauth_client_by_client_id(_config.auth.sqlite_path, client_id)
                 if not client:
@@ -1093,16 +1082,16 @@ async def oauth_token(request: Request) -> JSONResponse:
                         status_code=401,
                         content={
                             "error": "invalid_client",
-                            "error_description": "Unknown client_id"
-                        }
+                            "error_description": "Unknown client_id",
+                        },
                     )
                 if not is_redirect_uri_allowed(client, redirect_uri):
                     return JSONResponse(
                         status_code=400,
                         content={
                             "error": "invalid_request",
-                            "error_description": "redirect_uri not registered for this client"
-                        }
+                            "error_description": "redirect_uri not registered for this client",
+                        },
                     )
                 auth_method = client.get("token_endpoint_auth_method") or "none"
                 if auth_method == "client_secret_basic":
@@ -1112,8 +1101,8 @@ async def oauth_token(request: Request) -> JSONResponse:
                             status_code=401,
                             content={
                                 "error": "invalid_client",
-                                "error_description": "Invalid client authentication"
-                            }
+                                "error_description": "Invalid client authentication",
+                            },
                         )
                 elif auth_method == "client_secret_post":
                     if not verify_client_secret(client, data.get("client_secret")):
@@ -1121,16 +1110,16 @@ async def oauth_token(request: Request) -> JSONResponse:
                             status_code=401,
                             content={
                                 "error": "invalid_client",
-                                "error_description": "Invalid client authentication"
-                            }
+                                "error_description": "Invalid client authentication",
+                            },
                         )
                 elif auth_method != "none":
                     return JSONResponse(
                         status_code=400,
                         content={
                             "error": "invalid_request",
-                            "error_description": f"Unsupported token_endpoint_auth_method: {auth_method}"
-                        }
+                            "error_description": f"Unsupported token_endpoint_auth_method: {auth_method}",
+                        },
                     )
 
             # Verify authorization code and get user info
@@ -1139,7 +1128,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 code=code,
                 client_id=client_id or "",
                 redirect_uri=redirect_uri or "",
-                code_verifier=code_verifier
+                code_verifier=code_verifier,
             )
 
             if not code_info:
@@ -1151,18 +1140,18 @@ async def oauth_token(request: Request) -> JSONResponse:
                     ip_address=request.client.host if request.client else None,
                     user_agent=request.headers.get("user-agent"),
                     success=False,
-                    details=f"Token exchange failed (invalid code). client_id={client_id or ''} redirect_uri={redirect_uri or ''}"
+                    details=f"Token exchange failed (invalid code). client_id={client_id or ''} redirect_uri={redirect_uri or ''}",
                 )
                 return JSONResponse(
                     status_code=400,
                     content={
                         "error": "invalid_grant",
-                        "error_description": "Invalid or expired authorization code"
-                    }
+                        "error_description": "Invalid or expired authorization code",
+                    },
                 )
 
             # Get user
-            user = get_user_by_id(_config.auth.sqlite_path, code_info['user_id'])
+            user = get_user_by_id(_config.auth.sqlite_path, code_info["user_id"])
             if not user:
                 logger.error(f"User not found for id {code_info['user_id']}")
                 log_auth_event(
@@ -1173,14 +1162,11 @@ async def oauth_token(request: Request) -> JSONResponse:
                     ip_address=request.client.host if request.client else None,
                     user_agent=request.headers.get("user-agent"),
                     success=False,
-                    details=f"Token exchange failed (user not found). client_id={client_id or ''} redirect_uri={redirect_uri or ''}"
+                    details=f"Token exchange failed (user not found). client_id={client_id or ''} redirect_uri={redirect_uri or ''}",
                 )
                 return JSONResponse(
                     status_code=400,
-                    content={
-                        "error": "invalid_grant",
-                        "error_description": "User not found"
-                    }
+                    content={"error": "invalid_grant", "error_description": "User not found"},
                 )
 
             # Generate tokens
@@ -1188,7 +1174,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 user_id=user["id"],
                 username=user["username"],
                 is_superuser=user["is_superuser"],
-                config=_config.jwt
+                config=_config.jwt,
             )
 
             # Update client last seen info
@@ -1203,24 +1189,17 @@ async def oauth_token(request: Request) -> JSONResponse:
             except Exception as e:
                 logger.debug(f"Failed to update client last_seen: {e}")
 
-            refresh_token = create_refresh_token(
-                user_id=user["id"],
-                config=_config.jwt
-            )
+            refresh_token = create_refresh_token(user_id=user["id"], config=_config.jwt)
 
             # Save refresh token
             from datetime import datetime, timezone
+
             refresh_jti = get_token_jti(refresh_token)
             refresh_hash = hash_token(refresh_jti)
             refresh_payload = decode_token_unsafe(refresh_token)
             expires_at = datetime.fromtimestamp(refresh_payload["exp"], tz=timezone.utc)
 
-            save_refresh_token(
-                _config.auth.sqlite_path,
-                user["id"],
-                refresh_hash,
-                expires_at
-            )
+            save_refresh_token(_config.auth.sqlite_path, user["id"], refresh_hash, expires_at)
 
             # Update current access token JTI in database
             access_jti = get_token_jti(access_token)
@@ -1231,7 +1210,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 user["id"],
                 "",  # Don't store full token
                 access_jti,
-                access_expires_at
+                access_expires_at,
             )
             try:
                 if client_id:
@@ -1257,7 +1236,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 request.client.host if request.client else None,
                 request.headers.get("user-agent"),
                 True,
-                f"Token issued via auth code. client_id={client_id or ''} redirect_uri={redirect_uri or ''}"
+                f"Token issued via auth code. client_id={client_id or ''} redirect_uri={redirect_uri or ''}",
             )
 
             logger.info(f"OAuth authorization code flow successful: {user['username']}")
@@ -1269,8 +1248,8 @@ async def oauth_token(request: Request) -> JSONResponse:
                     "access_token": access_token,
                     "token_type": "bearer",
                     "expires_in": _config.jwt.access_token_expire_minutes * 60,
-                    "refresh_token": refresh_token
-                }
+                    "refresh_token": refresh_token,
+                },
             )
 
         else:
@@ -1278,16 +1257,13 @@ async def oauth_token(request: Request) -> JSONResponse:
                 status_code=400,
                 content={
                     "error": "unsupported_grant_type",
-                    "error_description": f"Grant type '{grant_type}' is not supported"
-                }
+                    "error_description": f"Grant type '{grant_type}' is not supported",
+                },
             )
 
     except Exception as e:
         logger.exception(f"OAuth token endpoint error: {e}")
         return JSONResponse(
             status_code=500,
-            content={
-                "error": "server_error",
-                "error_description": "Internal server error"
-            }
+            content={"error": "server_error", "error_description": "Internal server error"},
         )

@@ -3,7 +3,7 @@
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import List, Dict, Any
+from typing import Any, Dict, List
 
 import httpx
 
@@ -85,7 +85,9 @@ class HealthChecker:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Log summary
-        online_count = sum(1 for r in results if not isinstance(r, Exception) and r['status'] == 'online')
+        online_count = sum(
+            1 for r in results if not isinstance(r, Exception) and r["status"] == "online"
+        )
         logger.info(f"Health check: {online_count}/{len(servers)} servers online")
 
         return [r for r in results if not isinstance(r, Exception)]
@@ -99,9 +101,9 @@ class HealthChecker:
         Returns:
             Health check result dict
         """
-        server_id = server['id']
-        server_name = server['name']
-        server_url = server['url']
+        server_id = server["id"]
+        server_name = server["name"]
+        server_url = server["url"]
 
         start_time = datetime.now(timezone.utc)
 
@@ -113,27 +115,23 @@ class HealthChecker:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
                     server_url,
-                    json={
-                        "jsonrpc": "2.0",
-                        "id": 1,
-                        "method": "tools/list",
-                        "params": {}
-                    },
-                    headers=headers
+                    json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+                    headers=headers,
                 )
 
                 # Handle 401 with token refresh (NEW)
-                if response.status_code == 401 and server.get('refresh_token_hash'):
-                    logger.warning(f"Got 401 during health check for {server_name}, attempting token refresh")
+                if response.status_code == 401 and server.get("refresh_token_hash"):
+                    logger.warning(
+                        f"Got 401 during health check for {server_name}, attempting token refresh"
+                    )
 
                     try:
-                        from .token_manager import get_token_manager
                         from .store import get_mcp_server
+                        from .token_manager import get_token_manager
 
                         token_mgr = get_token_manager()
                         success, error = await token_mgr.refresh_server_token(
-                            server_id,
-                            triggered_by='reactive_401'
+                            server_id, triggered_by="reactive_401"
                         )
 
                         if success:
@@ -146,15 +144,21 @@ class HealthChecker:
                                     "jsonrpc": "2.0",
                                     "id": 1,
                                     "method": "tools/list",
-                                    "params": {}
+                                    "params": {},
                                 },
-                                headers=headers
+                                headers=headers,
                             )
-                            logger.info(f"Health check retry after token refresh succeeded for {server_name}")
+                            logger.info(
+                                f"Health check retry after token refresh succeeded for {server_name}"
+                            )
                         else:
-                            logger.error(f"Token refresh failed during health check for {server_name}: {error}")
+                            logger.error(
+                                f"Token refresh failed during health check for {server_name}: {error}"
+                            )
                     except Exception as refresh_error:
-                        logger.error(f"Exception during token refresh in health check: {refresh_error}")
+                        logger.error(
+                            f"Exception during token refresh in health check: {refresh_error}"
+                        )
 
                 response.raise_for_status()
                 data = response.json()
@@ -169,10 +173,7 @@ class HealthChecker:
 
                 # Update database
                 update_server_health(
-                    self.db_path,
-                    server_id,
-                    status="online",
-                    tools_count=tools_count
+                    self.db_path, server_id, status="online", tools_count=tools_count
                 )
 
                 result = {
@@ -182,7 +183,7 @@ class HealthChecker:
                     "response_time_ms": response_time,
                     "tools_count": tools_count,
                     "error": None,
-                    "checked_at": datetime.now(timezone.utc)
+                    "checked_at": datetime.now(timezone.utc),
                 }
 
                 logger.debug(
@@ -196,12 +197,7 @@ class HealthChecker:
             error_msg = f"Timeout after {self.timeout}s"
             logger.warning(f"Health check: {server_name} - {error_msg}")
 
-            update_server_health(
-                self.db_path,
-                server_id,
-                status="offline",
-                error=error_msg
-            )
+            update_server_health(self.db_path, server_id, status="offline", error=error_msg)
 
             return {
                 "server_id": server_id,
@@ -210,19 +206,14 @@ class HealthChecker:
                 "response_time_ms": None,
                 "tools_count": None,
                 "error": error_msg,
-                "checked_at": datetime.now(timezone.utc)
+                "checked_at": datetime.now(timezone.utc),
             }
 
         except httpx.HTTPStatusError as e:
             error_msg = f"HTTP {e.response.status_code}: {e.response.text[:100]}"
             logger.warning(f"Health check: {server_name} - {error_msg}")
 
-            update_server_health(
-                self.db_path,
-                server_id,
-                status="error",
-                error=error_msg
-            )
+            update_server_health(self.db_path, server_id, status="error", error=error_msg)
 
             return {
                 "server_id": server_id,
@@ -231,19 +222,14 @@ class HealthChecker:
                 "response_time_ms": None,
                 "tools_count": None,
                 "error": error_msg,
-                "checked_at": datetime.now(timezone.utc)
+                "checked_at": datetime.now(timezone.utc),
             }
 
         except Exception as e:
             error_msg = str(e)
             logger.error(f"Health check: {server_name} - Unexpected error: {error_msg}")
 
-            update_server_health(
-                self.db_path,
-                server_id,
-                status="error",
-                error=error_msg
-            )
+            update_server_health(self.db_path, server_id, status="error", error=error_msg)
 
             return {
                 "server_id": server_id,
@@ -252,7 +238,7 @@ class HealthChecker:
                 "response_time_ms": None,
                 "tools_count": None,
                 "error": error_msg,
-                "checked_at": datetime.now(timezone.utc)
+                "checked_at": datetime.now(timezone.utc),
             }
 
     def _get_auth_headers(self, server: Dict[str, Any]) -> Dict[str, str]:
@@ -264,18 +250,15 @@ class HealthChecker:
         Returns:
             Headers dict
         """
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json"
-        }
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
 
-        auth_type = server.get('auth_type', 'none')
-        auth_token = server.get('auth_token')
+        auth_type = server.get("auth_type", "none")
+        auth_token = server.get("auth_token")
 
-        if auth_type == 'bearer' and auth_token:
-            headers['Authorization'] = f'Bearer {auth_token}'
-        elif auth_type == 'basic' and auth_token:
-            headers['Authorization'] = f'Basic {auth_token}'
+        if auth_type == "bearer" and auth_token:
+            headers["Authorization"] = f"Bearer {auth_token}"
+        elif auth_type == "basic" and auth_token:
+            headers["Authorization"] = f"Basic {auth_token}"
 
         return headers
 

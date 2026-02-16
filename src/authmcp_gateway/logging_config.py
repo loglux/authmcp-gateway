@@ -1,15 +1,16 @@
 """Logging configuration for file-based logs with rotation."""
-import logging
+
 import json
+import logging
+from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
 from pathlib import Path
-from datetime import datetime
 from typing import Optional
 
 
 class JSONFormatter(logging.Formatter):
     """Format log records as JSON."""
-    
+
     def format(self, record: logging.LogRecord) -> str:
         """Format log record as JSON string."""
         log_data = {
@@ -18,7 +19,7 @@ class JSONFormatter(logging.Formatter):
             "logger": record.name,
             "message": record.getMessage(),
         }
-        
+
         # Add extra fields if present
         if hasattr(record, "event_type"):
             log_data["event_type"] = record.event_type
@@ -34,7 +35,7 @@ class JSONFormatter(logging.Formatter):
             log_data["details"] = record.details
         if hasattr(record, "user_agent"):
             log_data["user_agent"] = record.user_agent
-        
+
         # MCP request fields
         if hasattr(record, "method"):
             log_data["method"] = record.method
@@ -50,24 +51,21 @@ class JSONFormatter(logging.Formatter):
             log_data["error"] = record.error
         if hasattr(record, "suspicious"):
             log_data["suspicious"] = record.suspicious
-            
+
         return json.dumps(log_data)
 
 
 def setup_file_logger(
-    name: str,
-    log_file: Path,
-    level: int = logging.INFO,
-    max_days: int = 30
+    name: str, log_file: Path, level: int = logging.INFO, max_days: int = 30
 ) -> logging.Logger:
     """Setup a logger that writes to a rotating file.
-    
+
     Args:
         name: Logger name
         log_file: Path to log file
         level: Log level
         max_days: Number of days to keep logs
-        
+
     Returns:
         Configured logger
     """
@@ -75,30 +73,30 @@ def setup_file_logger(
     logger = logging.getLogger(name)
     logger.setLevel(level)
     logger.propagate = False  # Don't propagate to root logger
-    
+
     # Remove existing handlers
     logger.handlers.clear()
-    
+
     # Create logs directory if needed
     log_file.parent.mkdir(parents=True, exist_ok=True)
-    
+
     # Create rotating file handler (daily rotation)
     handler = TimedRotatingFileHandler(
         filename=str(log_file),
-        when='midnight',
+        when="midnight",
         interval=1,
         backupCount=max_days,
-        encoding='utf-8',
-        utc=True
+        encoding="utf-8",
+        utc=True,
     )
-    
+
     # Set JSON formatter
     formatter = JSONFormatter()
     handler.setFormatter(formatter)
-    
+
     # Add handler to logger
     logger.addHandler(handler)
-    
+
     return logger
 
 
@@ -113,10 +111,7 @@ def get_auth_logger() -> logging.Logger:
     if _auth_logger is None:
         log_dir = Path("data/logs")
         log_dir.mkdir(parents=True, exist_ok=True)
-        _auth_logger = setup_file_logger(
-            name="auth",
-            log_file=log_dir / "auth.log"
-        )
+        _auth_logger = setup_file_logger(name="auth", log_file=log_dir / "auth.log")
     return _auth_logger
 
 
@@ -126,10 +121,7 @@ def get_mcp_logger() -> logging.Logger:
     if _mcp_logger is None:
         log_dir = Path("data/logs")
         log_dir.mkdir(parents=True, exist_ok=True)
-        _mcp_logger = setup_file_logger(
-            name="mcp_requests",
-            log_file=log_dir / "mcp_requests.log"
-        )
+        _mcp_logger = setup_file_logger(name="mcp_requests", log_file=log_dir / "mcp_requests.log")
     return _mcp_logger
 
 
@@ -141,10 +133,10 @@ def log_auth_event_to_file(
     ip_address: Optional[str] = None,
     user_agent: Optional[str] = None,
     success: bool = True,
-    details: Optional[str] = None
+    details: Optional[str] = None,
 ):
     """Log authentication event to file.
-    
+
     Args:
         logger: Logger instance
         event_type: Type of event (e.g., "login", "logout", "failed_login")
@@ -164,8 +156,8 @@ def log_auth_event_to_file(
             "ip_address": ip_address,
             "user_agent": user_agent,
             "success": success,
-            "details": details
-        }
+            "details": details,
+        },
     )
 
 
@@ -180,10 +172,10 @@ def log_mcp_request_to_file(
     response_time_ms: Optional[float] = None,
     success: bool = True,
     error: Optional[str] = None,
-    suspicious: bool = False
+    suspicious: bool = False,
 ):
     """Log MCP request to file.
-    
+
     Args:
         logger: Logger instance
         method: MCP method name
@@ -210,6 +202,6 @@ def log_mcp_request_to_file(
             "response_time_ms": response_time_ms,
             "success": success,
             "error": error,
-            "suspicious": suspicious
-        }
+            "suspicious": suspicious,
+        },
     )

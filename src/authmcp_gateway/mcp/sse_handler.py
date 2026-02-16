@@ -1,9 +1,10 @@
 """SSE (Server-Sent Events) transport for MCP protocol."""
 
+import asyncio
 import json
 import logging
-import asyncio
-from typing import Optional, AsyncGenerator, Dict, Set
+from typing import AsyncGenerator, Dict, Optional, Set
+
 from starlette.requests import Request
 from starlette.responses import StreamingResponse
 
@@ -48,29 +49,31 @@ async def _broadcast(server_name: Optional[str], payload: str) -> None:
             logger.warning("SSE queue full; dropping message for %s", key)
 
 
-async def mcp_sse_endpoint(request: Request, handler, server_name: Optional[str] = None) -> StreamingResponse:
+async def mcp_sse_endpoint(
+    request: Request, handler, server_name: Optional[str] = None
+) -> StreamingResponse:
     """Handle MCP SSE transport.
-    
+
     SSE is the standard transport for HTTP-based MCP servers.
     Client sends messages via POST to /mcp/{server_name}/messages
     Server sends responses via GET to /mcp/{server_name} as SSE stream
-    
+
     Args:
         request: Starlette request
         handler: McpHandler instance
         server_name: Optional server name
-        
+
     Returns:
         StreamingResponse with text/event-stream
     """
-    
+
     async def event_stream() -> AsyncGenerator[str, None]:
         """Generate SSE events."""
         queue = await _register_queue(server_name)
         try:
             # Send initial connection event
             yield f"event: endpoint\ndata: /mcp/{server_name or 'all'}\n\n"
-            
+
             # Keep connection alive
             while True:
                 try:
@@ -79,7 +82,7 @@ async def mcp_sse_endpoint(request: Request, handler, server_name: Optional[str]
                 except asyncio.TimeoutError:
                     # Send keepalive ping
                     yield ": keepalive\n\n"
-                
+
         except asyncio.CancelledError:
             logger.info(f"SSE connection closed for {server_name}")
         except Exception as e:
@@ -87,7 +90,7 @@ async def mcp_sse_endpoint(request: Request, handler, server_name: Optional[str]
             yield f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
         finally:
             await _unregister_queue(server_name, queue)
-    
+
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream",
@@ -95,18 +98,18 @@ async def mcp_sse_endpoint(request: Request, handler, server_name: Optional[str]
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # Disable nginx buffering
-        }
+        },
     )
 
 
 async def handle_sse_message(request: Request, handler, server_name: Optional[str] = None):
     """Handle SSE message POST (client sends JSON-RPC via POST).
-    
+
     Args:
         request: Starlette request with JSON-RPC body
         handler: McpHandler instance
         server_name: Optional server name
-        
+
     Returns:
         JSONResponse with result
     """
@@ -114,7 +117,9 @@ async def handle_sse_message(request: Request, handler, server_name: Optional[st
     # We process synchronously and also broadcast the response to any open SSE clients.
     response = await handler.handle_request(request, server_name=server_name)
     try:
-        body = response.body.decode("utf-8") if isinstance(response.body, (bytes, bytearray)) else ""
+        body = (
+            response.body.decode("utf-8") if isinstance(response.body, (bytes, bytearray)) else ""
+        )
         if body:
             await _broadcast(server_name, body)
     except Exception as e:

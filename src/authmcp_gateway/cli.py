@@ -1,9 +1,9 @@
 """CLI for AuthMCP Gateway."""
 
-import os
-import sys
 import argparse
 import logging
+import os
+import sys
 from pathlib import Path
 
 
@@ -31,7 +31,7 @@ Examples:
   authmcp-gateway create-admin --username admin --email admin@example.com
 
 For more information, visit: https://github.com/loglux/authmcp-gateway
-        """
+        """,
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
@@ -39,37 +39,25 @@ For more information, visit: https://github.com/loglux/authmcp-gateway
     # Start command
     start_parser = subparsers.add_parser("start", help="Start the gateway server")
     start_parser.add_argument(
-        "--host",
-        default="0.0.0.0",
-        help="Host to bind to (default: 0.0.0.0)"
+        "--host", default="0.0.0.0", help="Host to bind to (default: 0.0.0.0)"
     )
     start_parser.add_argument(
-        "--port",
-        type=int,
-        default=8000,
-        help="Port to bind to (default: 8000)"
+        "--port", type=int, default=8000, help="Port to bind to (default: 8000)"
     )
     start_parser.add_argument(
-        "--config",
-        type=Path,
-        help="Path to configuration file (YAML or JSON)"
+        "--config", type=Path, help="Path to configuration file (YAML or JSON)"
     )
     start_parser.add_argument(
-        "--env-file",
-        type=Path,
-        default=".env",
-        help="Path to .env file (default: .env)"
+        "--env-file", type=Path, default=".env", help="Path to .env file (default: .env)"
     )
     start_parser.add_argument(
         "--log-level",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
         default="INFO",
-        help="Logging level (default: INFO)"
+        help="Logging level (default: INFO)",
     )
     start_parser.add_argument(
-        "--reload",
-        action="store_true",
-        help="Enable auto-reload for development"
+        "--reload", action="store_true", help="Enable auto-reload for development"
     )
 
     # Init DB command
@@ -78,7 +66,7 @@ For more information, visit: https://github.com/loglux/authmcp-gateway
         "--db-path",
         type=Path,
         default="data/auth.db",
-        help="Path to SQLite database (default: data/auth.db)"
+        help="Path to SQLite database (default: data/auth.db)",
     )
 
     # Create admin command
@@ -90,7 +78,7 @@ For more information, visit: https://github.com/loglux/authmcp-gateway
         "--db-path",
         type=Path,
         default="data/auth.db",
-        help="Path to SQLite database (default: data/auth.db)"
+        help="Path to SQLite database (default: data/auth.db)",
     )
 
     # Version command
@@ -106,7 +94,7 @@ For more information, visit: https://github.com/loglux/authmcp-gateway
     log_level = getattr(args, "log_level", "INFO")
     logging.basicConfig(
         level=getattr(logging, log_level),
-        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
     if args.command == "start":
@@ -126,6 +114,7 @@ def start_server(args):
     # Load environment variables
     if args.env_file and args.env_file.exists():
         from dotenv import load_dotenv
+
         load_dotenv(args.env_file)
         print(f"✓ Loaded environment from {args.env_file}")
 
@@ -156,18 +145,14 @@ Press CTRL+C to stop
     from authmcp_gateway.app import app
 
     uvicorn.run(
-        app,
-        host=args.host,
-        port=args.port,
-        log_level=args.log_level.lower(),
-        reload=args.reload
+        app, host=args.host, port=args.port, log_level=args.log_level.lower(), reload=args.reload
     )
 
 
 def init_database(args):
     """Initialize the SQLite database."""
-    from authmcp_gateway.auth.user_store import init_database as init_db
     from authmcp_gateway.auth.oauth_code_flow import create_authorization_code_table
+    from authmcp_gateway.auth.user_store import init_database as init_db
 
     db_path = str(args.db_path)
 
@@ -188,8 +173,9 @@ def init_database(args):
 def create_admin_user(args):
     """Create an admin user."""
     import getpass
-    from authmcp_gateway.auth.user_store import create_user, get_user_by_username
+
     from authmcp_gateway.auth.password import hash_password
+    from authmcp_gateway.auth.user_store import create_user, get_user_by_username
 
     db_path = str(args.db_path)
 
@@ -224,7 +210,7 @@ def create_admin_user(args):
             username=args.username,
             email=args.email,
             password_hash=password_hash,
-            is_superuser=True
+            is_superuser=True,
         )
         print(f"✓ Admin user created successfully (ID: {user_id})")
         print(f"  Username: {args.username}")
@@ -238,6 +224,7 @@ def show_version():
     """Show version information."""
     try:
         from importlib.metadata import version
+
         pkg_version = version("authmcp-gateway")
     except Exception:
         pkg_version = "unknown"

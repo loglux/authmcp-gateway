@@ -1,15 +1,18 @@
 """Admin login page and endpoint."""
 
+import logging
+
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+
 from authmcp_gateway.auth.password import verify_password
-from authmcp_gateway.auth.user_store import get_user_by_username, update_last_login, log_auth_event
+from authmcp_gateway.auth.user_store import get_user_by_username, log_auth_event, update_last_login
 from authmcp_gateway.rate_limiter import get_rate_limiter
-import logging
 
 logger = logging.getLogger(__name__)
 
 _config = None
+
 
 def set_config(config):
     """Set global config."""
@@ -181,7 +184,7 @@ async def admin_login_api(request: Request) -> Response:
             allowed, retry_after = limiter.check_limit(
                 identifier=identifier,
                 limit=_config.rate_limit.login_limit,
-                window=_config.rate_limit.login_window
+                window=_config.rate_limit.login_window,
             )
 
             if not allowed:
@@ -189,10 +192,10 @@ async def admin_login_api(request: Request) -> Response:
                 return JSONResponse(
                     {
                         "detail": "Too many login attempts. Please try again later.",
-                        "retry_after": retry_after
+                        "retry_after": retry_after,
                     },
                     status_code=429,
-                    headers={"Retry-After": str(retry_after)}
+                    headers={"Retry-After": str(retry_after)},
                 )
 
         # Get user
@@ -206,10 +209,10 @@ async def admin_login_api(request: Request) -> Response:
                 ip_address=request.client.host if request.client else None,
                 user_agent=request.headers.get("user-agent"),
                 success=False,
-                details="Invalid credentials"
+                details="Invalid credentials",
             )
             return JSONResponse({"detail": "Invalid credentials"}, status_code=401)
-        
+
         # Check if superuser
         if not user.get("is_superuser"):
             logger.warning(f"Admin login failed: not superuser - {username}")
@@ -221,9 +224,12 @@ async def admin_login_api(request: Request) -> Response:
                 ip_address=request.client.host if request.client else None,
                 user_agent=request.headers.get("user-agent"),
                 success=False,
-                details="Not a superuser"
+                details="Not a superuser",
             )
-            return JSONResponse({"detail": "Access denied. Admin panel is only available for superuser accounts."}, status_code=403)
+            return JSONResponse(
+                {"detail": "Access denied. Admin panel is only available for superuser accounts."},
+                status_code=403,
+            )
 
         # Verify password
         if not verify_password(password, user["password_hash"]):
@@ -236,7 +242,7 @@ async def admin_login_api(request: Request) -> Response:
                 ip_address=request.client.host if request.client else None,
                 user_agent=request.headers.get("user-agent"),
                 success=False,
-                details="Invalid credentials"
+                details="Invalid credentials",
             )
             return JSONResponse({"detail": "Invalid credentials"}, status_code=401)
 
@@ -251,10 +257,10 @@ async def admin_login_api(request: Request) -> Response:
                 ip_address=request.client.host if request.client else None,
                 user_agent=request.headers.get("user-agent"),
                 success=False,
-                details="Account disabled"
+                details="Account disabled",
             )
             return JSONResponse({"detail": "Account disabled"}, status_code=403)
-        
+
         from authmcp_gateway.auth.token_service import get_or_create_admin_token
 
         access_token, _ = get_or_create_admin_token(
@@ -266,7 +272,7 @@ async def admin_login_api(request: Request) -> Response:
             _config.jwt.admin_token_expire_minutes,
             current_token=request.cookies.get("admin_token"),
         )
-        
+
         # Update last login
         update_last_login(_config.auth.sqlite_path, user["id"])
 
@@ -279,7 +285,7 @@ async def admin_login_api(request: Request) -> Response:
             ip_address=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             success=True,
-            details="Admin login successful"
+            details="Admin login successful",
         )
 
         logger.info(f"Admin logged in: {username}")
@@ -289,8 +295,7 @@ async def admin_login_api(request: Request) -> Response:
 
         # Determine if request is HTTPS
         is_https = (
-            request.url.scheme == "https" or
-            request.headers.get("x-forwarded-proto") == "https"
+            request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
         )
 
         response.set_cookie(
@@ -300,12 +305,12 @@ async def admin_login_api(request: Request) -> Response:
             httponly=True,
             secure=is_https,  # Based on current request, not config
             samesite="lax",
-            max_age=_config.jwt.admin_token_expire_minutes * 60
+            max_age=_config.jwt.admin_token_expire_minutes * 60,
         )
-        
+
         return response
-        
-    except Exception as e:
+
+    except Exception:
         logger.exception("Admin login error")
         return JSONResponse({"detail": "Login failed"}, status_code=500)
 

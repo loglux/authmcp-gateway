@@ -2,14 +2,19 @@
 
 import logging
 from urllib.parse import urlencode, urlparse
+
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse, Response
 
-from .oauth_code_flow import generate_authorization_code
-from .user_store import get_user_by_username
-from .password import verify_password
-from .client_store import get_oauth_client_by_client_id, is_redirect_uri_allowed, update_oauth_client_last_seen
 from ..config import get_config
+from .client_store import (
+    get_oauth_client_by_client_id,
+    is_redirect_uri_allowed,
+    update_oauth_client_last_seen,
+)
+from .oauth_code_flow import generate_authorization_code
+from .password import verify_password
+from .user_store import get_user_by_username
 
 logger = logging.getLogger(__name__)
 
@@ -30,26 +35,24 @@ async def authorize_page(request: Request) -> Response:
         resource: Resource server URL
     """
     # Extract OAuth parameters
-    response_type = request.query_params.get('response_type')
-    client_id = request.query_params.get('client_id')
-    redirect_uri = request.query_params.get('redirect_uri')
-    code_challenge = request.query_params.get('code_challenge')
-    code_challenge_method = request.query_params.get('code_challenge_method', 'plain')
-    state = request.query_params.get('state', '')
-    scope = request.query_params.get('scope', 'openid profile email')
-    resource = request.query_params.get('resource', '')
+    response_type = request.query_params.get("response_type")
+    client_id = request.query_params.get("client_id")
+    redirect_uri = request.query_params.get("redirect_uri")
+    code_challenge = request.query_params.get("code_challenge")
+    code_challenge_method = request.query_params.get("code_challenge_method", "plain")
+    state = request.query_params.get("state", "")
+    scope = request.query_params.get("scope", "openid profile email")
+    resource = request.query_params.get("resource", "")
 
     # Validate required parameters
-    if response_type != 'code':
+    if response_type != "code":
         return HTMLResponse(
-            "<h1>Error</h1><p>Invalid response_type. Must be 'code'.</p>",
-            status_code=400
+            "<h1>Error</h1><p>Invalid response_type. Must be 'code'.</p>", status_code=400
         )
 
     if not client_id or not redirect_uri:
         return HTMLResponse(
-            "<h1>Error</h1><p>Missing client_id or redirect_uri.</p>",
-            status_code=400
+            "<h1>Error</h1><p>Missing client_id or redirect_uri.</p>", status_code=400
         )
 
     # Validate redirect_uri (basic check)
@@ -58,10 +61,7 @@ async def authorize_page(request: Request) -> Response:
         if not parsed.scheme or not parsed.netloc:
             raise ValueError("Invalid redirect_uri")
     except Exception:
-        return HTMLResponse(
-            "<h1>Error</h1><p>Invalid redirect_uri format.</p>",
-            status_code=400
-        )
+        return HTMLResponse("<h1>Error</h1><p>Invalid redirect_uri format.</p>", status_code=400)
 
     # Enforce registered clients if DCR is enabled
     try:
@@ -69,34 +69,26 @@ async def authorize_page(request: Request) -> Response:
         if config.auth.allow_dcr:
             client = get_oauth_client_by_client_id(config.auth.sqlite_path, client_id)
             if not client:
-                return HTMLResponse(
-                    "<h1>Error</h1><p>Unknown client_id.</p>",
-                    status_code=400
-                )
+                return HTMLResponse("<h1>Error</h1><p>Unknown client_id.</p>", status_code=400)
             if not is_redirect_uri_allowed(client, redirect_uri):
                 return HTMLResponse(
                     "<h1>Error</h1><p>redirect_uri not registered for this client.</p>",
-                    status_code=400
+                    status_code=400,
                 )
     except Exception as e:
         logger.error(f"DCR validation failed: {e}")
-        return HTMLResponse(
-            "<h1>Error</h1><p>Client validation failed.</p>",
-            status_code=400
-        )
+        return HTMLResponse("<h1>Error</h1><p>Client validation failed.</p>", status_code=400)
 
     # GET request: show login form
-    if request.method == 'GET':
+    if request.method == "GET":
         return _show_login_form(
-            client_id, redirect_uri, code_challenge,
-            code_challenge_method, state, scope, resource
+            client_id, redirect_uri, code_challenge, code_challenge_method, state, scope, resource
         )
 
     # POST request: process login
-    elif request.method == 'POST':
+    elif request.method == "POST":
         response = await _process_login(
-            request, client_id, redirect_uri, code_challenge,
-            code_challenge_method, state, scope
+            request, client_id, redirect_uri, code_challenge, code_challenge_method, state, scope
         )
         try:
             config = get_config()
@@ -120,7 +112,7 @@ def _show_login_form(
     code_challenge_method: str,
     state: str,
     scope: str,
-    resource: str
+    resource: str,
 ) -> HTMLResponse:
     """Show HTML login form."""
     # Parse client_id to show friendly name
@@ -288,7 +280,7 @@ async def _process_login(
     code_challenge: str,
     code_challenge_method: str,
     state: str,
-    scope: str
+    scope: str,
 ) -> Response:
     """Process login and generate authorization code."""
     # Get database path from app state
@@ -296,21 +288,26 @@ async def _process_login(
 
     # Parse form data
     form = await request.form()
-    username = form.get('username')
-    password = form.get('password')
+    username = form.get("username")
+    password = form.get("password")
 
     if not username or not password:
         return _show_login_form_with_error(
             "Username and password are required",
-            client_id, redirect_uri, code_challenge,
-            code_challenge_method, state, scope
+            client_id,
+            redirect_uri,
+            code_challenge,
+            code_challenge_method,
+            state,
+            scope,
         )
 
     # Verify credentials
     user = get_user_by_username(db_path, username)
-    if not user or not verify_password(password, user['password_hash']):
+    if not user or not verify_password(password, user["password_hash"]):
         logger.warning(f"Failed login attempt for user: {username}")
         from .user_store import log_auth_event
+
         log_auth_event(
             db_path=db_path,
             event_type="mcp_oauth_error",
@@ -318,17 +315,22 @@ async def _process_login(
             ip_address=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             success=False,
-            details=f"Authorization failed (invalid credentials). client_id={client_id} redirect_uri={redirect_uri}"
+            details=f"Authorization failed (invalid credentials). client_id={client_id} redirect_uri={redirect_uri}",
         )
         return _show_login_form_with_error(
             "Invalid username or password",
-            client_id, redirect_uri, code_challenge,
-            code_challenge_method, state, scope
+            client_id,
+            redirect_uri,
+            code_challenge,
+            code_challenge_method,
+            state,
+            scope,
         )
 
     # Check if user is active
-    if not user['is_active']:
+    if not user["is_active"]:
         from .user_store import log_auth_event
+
         log_auth_event(
             db_path=db_path,
             event_type="mcp_oauth_error",
@@ -337,29 +339,34 @@ async def _process_login(
             ip_address=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             success=False,
-            details=f"Authorization failed (inactive user). client_id={client_id} redirect_uri={redirect_uri}"
+            details=f"Authorization failed (inactive user). client_id={client_id} redirect_uri={redirect_uri}",
         )
         return _show_login_form_with_error(
             "Account is disabled",
-            client_id, redirect_uri, code_challenge,
-            code_challenge_method, state, scope
+            client_id,
+            redirect_uri,
+            code_challenge,
+            code_challenge_method,
+            state,
+            scope,
         )
 
     # Generate authorization code
     try:
         code = generate_authorization_code(
             db_path=db_path,
-            user_id=user['id'],
+            user_id=user["id"],
             client_id=client_id,
             redirect_uri=redirect_uri,
             code_challenge=code_challenge,
             code_challenge_method=code_challenge_method,
             scope=scope,
-            expires_in_seconds=600  # 10 minutes
+            expires_in_seconds=600,  # 10 minutes
         )
 
         logger.info(f"Authorization successful for user {username} (id={user['id']})")
         from .user_store import log_auth_event
+
         log_auth_event(
             db_path=db_path,
             event_type="mcp_oauth_authorize",
@@ -368,13 +375,13 @@ async def _process_login(
             ip_address=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             success=True,
-            details=f"Authorization code issued. client_id={client_id} redirect_uri={redirect_uri} scope={scope}"
+            details=f"Authorization code issued. client_id={client_id} redirect_uri={redirect_uri} scope={scope}",
         )
 
         # Redirect back to client with code and state
-        params = {'code': code}
+        params = {"code": code}
         if state:
-            params['state'] = state
+            params["state"] = state
 
         redirect_url = f"{redirect_uri}?{urlencode(params)}"
         return RedirectResponse(url=redirect_url, status_code=302)
@@ -382,6 +389,7 @@ async def _process_login(
     except Exception as e:
         logger.exception(f"Error generating authorization code: {e}")
         from .user_store import log_auth_event
+
         log_auth_event(
             db_path=db_path,
             event_type="mcp_oauth_error",
@@ -389,12 +397,16 @@ async def _process_login(
             ip_address=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),
             success=False,
-            details=f"Authorization error. client_id={client_id} redirect_uri={redirect_uri}"
+            details=f"Authorization error. client_id={client_id} redirect_uri={redirect_uri}",
         )
         return _show_login_form_with_error(
             "Internal server error. Please try again.",
-            client_id, redirect_uri, code_challenge,
-            code_challenge_method, state, scope
+            client_id,
+            redirect_uri,
+            code_challenge,
+            code_challenge_method,
+            state,
+            scope,
         )
 
 
@@ -405,19 +417,17 @@ def _show_login_form_with_error(
     code_challenge: str,
     code_challenge_method: str,
     state: str,
-    scope: str
+    scope: str,
 ) -> HTMLResponse:
     """Show login form with error message."""
     form_html = _show_login_form(
-        client_id, redirect_uri, code_challenge,
-        code_challenge_method, state, scope, ""
+        client_id, redirect_uri, code_challenge, code_challenge_method, state, scope, ""
     )
 
     # Inject error message
     error_html = f'<div class="error">{error}</div>'
-    html_with_error = form_html.body.decode('utf-8').replace(
-        '<form method="POST"',
-        f'{error_html}<form method="POST"'
+    html_with_error = form_html.body.decode("utf-8").replace(
+        '<form method="POST"', f'{error_html}<form method="POST"'
     )
 
     return HTMLResponse(html_with_error, status_code=400)

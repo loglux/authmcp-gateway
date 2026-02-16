@@ -1,7 +1,7 @@
 """MCP Protocol handler - Gateway endpoint for MCP requests."""
 
 import logging
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -23,7 +23,9 @@ class McpHandler:
         self.db_path = db_path
         self.proxy = McpProxy(db_path)
 
-    async def handle_request(self, request: Request, server_name: Optional[str] = None) -> JSONResponse:
+    async def handle_request(
+        self, request: Request, server_name: Optional[str] = None
+    ) -> JSONResponse:
         """Handle MCP jsonrpc request.
 
         Args:
@@ -40,13 +42,12 @@ class McpHandler:
             method = data.get("method")
             params = data.get("params", {})
 
-            logger.debug(f"MCP request: method={method}, params={params}, server_name={server_name}")
+            logger.debug(
+                f"MCP request: method={method}, params={params}, server_name={server_name}"
+            )
 
             # Extract user_id from request state (set by auth middleware)
             user_id = getattr(request.state, "user_id", None)
-            
-            # Get client IP
-            client_ip = request.client.host if request.client else None
 
             # Handle different MCP methods
             if method == "tools/list":
@@ -55,7 +56,9 @@ class McpHandler:
             elif method == "tools/call":
                 tool_name = params.get("name")
                 arguments = params.get("arguments", {})
-                return await self._handle_tool_call(jsonrpc_id, tool_name, arguments, user_id, server_name, request)
+                return await self._handle_tool_call(
+                    jsonrpc_id, tool_name, arguments, user_id, server_name, request
+                )
 
             elif method == "initialize":
                 return await self._handle_initialize(jsonrpc_id, params, server_name, request)
@@ -64,29 +67,23 @@ class McpHandler:
                 # MCP clients send an initialized notification after successful initialize.
                 # It's a notification, so no response is required if id is absent.
                 if "id" in data:
-                    return JSONResponse({
-                        "jsonrpc": "2.0",
-                        "id": jsonrpc_id,
-                        "result": {}
-                    })
+                    return JSONResponse({"jsonrpc": "2.0", "id": jsonrpc_id, "result": {}})
                 return JSONResponse(status_code=204, content={})
 
             else:
-                return self._error_response(
-                    jsonrpc_id,
-                    -32601,
-                    f"Method not found: {method}"
-                )
+                return self._error_response(jsonrpc_id, -32601, f"Method not found: {method}")
 
         except Exception as e:
             logger.exception(f"Error handling MCP request: {e}")
-            return self._error_response(
-                1,
-                -32603,
-                f"Internal error: {str(e)}"
-            )
+            return self._error_response(1, -32603, f"Internal error: {str(e)}")
 
-    async def _handle_tools_list(self, jsonrpc_id: int, user_id: Optional[int], server_name: Optional[str] = None, request: Optional[Request] = None) -> JSONResponse:
+    async def _handle_tools_list(
+        self,
+        jsonrpc_id: int,
+        user_id: Optional[int],
+        server_name: Optional[str] = None,
+        request: Optional[Request] = None,
+    ) -> JSONResponse:
         """Handle tools/list request.
 
         Args:
@@ -99,10 +96,10 @@ class McpHandler:
             JSONResponse with tools list
         """
         import time
+
         start_time = time.time()
-        success = True
         error_msg = None
-        
+
         try:
             tools = await self.proxy.list_tools(user_id=user_id, server_name=server_name)
 
@@ -112,7 +109,7 @@ class McpHandler:
                 formatted_tool = {
                     "name": tool.get("name"),
                     "description": tool.get("description"),
-                    "inputSchema": tool.get("inputSchema", {})
+                    "inputSchema": tool.get("inputSchema", {}),
                 }
 
                 # Add metadata (optional)
@@ -125,11 +122,12 @@ class McpHandler:
                 formatted_tools.append(formatted_tool)
 
             logger.info(f"Returning {len(formatted_tools)} tools")
-            
+
             # Log MCP request
             response_time = int((time.time() - start_time) * 1000)
             try:
                 from authmcp_gateway.security.logger import log_mcp_request
+
                 log_mcp_request(
                     db_path=self.db_path,
                     user_id=user_id,
@@ -137,27 +135,23 @@ class McpHandler:
                     method="tools/list",
                     success=True,
                     response_time_ms=response_time,
-                    ip_address=request.client.host if request and request.client else None
+                    ip_address=request.client.host if request and request.client else None,
                 )
             except Exception as log_err:
                 logger.error(f"Failed to log MCP request: {log_err}")
 
-            return JSONResponse({
-                "jsonrpc": "2.0",
-                "id": jsonrpc_id,
-                "result": {
-                    "tools": formatted_tools
-                }
-            })
+            return JSONResponse(
+                {"jsonrpc": "2.0", "id": jsonrpc_id, "result": {"tools": formatted_tools}}
+            )
 
         except Exception as e:
             logger.exception(f"Error in tools/list: {e}")
-            success = False
             error_msg = str(e)
-            
+
             # Log failed request
             try:
                 from authmcp_gateway.security.logger import log_mcp_request
+
                 response_time = int((time.time() - start_time) * 1000)
                 log_mcp_request(
                     db_path=self.db_path,
@@ -167,11 +161,11 @@ class McpHandler:
                     success=False,
                     error_message=error_msg,
                     response_time_ms=response_time,
-                    ip_address=request.client.host if request and request.client else None
+                    ip_address=request.client.host if request and request.client else None,
                 )
             except Exception as log_err:
                 logger.error(f"Failed to log MCP request: {log_err}")
-            
+
             return self._error_response(jsonrpc_id, -32603, str(e))
 
     async def _handle_tool_call(
@@ -181,7 +175,7 @@ class McpHandler:
         arguments: Dict[str, Any],
         user_id: Optional[int],
         server_name: Optional[str] = None,
-        request: Optional[Request] = None
+        request: Optional[Request] = None,
     ) -> JSONResponse:
         """Handle tools/call request.
 
@@ -197,15 +191,12 @@ class McpHandler:
         """
         try:
             if not tool_name:
-                return self._error_response(
-                    jsonrpc_id,
-                    -32602,
-                    "Missing required parameter: name"
-                )
+                return self._error_response(jsonrpc_id, -32602, "Missing required parameter: name")
 
             logger.info(f"Calling tool: {tool_name} (server: {server_name or 'any'})")
-            
+
             import time
+
             start_time = time.time()
 
             def _log_tool_call(
@@ -216,6 +207,7 @@ class McpHandler:
                 response_time = int((time.time() - start_time) * 1000)
                 try:
                     from authmcp_gateway.security.logger import log_mcp_request
+
                     log_mcp_request(
                         db_path=self.db_path,
                         user_id=user_id,
@@ -225,7 +217,7 @@ class McpHandler:
                         success=success,
                         error_message=error_msg,
                         response_time_ms=response_time,
-                        ip_address=request.client.host if request and request.client else None
+                        ip_address=request.client.host if request and request.client else None,
                     )
                 except Exception as log_err:
                     logger.error(f"Failed to log tool call: {log_err}")
@@ -236,35 +228,27 @@ class McpHandler:
                     tool_name=tool_name,
                     arguments=arguments,
                     user_id=user_id,
-                    server_name=server_name
+                    server_name=server_name,
                 )
                 server_id = server.get("id") if server else None
 
                 # Return result from backend server
                 if "result" in result:
                     _log_tool_call(True, mcp_server_id=server_id)
-                    return JSONResponse({
-                        "jsonrpc": "2.0",
-                        "id": jsonrpc_id,
-                        "result": result["result"]
-                    })
+                    return JSONResponse(
+                        {"jsonrpc": "2.0", "id": jsonrpc_id, "result": result["result"]}
+                    )
                 elif "error" in result:
                     error_msg = str(result.get("error"))
                     _log_tool_call(False, error_msg, mcp_server_id=server_id)
-                    return JSONResponse({
-                        "jsonrpc": "2.0",
-                        "id": jsonrpc_id,
-                        "error": result["error"]
-                    })
+                    return JSONResponse(
+                        {"jsonrpc": "2.0", "id": jsonrpc_id, "error": result["error"]}
+                    )
                 else:
                     error_msg = "Invalid response from backend server"
                     _log_tool_call(False, error_msg, mcp_server_id=server_id)
-                    return self._error_response(
-                        jsonrpc_id,
-                        -32603,
-                        error_msg
-                    )
-                    
+                    return self._error_response(jsonrpc_id, -32603, error_msg)
+
             except ToolNotFoundError as e:
                 logger.warning(f"Tool not found: {tool_name}")
                 _log_tool_call(False, str(e))
@@ -279,11 +263,11 @@ class McpHandler:
             return self._error_response(jsonrpc_id, -32603, str(e))
 
     async def _handle_initialize(
-        self, 
-        jsonrpc_id: int, 
-        params: Dict[str, Any], 
+        self,
+        jsonrpc_id: int,
+        params: Dict[str, Any],
         server_name: Optional[str] = None,
-        request: Optional[Request] = None
+        request: Optional[Request] = None,
     ) -> JSONResponse:
         """Handle initialize request.
 
@@ -302,22 +286,17 @@ class McpHandler:
         if server_name:
             display_name = f"{server_name}"
 
-        return JSONResponse({
-            "jsonrpc": "2.0",
-            "id": jsonrpc_id,
-            "result": {
-                "protocolVersion": "2024-11-05",
-                "capabilities": {
-                    "tools": {},
-                    "resources": {},
-                    "prompts": {}
+        return JSONResponse(
+            {
+                "jsonrpc": "2.0",
+                "id": jsonrpc_id,
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
+                    "serverInfo": {"name": display_name, "version": "2.0.0"},
                 },
-                "serverInfo": {
-                    "name": display_name,
-                    "version": "2.0.0"
-                }
             }
-        })
+        )
 
     def _error_response(self, jsonrpc_id: int, code: int, message: str) -> JSONResponse:
         """Create JSON-RPC error response.
@@ -330,11 +309,7 @@ class McpHandler:
         Returns:
             JSONResponse with error
         """
-        return JSONResponse({
-            "jsonrpc": "2.0",
-            "id": jsonrpc_id,
-            "error": {
-                "code": code,
-                "message": message
-            }
-        }, status_code=200)  # JSON-RPC errors use 200 status
+        return JSONResponse(
+            {"jsonrpc": "2.0", "id": jsonrpc_id, "error": {"code": code, "message": message}},
+            status_code=200,
+        )  # JSON-RPC errors use 200 status

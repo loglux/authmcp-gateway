@@ -1,18 +1,20 @@
 """Dynamic settings manager for auth configuration."""
+
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional
 from threading import Lock
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
 
+
 class SettingsManager:
     """Manages dynamic auth settings with hot-reload support."""
-    
+
     def __init__(self, settings_path: str):
         """Initialize settings manager.
-        
+
         Args:
             settings_path: Path to JSON settings file
         """
@@ -20,18 +22,20 @@ class SettingsManager:
         self._settings: Dict[str, Any] = {}
         self._lock = Lock()
         self._load_settings()
-    
+
     def _load_settings(self) -> None:
         """Load settings from JSON file, backfilling missing sections from defaults."""
         try:
             if self.settings_path.exists():
-                with open(self.settings_path, 'r') as f:
+                with open(self.settings_path, "r") as f:
                     self._settings = json.load(f)
                 logger.info(f"Settings loaded from {self.settings_path}")
                 # Backfill missing sections/keys from defaults
                 self._backfill_defaults()
             else:
-                logger.info(f"Settings file not found: {self.settings_path}, creating with defaults")
+                logger.info(
+                    f"Settings file not found: {self.settings_path}, creating with defaults"
+                )
                 self._settings = self._get_defaults()
                 try:
                     self.save()
@@ -62,47 +66,43 @@ class SettingsManager:
                 logger.info("Settings file updated with new defaults")
             except Exception as e:
                 logger.warning(f"Could not save backfilled settings: {e}")
-    
+
     def _get_defaults(self) -> Dict[str, Any]:
         """Get default settings."""
         return {
             "jwt": {
                 "access_token_expire_minutes": 1440,  # 24 hours
                 "refresh_token_expire_days": 7,
-                "enforce_single_session": True
+                "enforce_single_session": True,
             },
             "password_policy": {
                 "min_length": 8,
                 "require_uppercase": True,
                 "require_lowercase": True,
                 "require_digit": True,
-                "require_special": False
+                "require_special": False,
             },
-            "system": {
-                "allow_registration": True,
-                "allow_dcr": False,
-                "auth_required": True
-            },
+            "system": {"allow_registration": True, "allow_dcr": False, "auth_required": True},
             "rate_limit": {
                 "mcp_limit": 100,
                 "mcp_window": 60,
                 "login_limit": 5,
                 "login_window": 60,
                 "register_limit": 3,
-                "register_window": 300
-            }
+                "register_window": 300,
+            },
         }
-    
+
     def get(self, *keys: str, default: Any = None) -> Any:
         """Get a setting value by nested keys.
-        
+
         Args:
             *keys: Nested keys to traverse (e.g., "jwt", "access_token_expire_minutes")
             default: Default value if key not found
-            
+
         Returns:
             Setting value or default
-            
+
         Example:
             >>> settings.get("jwt", "access_token_expire_minutes")
             1440
@@ -115,14 +115,14 @@ class SettingsManager:
                 else:
                     return default
             return value
-    
+
     def set(self, value: Any, *keys: str) -> None:
         """Set a setting value by nested keys.
-        
+
         Args:
             value: Value to set
             *keys: Nested keys to traverse
-            
+
         Example:
             >>> settings.set(2880, "jwt", "access_token_expire_minutes")
         """
@@ -133,28 +133,28 @@ class SettingsManager:
                 if key not in current:
                     current[key] = {}
                 current = current[key]
-            
+
             # Set the value
             current[keys[-1]] = value
-    
+
     def get_all(self) -> Dict[str, Any]:
         """Get all settings.
-        
+
         Returns:
             Complete settings dictionary
         """
         with self._lock:
             return dict(self._settings)
-    
+
     def update(self, settings: Dict[str, Any]) -> None:
         """Update settings with a dictionary.
-        
+
         Args:
             settings: Dictionary of settings to merge
         """
         with self._lock:
             self._deep_update(self._settings, settings)
-    
+
     def _deep_update(self, target: Dict, source: Dict) -> None:
         """Deep update target dict with source dict."""
         for key, value in source.items():
@@ -162,23 +162,23 @@ class SettingsManager:
                 self._deep_update(target[key], value)
             else:
                 target[key] = value
-    
+
     def save(self) -> None:
         """Save current settings to file."""
         with self._lock:
             try:
                 # Ensure directory exists
                 self.settings_path.parent.mkdir(parents=True, exist_ok=True)
-                
+
                 # Write with pretty formatting
-                with open(self.settings_path, 'w') as f:
+                with open(self.settings_path, "w") as f:
                     json.dump(self._settings, f, indent=2)
-                
+
                 logger.info(f"Settings saved to {self.settings_path}")
             except Exception as e:
                 logger.error(f"Failed to save settings: {e}")
                 raise
-    
+
     def reload(self) -> None:
         """Reload settings from file."""
         self._load_settings()
@@ -190,10 +190,10 @@ _settings_manager: Optional[SettingsManager] = None
 
 def get_settings_manager() -> SettingsManager:
     """Get the global settings manager instance.
-    
+
     Returns:
         SettingsManager instance
-        
+
     Raises:
         RuntimeError: If settings manager not initialized
     """
@@ -204,10 +204,10 @@ def get_settings_manager() -> SettingsManager:
 
 def initialize_settings(settings_path: str) -> SettingsManager:
     """Initialize the global settings manager.
-    
+
     Args:
         settings_path: Path to JSON settings file
-        
+
     Returns:
         SettingsManager instance
     """

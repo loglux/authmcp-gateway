@@ -10,11 +10,7 @@ from authmcp_gateway.config import JWTConfig
 
 
 def create_access_token(
-    user_id: int,
-    username: str,
-    is_superuser: bool,
-    config: JWTConfig,
-    expire_minutes: int = None
+    user_id: int, username: str, is_superuser: bool, config: JWTConfig, expire_minutes: int = None
 ) -> str:
     """Create JWT access token.
 
@@ -91,7 +87,9 @@ def verify_token(token: str, token_type: str, config: JWTConfig) -> Dict[str, An
 
     # Validate token type
     if payload.get("type") != token_type:
-        raise ValueError(f"Invalid token type. Expected '{token_type}', got '{payload.get('type')}'")
+        raise ValueError(
+            f"Invalid token type. Expected '{token_type}', got '{payload.get('type')}'"
+        )
 
     return payload
 
@@ -111,10 +109,7 @@ def decode_token_unsafe(token: str) -> Dict[str, Any]:
     Raises:
         jwt.DecodeError: If token cannot be decoded
     """
-    return jwt.decode(
-        token,
-        options={"verify_signature": False, "verify_exp": False}
-    )
+    return jwt.decode(token, options={"verify_signature": False, "verify_exp": False})
 
 
 def get_token_jti(token: str) -> str:
@@ -168,17 +163,11 @@ def _decode_token(token: str, config: JWTConfig) -> Dict[str, Any]:
     """
     if config.algorithm == "HS256":
         return jwt.decode(
-            token,
-            config.secret_key,
-            algorithms=["HS256"],
-            options={"verify_exp": True}
+            token, config.secret_key, algorithms=["HS256"], options={"verify_exp": True}
         )
     elif config.algorithm == "RS256":
         return jwt.decode(
-            token,
-            config.public_key,
-            algorithms=["RS256"],
-            options={"verify_exp": True}
+            token, config.public_key, algorithms=["RS256"], options={"verify_exp": True}
         )
     else:
         raise ValueError(f"Unsupported JWT algorithm: {config.algorithm}")

@@ -2,7 +2,7 @@
 
 import logging
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime
 from threading import Lock
 from typing import Dict, Optional, Tuple
 
@@ -34,12 +34,7 @@ class RateLimiter:
         self._limits: Dict[str, Dict] = defaultdict(dict)
         self._lock = Lock()
 
-    def check_limit(
-        self,
-        identifier: str,
-        limit: int = 5,
-        window: int = 60
-    ) -> Tuple[bool, int]:
+    def check_limit(self, identifier: str, limit: int = 5, window: int = 60) -> Tuple[bool, int]:
         """Check if request is allowed within rate limit.
 
         Args:
@@ -57,10 +52,7 @@ class RateLimiter:
 
             # First request from this identifier
             if identifier not in self._limits:
-                self._limits[identifier] = {
-                    "count": 1,
-                    "window_start": now
-                }
+                self._limits[identifier] = {"count": 1, "window_start": now}
                 logger.debug(f"Rate limit: new identifier {identifier} (1/{limit})")
                 return True, 0
 
@@ -72,10 +64,7 @@ class RateLimiter:
 
             # Window expired - reset counter
             if elapsed >= window:
-                self._limits[identifier] = {
-                    "count": 1,
-                    "window_start": now
-                }
+                self._limits[identifier] = {"count": 1, "window_start": now}
                 logger.debug(f"Rate limit: window reset for {identifier} (1/{limit})")
                 return True, 0
 
@@ -87,11 +76,12 @@ class RateLimiter:
                     f"{current_count}/{limit} in {elapsed:.1f}s, "
                     f"retry after {retry_after}s"
                 )
-                
+
                 # Log security event for rate limiting
                 try:
-                    from .security.logger import log_security_event
                     from .config import get_config
+                    from .security.logger import log_security_event
+
                     config = get_config()
                     if config:
                         log_security_event(
@@ -103,21 +93,18 @@ class RateLimiter:
                                 "limit": limit,
                                 "window_seconds": window,
                                 "current_count": current_count,
-                                "retry_after": retry_after
-                            }
+                                "retry_after": retry_after,
+                            },
                         )
                 except Exception as e:
                     # Don't fail rate limiting if logging fails
                     logger.warning(f"Rate limit logging failed for {identifier}: {e}")
-                
+
                 return False, retry_after
 
             # Increment counter
             data["count"] = current_count + 1
-            logger.debug(
-                f"Rate limit: {identifier} allowed "
-                f"({data['count']}/{limit})"
-            )
+            logger.debug(f"Rate limit: {identifier} allowed " f"({data['count']}/{limit})")
             return True, 0
 
     def reset(self, identifier: str) -> bool:
@@ -179,9 +166,8 @@ class RateLimiter:
             return {
                 "total_identifiers": len(self._limits),
                 "active_limits": sum(
-                    1 for data in self._limits.values()
-                    if data.get("count", 0) > 0
-                )
+                    1 for data in self._limits.values() if data.get("count", 0) > 0
+                ),
             }
 
 

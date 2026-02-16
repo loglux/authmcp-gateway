@@ -1,24 +1,22 @@
 """OAuth Dynamic Client Registration endpoints (RFC 7591/7592)."""
 
-import json
 import logging
-from typing import Optional, Dict, Any, Tuple
+from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlparse
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from ..config import AppConfig
+from ..rate_limiter import get_rate_limiter
 from .client_store import (
     create_oauth_client,
-    get_oauth_client_by_client_id,
+    delete_oauth_client,
     get_oauth_client_by_registration_token,
     update_oauth_client,
-    delete_oauth_client,
 )
 from .models import ClientRegistrationRequest, ClientRegistrationResponse, ErrorResponse
 from .user_store import log_auth_event
-from ..config import AppConfig
-from ..rate_limiter import get_rate_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +35,9 @@ def _get_config() -> AppConfig:
     return _config
 
 
-def _error_response(status_code: int, detail: str, error_code: Optional[str] = None) -> JSONResponse:
+def _error_response(
+    status_code: int, detail: str, error_code: Optional[str] = None
+) -> JSONResponse:
     error = ErrorResponse(detail=detail, error_code=error_code)
     return JSONResponse(status_code=status_code, content=error.model_dump())
 
@@ -187,7 +187,9 @@ async def register_client(request: Request) -> JSONResponse:
     return _registration_response(base, metadata, status_code=201)
 
 
-def _require_registration_token(request: Request, client_id: str) -> Tuple[Optional[Dict[str, Any]], Optional[JSONResponse]]:
+def _require_registration_token(
+    request: Request, client_id: str
+) -> Tuple[Optional[Dict[str, Any]], Optional[JSONResponse]]:
     config = _get_config()
     token = _parse_bearer_token(request)
     if not token:
@@ -200,7 +202,6 @@ def _require_registration_token(request: Request, client_id: str) -> Tuple[Optio
 
 async def get_client(request: Request) -> JSONResponse:
     """GET /oauth/register/{client_id} - Retrieve client metadata."""
-    config = _get_config()
     client_id = request.path_params.get("client_id")
     if not client_id:
         return _error_response(400, "Missing client_id", "INVALID_REQUEST")

@@ -1,7 +1,7 @@
 """Pydantic schemas for authentication API."""
 
 from datetime import datetime
-from typing import Optional, List, Any, Dict
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -9,18 +9,20 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 class UserRegisterRequest(BaseModel):
     """Request model for user registration."""
 
-    username: str = Field(..., min_length=3, max_length=50, description="Username for the new account")
+    username: str = Field(
+        ..., min_length=3, max_length=50, description="Username for the new account"
+    )
     email: EmailStr = Field(..., description="Email address for the new account")
     password: str = Field(..., min_length=8, description="Password (minimum 8 characters)")
     full_name: Optional[str] = Field(None, max_length=100, description="Full name of the user")
     is_superuser: bool = Field(False, description="Make user a superuser (admin only)")
 
-    @field_validator('username')
+    @field_validator("username")
     @classmethod
     def username_alphanumeric(cls, v: str) -> str:
         """Validate username is alphanumeric with optional _ or -."""
-        if not v.replace('_', '').replace('-', '').isalnum():
-            raise ValueError('Username must be alphanumeric (with optional _ or - characters)')
+        if not v.replace("_", "").replace("-", "").isalnum():
+            raise ValueError("Username must be alphanumeric (with optional _ or - characters)")
         return v
 
 
@@ -79,7 +81,7 @@ class ClientRegistrationRequest(BaseModel):
     redirect_uris: List[str] = Field(..., description="Registered redirect URIs")
     token_endpoint_auth_method: Optional[str] = Field(
         None,
-        description="Client auth method at token endpoint (none, client_secret_basic, client_secret_post)"
+        description="Client auth method at token endpoint (none, client_secret_basic, client_secret_post)",
     )
     grant_types: Optional[List[str]] = Field(None, description="OAuth2 grant types")
     response_types: Optional[List[str]] = Field(None, description="OAuth2 response types")
@@ -101,12 +103,20 @@ class ClientRegistrationResponse(BaseModel):
 
     client_id: str = Field(..., description="Client identifier")
     client_secret: Optional[str] = Field(None, description="Client secret (if applicable)")
-    client_id_issued_at: Optional[int] = Field(None, description="Client ID issuance time (epoch seconds)")
-    client_secret_expires_at: Optional[int] = Field(0, description="Client secret expiration time (epoch seconds)")
-    registration_access_token: Optional[str] = Field(None, description="Token for client management")
+    client_id_issued_at: Optional[int] = Field(
+        None, description="Client ID issuance time (epoch seconds)"
+    )
+    client_secret_expires_at: Optional[int] = Field(
+        0, description="Client secret expiration time (epoch seconds)"
+    )
+    registration_access_token: Optional[str] = Field(
+        None, description="Token for client management"
+    )
     registration_client_uri: Optional[str] = Field(None, description="Client management URI")
     redirect_uris: List[str] = Field(..., description="Registered redirect URIs")
-    token_endpoint_auth_method: Optional[str] = Field(None, description="Token endpoint auth method")
+    token_endpoint_auth_method: Optional[str] = Field(
+        None, description="Token endpoint auth method"
+    )
     grant_types: Optional[List[str]] = Field(None, description="OAuth2 grant types")
     response_types: Optional[List[str]] = Field(None, description="OAuth2 response types")
     client_name: Optional[str] = Field(None, description="Client name")

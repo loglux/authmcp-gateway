@@ -1,9 +1,9 @@
 """Database operations for MCP servers."""
 
+import logging
 import sqlite3
 from datetime import datetime, timezone
-from typing import List, Optional, Dict, Any
-import logging
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -73,11 +73,21 @@ def init_mcp_database(db_path: str) -> None:
     # Create indexes for performance
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_mcp_servers_enabled ON mcp_servers(enabled)")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_mcp_servers_status ON mcp_servers(status)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_mcp_servers_tool_prefix ON mcp_servers(tool_prefix)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_tool_mappings_tool_name ON tool_mappings(tool_name)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_tool_mappings_mcp_server_id ON tool_mappings(mcp_server_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_mcp_permissions_user_id ON user_mcp_permissions(user_id)")
-    cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_mcp_permissions_mcp_server_id ON user_mcp_permissions(mcp_server_id)")
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_mcp_servers_tool_prefix ON mcp_servers(tool_prefix)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tool_mappings_tool_name ON tool_mappings(tool_name)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_tool_mappings_mcp_server_id ON tool_mappings(mcp_server_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_user_mcp_permissions_user_id ON user_mcp_permissions(user_id)"
+    )
+    cursor.execute(
+        "CREATE INDEX IF NOT EXISTS idx_user_mcp_permissions_mcp_server_id ON user_mcp_permissions(mcp_server_id)"
+    )
 
     conn.commit()
     conn.close()
@@ -93,7 +103,7 @@ def create_mcp_server(
     enabled: bool = True,
     auth_type: str = "none",
     auth_token: Optional[str] = None,
-    routing_strategy: str = "prefix"
+    routing_strategy: str = "prefix",
 ) -> int:
     """Create a new MCP server entry.
 
@@ -134,8 +144,8 @@ def create_mcp_server(
             auth_type,
             auth_token,
             routing_strategy,
-            datetime.now(timezone.utc).isoformat()
-        )
+            datetime.now(timezone.utc).isoformat(),
+        ),
     )
 
     server_id = cursor.lastrowid
@@ -160,10 +170,7 @@ def get_mcp_server(db_path: str, server_id: int) -> Optional[Dict[str, Any]]:
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    cursor.execute(
-        "SELECT * FROM mcp_servers WHERE id = ?",
-        (server_id,)
-    )
+    cursor.execute("SELECT * FROM mcp_servers WHERE id = ?", (server_id,))
 
     row = cursor.fetchone()
     conn.close()
@@ -187,10 +194,7 @@ def get_mcp_server_by_name(db_path: str, name: str) -> Optional[Dict[str, Any]]:
     conn.row_factory = sqlite3.Row
     cursor = conn.cursor()
 
-    cursor.execute(
-        "SELECT * FROM mcp_servers WHERE name = ?",
-        (name,)
-    )
+    cursor.execute("SELECT * FROM mcp_servers WHERE name = ?", (name,))
 
     row = cursor.fetchone()
     conn.close()
@@ -201,9 +205,7 @@ def get_mcp_server_by_name(db_path: str, name: str) -> Optional[Dict[str, Any]]:
 
 
 def list_mcp_servers(
-    db_path: str,
-    enabled_only: bool = False,
-    user_id: Optional[int] = None
+    db_path: str, enabled_only: bool = False, user_id: Optional[int] = None
 ) -> List[Dict[str, Any]]:
     """List all MCP servers.
 
@@ -249,11 +251,7 @@ def list_mcp_servers(
     return [dict(row) for row in rows]
 
 
-def update_mcp_server(
-    db_path: str,
-    server_id: int,
-    **fields
-) -> bool:
+def update_mcp_server(db_path: str, server_id: int, **fields) -> bool:
     """Update MCP server fields.
 
     Args:
@@ -277,10 +275,7 @@ def update_mcp_server(
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    cursor.execute(
-        f"UPDATE mcp_servers SET {set_clause} WHERE id = ?",
-        values
-    )
+    cursor.execute(f"UPDATE mcp_servers SET {set_clause} WHERE id = ?", values)
 
     rows_affected = cursor.rowcount
     conn.commit()
@@ -298,7 +293,7 @@ def update_server_health(
     server_id: int,
     status: str,
     tools_count: Optional[int] = None,
-    error: Optional[str] = None
+    error: Optional[str] = None,
 ):
     """Update server health status.
 
@@ -312,7 +307,7 @@ def update_server_health(
     fields = {
         "status": status,
         "last_health_check": datetime.now(timezone.utc).isoformat(),
-        "last_error": error
+        "last_error": error,
     }
 
     if tools_count is not None:
@@ -334,10 +329,7 @@ def delete_mcp_server(db_path: str, server_id: int) -> bool:
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    cursor.execute(
-        "DELETE FROM mcp_servers WHERE id = ?",
-        (server_id,)
-    )
+    cursor.execute("DELETE FROM mcp_servers WHERE id = ?", (server_id,))
 
     rows_affected = cursor.rowcount
     conn.commit()
@@ -352,11 +344,8 @@ def delete_mcp_server(db_path: str, server_id: int) -> bool:
 
 # Tool mappings
 
-def create_tool_mapping(
-    db_path: str,
-    tool_name: str,
-    mcp_server_id: int
-) -> int:
+
+def create_tool_mapping(db_path: str, tool_name: str, mcp_server_id: int) -> int:
     """Create explicit tool to MCP server mapping.
 
     Args:
@@ -375,7 +364,7 @@ def create_tool_mapping(
         INSERT OR REPLACE INTO tool_mappings (tool_name, mcp_server_id, created_at)
         VALUES (?, ?, ?)
         """,
-        (tool_name, mcp_server_id, datetime.now(timezone.utc).isoformat())
+        (tool_name, mcp_server_id, datetime.now(timezone.utc).isoformat()),
     )
 
     mapping_id = cursor.lastrowid
@@ -399,10 +388,7 @@ def get_tool_mapping(db_path: str, tool_name: str) -> Optional[int]:
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    cursor.execute(
-        "SELECT mcp_server_id FROM tool_mappings WHERE tool_name = ?",
-        (tool_name,)
-    )
+    cursor.execute("SELECT mcp_server_id FROM tool_mappings WHERE tool_name = ?", (tool_name,))
 
     row = cursor.fetchone()
     conn.close()
@@ -429,7 +415,7 @@ def list_tool_mappings(db_path: str, mcp_server_id: Optional[int] = None) -> Lis
     if mcp_server_id:
         cursor.execute(
             "SELECT * FROM tool_mappings WHERE mcp_server_id = ? ORDER BY tool_name",
-            (mcp_server_id,)
+            (mcp_server_id,),
         )
     else:
         cursor.execute("SELECT * FROM tool_mappings ORDER BY tool_name")
@@ -453,10 +439,7 @@ def delete_tool_mapping(db_path: str, tool_name: str) -> bool:
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    cursor.execute(
-        "DELETE FROM tool_mappings WHERE tool_name = ?",
-        (tool_name,)
-    )
+    cursor.execute("DELETE FROM tool_mappings WHERE tool_name = ?", (tool_name,))
 
     rows_affected = cursor.rowcount
     conn.commit()
@@ -467,11 +450,9 @@ def delete_tool_mapping(db_path: str, tool_name: str) -> bool:
 
 # User permissions
 
+
 def set_user_mcp_permission(
-    db_path: str,
-    user_id: int,
-    mcp_server_id: int,
-    can_access: bool = True
+    db_path: str, user_id: int, mcp_server_id: int, can_access: bool = True
 ) -> int:
     """Set user permission for MCP server.
 
@@ -497,7 +478,7 @@ def set_user_mcp_permission(
             can_access = excluded.can_access,
             updated_at = excluded.updated_at
         """,
-        (user_id, mcp_server_id, 1 if can_access else 0, now, now)
+        (user_id, mcp_server_id, 1 if can_access else 0, now, now),
     )
 
     permission_id = cursor.lastrowid
@@ -530,7 +511,7 @@ def get_user_mcp_permissions(db_path: str, user_id: int) -> List[Dict[str, Any]]
         WHERE p.user_id = ?
         ORDER BY s.name
         """,
-        (user_id,)
+        (user_id,),
     )
 
     rows = cursor.fetchall()
@@ -555,7 +536,7 @@ def check_user_mcp_access(db_path: str, user_id: int, mcp_server_id: int) -> boo
 
     cursor.execute(
         "SELECT can_access FROM user_mcp_permissions WHERE user_id = ? AND mcp_server_id = ?",
-        (user_id, mcp_server_id)
+        (user_id, mcp_server_id),
     )
 
     row = cursor.fetchone()
@@ -570,6 +551,7 @@ def check_user_mcp_access(db_path: str, user_id: int, mcp_server_id: int) -> boo
 
 # Token Management & Audit (NEW)
 
+
 def log_token_audit(
     db_path: str,
     mcp_server_id: int,
@@ -578,7 +560,7 @@ def log_token_audit(
     error_message: Optional[str] = None,
     old_expires_at: Optional[datetime] = None,
     new_expires_at: Optional[datetime] = None,
-    triggered_by: str = "manual"
+    triggered_by: str = "manual",
 ) -> None:
     """Log token refresh operation to audit table.
 
@@ -611,8 +593,8 @@ def log_token_audit(
                 old_expires_at.isoformat() if old_expires_at else None,
                 new_expires_at.isoformat() if new_expires_at else None,
                 triggered_by,
-                datetime.now(timezone.utc).isoformat()
-            )
+                datetime.now(timezone.utc).isoformat(),
+            ),
         )
 
         conn.commit()
@@ -630,9 +612,7 @@ def log_token_audit(
 
 
 def get_token_audit_logs(
-    db_path: str,
-    mcp_server_id: Optional[int] = None,
-    limit: int = 100
+    db_path: str, mcp_server_id: Optional[int] = None, limit: int = 100
 ) -> List[Dict[str, Any]]:
     """Get token audit logs.
 
@@ -658,7 +638,7 @@ def get_token_audit_logs(
             ORDER BY a.timestamp DESC
             LIMIT ?
             """,
-            (mcp_server_id, limit)
+            (mcp_server_id, limit),
         )
     else:
         cursor.execute(
@@ -669,7 +649,7 @@ def get_token_audit_logs(
             ORDER BY a.timestamp DESC
             LIMIT ?
             """,
-            (limit,)
+            (limit,),
         )
 
     rows = cursor.fetchall()
@@ -683,7 +663,7 @@ def update_mcp_server_token(
     server_id: int,
     access_token: str,
     token_expires_at: datetime,
-    refresh_token_hash: Optional[str] = None
+    refresh_token_hash: Optional[str] = None,
 ) -> None:
     """Update MCP server tokens after refresh.
 
@@ -712,7 +692,14 @@ def update_mcp_server_token(
                     updated_at = ?
                 WHERE id = ?
                 """,
-                (access_token, token_expires_at.isoformat(), refresh_token_hash, now, now, server_id)
+                (
+                    access_token,
+                    token_expires_at.isoformat(),
+                    refresh_token_hash,
+                    now,
+                    now,
+                    server_id,
+                ),
             )
         else:
             # Only update access token
@@ -725,7 +712,7 @@ def update_mcp_server_token(
                     updated_at = ?
                 WHERE id = ?
                 """,
-                (access_token, token_expires_at.isoformat(), now, now, server_id)
+                (access_token, token_expires_at.isoformat(), now, now, server_id),
             )
 
         rows_affected = cursor.rowcount
@@ -749,10 +736,7 @@ def update_mcp_server_token(
         conn.close()
 
 
-def get_servers_needing_refresh(
-    db_path: str,
-    threshold_minutes: int = 5
-) -> List[Dict[str, Any]]:
+def get_servers_needing_refresh(db_path: str, threshold_minutes: int = 5) -> List[Dict[str, Any]]:
     """Get MCP servers whose tokens will expire soon.
 
     Args:
@@ -768,6 +752,7 @@ def get_servers_needing_refresh(
 
     # Calculate threshold timestamp
     from datetime import timedelta
+
     threshold = datetime.now(timezone.utc) + timedelta(minutes=threshold_minutes)
 
     cursor.execute(
@@ -779,7 +764,7 @@ def get_servers_needing_refresh(
           AND datetime(token_expires_at) <= datetime(?)
         ORDER BY token_expires_at ASC
         """,
-        (threshold.isoformat(),)
+        (threshold.isoformat(),),
     )
 
     rows = cursor.fetchall()

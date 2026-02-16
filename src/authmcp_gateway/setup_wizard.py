@@ -1,14 +1,16 @@
 """Setup wizard for initial configuration."""
+
 import logging
+from dataclasses import replace
 from typing import Optional
+
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
-from authmcp_gateway.auth.user_store import get_all_users, create_user
-from dataclasses import replace
 
 from authmcp_gateway.auth.password import hash_password, validate_password_strength
-from authmcp_gateway.settings_manager import get_settings_manager
+from authmcp_gateway.auth.user_store import create_user, get_all_users
 from authmcp_gateway.config import AppConfig
+from authmcp_gateway.settings_manager import get_settings_manager
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +29,7 @@ def is_setup_required() -> bool:
     """Check if initial setup is required (no users exist)."""
     if _config is None:
         return False
-    
+
     try:
         users = get_all_users(_config.auth.sqlite_path)
         return len(users) == 0
@@ -40,7 +42,7 @@ async def setup_page(_: Request) -> HTMLResponse:
     """Display setup wizard page."""
     if not is_setup_required():
         return RedirectResponse(url="/admin", status_code=302)
-    
+
     html = """
 <!DOCTYPE html>
 <html lang="en">
@@ -267,27 +269,25 @@ async def create_admin_user(request: Request) -> JSONResponse:
     """Create initial admin user."""
     if _config is None:
         return JSONResponse({"detail": "Config not initialized"}, status_code=500)
-    
+
     # Check if setup is still required
     if not is_setup_required():
         return JSONResponse(
-            {"detail": "Setup already completed. Users exist in database."},
-            status_code=403
+            {"detail": "Setup already completed. Users exist in database."}, status_code=403
         )
-    
+
     try:
         body = await request.json()
         username = body.get("username")
         email = body.get("email")
         password = body.get("password")
         full_name = body.get("full_name")
-        
+
         if not username or not email or not password:
             return JSONResponse(
-                {"detail": "Username, email, and password are required"},
-                status_code=400
+                {"detail": "Username, email, and password are required"}, status_code=400
             )
-        
+
         # Validate password strength against settings (if available)
         policy = _config.auth
         try:
@@ -296,10 +296,18 @@ async def create_admin_user(request: Request) -> JSONResponse:
             policy = replace(
                 policy,
                 password_min_length=policy_data.get("min_length", policy.password_min_length),
-                password_require_uppercase=policy_data.get("require_uppercase", policy.password_require_uppercase),
-                password_require_lowercase=policy_data.get("require_lowercase", policy.password_require_lowercase),
-                password_require_digit=policy_data.get("require_digit", policy.password_require_digit),
-                password_require_special=policy_data.get("require_special", policy.password_require_special),
+                password_require_uppercase=policy_data.get(
+                    "require_uppercase", policy.password_require_uppercase
+                ),
+                password_require_lowercase=policy_data.get(
+                    "require_lowercase", policy.password_require_lowercase
+                ),
+                password_require_digit=policy_data.get(
+                    "require_digit", policy.password_require_digit
+                ),
+                password_require_special=policy_data.get(
+                    "require_special", policy.password_require_special
+                ),
             )
         except Exception:
             pass
@@ -307,10 +315,10 @@ async def create_admin_user(request: Request) -> JSONResponse:
         is_valid, error_msg = validate_password_strength(password, policy)
         if not is_valid:
             return JSONResponse({"detail": error_msg}, status_code=400)
-        
+
         # Hash password
         password_hash = hash_password(password)
-        
+
         # Create admin user
         user_id = create_user(
             db_path=_config.auth.sqlite_path,
@@ -318,21 +326,21 @@ async def create_admin_user(request: Request) -> JSONResponse:
             email=email,
             password_hash=password_hash,
             full_name=full_name,
-            is_superuser=True  # Always superuser for initial setup
+            is_superuser=True,  # Always superuser for initial setup
         )
-        
+
         logger.info(f"Initial admin user created: {username} (id={user_id})")
-        
-        return JSONResponse({
-            "success": True,
-            "user_id": user_id,
-            "username": username,
-            "message": "Administrator account created successfully"
-        }, status_code=201)
-        
+
+        return JSONResponse(
+            {
+                "success": True,
+                "user_id": user_id,
+                "username": username,
+                "message": "Administrator account created successfully",
+            },
+            status_code=201,
+        )
+
     except Exception as e:
         logger.error(f"Failed to create admin user: {e}")
-        return JSONResponse(
-            {"detail": str(e)},
-            status_code=500
-        )
+        return JSONResponse({"detail": str(e)}, status_code=500)
