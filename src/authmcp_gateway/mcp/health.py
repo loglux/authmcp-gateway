@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 
 import httpx
 
+from .proxy import get_auth_headers
 from .store import list_mcp_servers, update_server_health
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,9 @@ class HealthChecker:
 
     async def _health_check_loop(self):
         """Background loop that performs health checks."""
+        # Initial delay to let the application finish startup
+        await asyncio.sleep(5)
+
         while self._running:
             try:
                 await self.check_all_servers()
@@ -242,25 +246,8 @@ class HealthChecker:
             }
 
     def _get_auth_headers(self, server: Dict[str, Any]) -> Dict[str, str]:
-        """Get authentication headers for backend MCP server.
-
-        Args:
-            server: Server dict
-
-        Returns:
-            Headers dict
-        """
-        headers = {"Content-Type": "application/json", "Accept": "application/json"}
-
-        auth_type = server.get("auth_type", "none")
-        auth_token = server.get("auth_token")
-
-        if auth_type == "bearer" and auth_token:
-            headers["Authorization"] = f"Bearer {auth_token}"
-        elif auth_type == "basic" and auth_token:
-            headers["Authorization"] = f"Basic {auth_token}"
-
-        return headers
+        """Get authentication headers for backend MCP server."""
+        return get_auth_headers(server)
 
 
 # Global health checker instance

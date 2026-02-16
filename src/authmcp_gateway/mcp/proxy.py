@@ -25,6 +25,28 @@ def normalize_server_name(name: str) -> str:
     return name.lower().replace(" ", "").replace("-", "").replace("_", "")
 
 
+def get_auth_headers(server: Dict[str, Any]) -> Dict[str, str]:
+    """Get authentication headers for a backend MCP server.
+
+    Args:
+        server: Server dict from database
+
+    Returns:
+        Headers dict with Content-Type and auth headers
+    """
+    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+
+    auth_type = server.get("auth_type", "none")
+    auth_token = server.get("auth_token")
+
+    if auth_type == "bearer" and auth_token:
+        headers["Authorization"] = f"Bearer {auth_token}"
+    elif auth_type == "basic" and auth_token:
+        headers["Authorization"] = f"Basic {auth_token}"
+
+    return headers
+
+
 class McpProxy:
     """MCP Gateway proxy that routes requests to backend MCP servers."""
 
@@ -420,25 +442,8 @@ class McpProxy:
             raise
 
     def _get_auth_headers(self, server: Dict[str, Any]) -> Dict[str, str]:
-        """Get authentication headers for backend MCP server.
-
-        Args:
-            server: Server dict
-
-        Returns:
-            Headers dict
-        """
-        headers = {"Content-Type": "application/json", "Accept": "application/json"}
-
-        auth_type = server.get("auth_type", "none")
-        auth_token = server.get("auth_token")
-
-        if auth_type == "bearer" and auth_token:
-            headers["Authorization"] = f"Bearer {auth_token}"
-        elif auth_type == "basic" and auth_token:
-            headers["Authorization"] = f"Basic {auth_token}"
-
-        return headers
+        """Get authentication headers for backend MCP server."""
+        return get_auth_headers(server)
 
     def invalidate_cache(self, server_id: Optional[int] = None):
         """Invalidate tools cache.

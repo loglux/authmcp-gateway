@@ -15,7 +15,6 @@ from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Re
 
 from authmcp_gateway.auth.user_store import (
     get_all_users,
-    get_auth_logs,
     get_user_by_id,
     make_user_superuser,
     update_user_status,
@@ -109,7 +108,6 @@ async def user_login_api(request: Request) -> JSONResponse:
         log_auth_event,
         update_last_login,
     )
-    from authmcp_gateway.config import load_config
 
     body = await request.json()
     username = body.get("username")
@@ -136,14 +134,13 @@ async def user_login_api(request: Request) -> JSONResponse:
 
     update_last_login(_config.auth.sqlite_path, user["id"])
 
-    config = load_config()
     access_token, _ = get_or_create_admin_token(
         _config.auth.sqlite_path,
         user["id"],
         user["username"],
         False,
-        config.jwt,
-        config.jwt.access_token_expire_minutes,
+        _config.jwt,
+        _config.jwt.access_token_expire_minutes,
         current_token=request.cookies.get("user_token"),
     )
 
@@ -154,7 +151,7 @@ async def user_login_api(request: Request) -> JSONResponse:
         httponly=True,
         samesite="lax",
         secure=True,
-        max_age=config.jwt.access_token_expire_minutes * 60,
+        max_age=_config.jwt.access_token_expire_minutes * 60,
     )
     return response
 
@@ -171,7 +168,6 @@ async def user_account_token(request: Request) -> JSONResponse:
     from authmcp_gateway.auth.jwt_handler import decode_token_unsafe, verify_token
     from authmcp_gateway.auth.token_service import get_or_create_admin_token
     from authmcp_gateway.auth.user_store import get_user_by_id, is_token_blacklisted
-    from authmcp_gateway.config import load_config
 
     token = request.cookies.get("user_token")
     if not token:
@@ -195,14 +191,13 @@ async def user_account_token(request: Request) -> JSONResponse:
         user = get_user_by_id(_config.auth.sqlite_path, int(user_id))
         username = user["username"] if user else ""
 
-    config = load_config()
     access_token, _ = get_or_create_admin_token(
         _config.auth.sqlite_path,
         int(user_id),
         username,
         False,
-        config.jwt,
-        config.jwt.access_token_expire_minutes,
+        _config.jwt,
+        _config.jwt.access_token_expire_minutes,
         current_token=token,
     )
 
@@ -213,7 +208,7 @@ async def user_account_token(request: Request) -> JSONResponse:
         httponly=True,
         samesite="lax",
         secure=True,
-        max_age=config.jwt.access_token_expire_minutes * 60,
+        max_age=_config.jwt.access_token_expire_minutes * 60,
     )
     return response
 
@@ -223,7 +218,6 @@ async def user_account_rotate_token(request: Request) -> JSONResponse:
     from authmcp_gateway.auth.jwt_handler import decode_token_unsafe, verify_token
     from authmcp_gateway.auth.token_service import rotate_admin_token
     from authmcp_gateway.auth.user_store import is_token_blacklisted
-    from authmcp_gateway.config import load_config
 
     token = request.cookies.get("user_token")
     if not token:
@@ -241,7 +235,6 @@ async def user_account_rotate_token(request: Request) -> JSONResponse:
     except Exception:
         return JSONResponse({"detail": "Invalid or expired token"}, status_code=401)
 
-    config = load_config()
     user_id = int(payload.get("sub"))
     username = payload.get("username")
     new_token, _ = rotate_admin_token(
@@ -249,8 +242,8 @@ async def user_account_rotate_token(request: Request) -> JSONResponse:
         user_id,
         username,
         False,
-        config.jwt,
-        config.jwt.access_token_expire_minutes,
+        _config.jwt,
+        _config.jwt.access_token_expire_minutes,
         current_token=token,
     )
 
@@ -261,7 +254,7 @@ async def user_account_rotate_token(request: Request) -> JSONResponse:
         httponly=True,
         samesite="lax",
         secure=True,
-        max_age=config.jwt.access_token_expire_minutes * 60,
+        max_age=_config.jwt.access_token_expire_minutes * 60,
     )
     return response
 
@@ -273,7 +266,6 @@ async def user_account_info(request: Request) -> JSONResponse:
     from authmcp_gateway.auth.jwt_handler import decode_token_unsafe, verify_token
     from authmcp_gateway.auth.token_service import get_or_create_admin_token
     from authmcp_gateway.auth.user_store import get_user_by_id, is_token_blacklisted
-    from authmcp_gateway.config import load_config
     from authmcp_gateway.mcp.store import list_mcp_servers
 
     token = request.cookies.get("user_token")
@@ -298,14 +290,13 @@ async def user_account_info(request: Request) -> JSONResponse:
         user = get_user_by_id(_config.auth.sqlite_path, int(user_id))
         username = user["username"] if user else ""
 
-    config = load_config()
     access_token, exp_dt = get_or_create_admin_token(
         _config.auth.sqlite_path,
         int(user_id),
         username,
         False,
-        config.jwt,
-        config.jwt.access_token_expire_minutes,
+        _config.jwt,
+        _config.jwt.access_token_expire_minutes,
         current_token=token,
     )
 
@@ -352,7 +343,7 @@ async def user_account_info(request: Request) -> JSONResponse:
         httponly=True,
         samesite="lax",
         secure=True,
-        max_age=config.jwt.access_token_expire_minutes * 60,
+        max_age=_config.jwt.access_token_expire_minutes * 60,
     )
     return response
 
@@ -493,29 +484,31 @@ async def admin_security_logs(_: Request) -> HTMLResponse:
 
 async def api_stats(_: Request) -> JSONResponse:
     """Get dashboard statistics."""
-    users = get_all_users(_config.auth.sqlite_path)
-    logs = get_auth_logs(_config.auth.sqlite_path, limit=1000)
+    conn = sqlite3.connect(_config.auth.sqlite_path)
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT COUNT(*) FROM users")
+        total_users = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM users WHERE is_active = 1")
+        active_users = cursor.fetchone()[0]
+        cursor.execute("SELECT COUNT(*) FROM users WHERE is_superuser = 1")
+        superusers = cursor.fetchone()[0]
 
-    from datetime import datetime, timedelta, timezone
-
-    now = datetime.now(timezone.utc)
-    day_ago = now - timedelta(days=1)
-
-    recent_logins = len(
-        [
-            log
-            for log in logs
-            if log["event_type"] in ["login", "admin_login"]
-            and log["success"]
-            and datetime.fromisoformat(log["created_at"]).replace(tzinfo=timezone.utc) > day_ago
-        ]
-    )
+        day_ago = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+        cursor.execute(
+            "SELECT COUNT(*) FROM auth_audit_log "
+            "WHERE event_type IN ('login', 'admin_login') AND success = 1 AND timestamp >= ?",
+            (day_ago,),
+        )
+        recent_logins = cursor.fetchone()[0]
+    finally:
+        conn.close()
 
     return JSONResponse(
         {
-            "total_users": len(users),
-            "active_users": len([u for u in users if u["is_active"]]),
-            "superusers": len([u for u in users if u["is_superuser"]]),
+            "total_users": total_users,
+            "active_users": active_users,
+            "superusers": superusers,
             "recent_logins": recent_logins,
             "system": {
                 "jwt_algorithm": _config.jwt.algorithm,
@@ -906,26 +899,21 @@ async def admin_settings(request: Request) -> HTMLResponse:
     is_superuser = request.state.is_superuser
 
     # Reuse stored token or rotate if needed
-    from datetime import datetime, timedelta, timezone
-
     from authmcp_gateway.auth.token_service import format_expires_in, get_or_create_admin_token
-    from authmcp_gateway.config import load_config
-
-    config = load_config()
 
     access_token, exp_dt = get_or_create_admin_token(
         _config.auth.sqlite_path,
         user_id,
         username,
         is_superuser,
-        config.jwt,
-        config.jwt.admin_token_expire_minutes,
+        _config.jwt,
+        _config.jwt.admin_token_expire_minutes,
         current_token=request.cookies.get("admin_token"),
     )
     token_expires_in = format_expires_in(exp_dt)
     if not token_expires_in:
         token_expires_in = format_expires_in(
-            datetime.now(timezone.utc) + timedelta(minutes=config.jwt.admin_token_expire_minutes)
+            datetime.now(timezone.utc) + timedelta(minutes=_config.jwt.admin_token_expire_minutes)
         )
 
     return render_template(
@@ -943,16 +931,14 @@ async def api_admin_access_token(request: Request) -> JSONResponse:
     username = request.state.username
     is_superuser = request.state.is_superuser
     from authmcp_gateway.auth.token_service import format_expires_in, get_or_create_admin_token
-    from authmcp_gateway.config import load_config
 
-    config = load_config()
     access_token, exp_dt = get_or_create_admin_token(
         _config.auth.sqlite_path,
         user_id,
         username,
         is_superuser,
-        config.jwt,
-        config.jwt.admin_token_expire_minutes,
+        _config.jwt,
+        _config.jwt.admin_token_expire_minutes,
         current_token=request.cookies.get("admin_token"),
     )
     token_expires_in = format_expires_in(exp_dt)
@@ -967,17 +953,15 @@ async def api_admin_rotate_token(request: Request) -> JSONResponse:
     username = request.state.username
     is_superuser = request.state.is_superuser
     from authmcp_gateway.auth.token_service import format_expires_in, rotate_admin_token
-    from authmcp_gateway.config import load_config
 
-    config = load_config()
     current_token = request.cookies.get("admin_token")
     new_token, exp_dt = rotate_admin_token(
         _config.auth.sqlite_path,
         user_id,
         username,
         is_superuser,
-        config.jwt,
-        config.jwt.admin_token_expire_minutes,
+        _config.jwt,
+        _config.jwt.admin_token_expire_minutes,
         current_token=current_token,
     )
     token_expires_in = format_expires_in(exp_dt)
@@ -991,7 +975,7 @@ async def api_admin_rotate_token(request: Request) -> JSONResponse:
         httponly=True,
         secure=is_https,
         samesite="lax",
-        max_age=config.jwt.admin_token_expire_minutes * 60,
+        max_age=_config.jwt.admin_token_expire_minutes * 60,
     )
     return response
 
