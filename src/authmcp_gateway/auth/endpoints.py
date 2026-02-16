@@ -883,13 +883,10 @@ async def oauth_token(request: Request) -> JSONResponse:
             )
             refresh_token = create_refresh_token(user["id"], _config.jwt, expire_days=refresh_ttl)
 
-            # Save refresh token
-            refresh_jti = get_token_jti(refresh_token)
-            refresh_hash = hash_token(refresh_jti)
-
-            # Calculate expiration from token
+            # Save refresh token (hash full token, consistent with /auth/login)
             from datetime import datetime, timezone
 
+            refresh_hash = hash_token(refresh_token)
             refresh_payload = decode_token_unsafe(refresh_token)
             expires_at = datetime.fromtimestamp(refresh_payload["exp"], tz=timezone.utc)
 
@@ -974,9 +971,8 @@ async def oauth_token(request: Request) -> JSONResponse:
                     },
                 )
 
-            # Verify refresh token is not revoked
-            refresh_jti = get_token_jti(refresh_token_value)
-            refresh_hash = hash_token(refresh_jti)
+            # Verify refresh token is not revoked (hash full token, consistent with /auth/login)
+            refresh_hash = hash_token(refresh_token_value)
             user_id = verify_refresh_token(_config.auth.sqlite_path, refresh_hash)
 
             if not user_id:
@@ -1191,11 +1187,10 @@ async def oauth_token(request: Request) -> JSONResponse:
 
             refresh_token = create_refresh_token(user_id=user["id"], config=_config.jwt)
 
-            # Save refresh token
+            # Save refresh token (hash full token, consistent with /auth/login)
             from datetime import datetime, timezone
 
-            refresh_jti = get_token_jti(refresh_token)
-            refresh_hash = hash_token(refresh_jti)
+            refresh_hash = hash_token(refresh_token)
             refresh_payload = decode_token_unsafe(refresh_token)
             expires_at = datetime.fromtimestamp(refresh_payload["exp"], tz=timezone.utc)
 

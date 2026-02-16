@@ -375,7 +375,9 @@ async def lifespan(app):
     if config.rate_limit.enabled:
 
         async def rate_limit_cleanup():
-            """Background task to clean up expired rate limit entries."""
+            """Background task to clean up expired rate limit entries and auth codes."""
+            from .auth.oauth_code_flow import cleanup_expired_codes
+
             while True:
                 try:
                     await asyncio.sleep(config.rate_limit.cleanup_interval)
@@ -385,6 +387,8 @@ async def lifespan(app):
                     )
                     if removed > 0:
                         logger.debug(f"Rate limiter: cleaned up {removed} expired entries")
+                    # Also clean up expired authorization codes
+                    cleanup_expired_codes(config.auth.sqlite_path)
                 except asyncio.CancelledError:
                     break
                 except Exception as e:

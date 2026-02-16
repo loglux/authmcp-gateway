@@ -539,8 +539,7 @@ async def api_get_user_mcp_permissions(request: Request) -> JSONResponse:
     """Get MCP server access permissions for a user."""
     user_id = int(request.path_params["user_id"])
 
-    users = get_all_users(_config.auth.sqlite_path)
-    user = next((u for u in users if u["id"] == user_id), None)
+    user = get_user_by_id(_config.auth.sqlite_path, user_id)
     if not user:
         return JSONResponse({"error": "User not found"}, status_code=404)
 
@@ -1013,12 +1012,63 @@ async def api_save_settings(request: Request) -> JSONResponse:
     settings_manager = get_settings_manager()
 
     body = await request.json()
+
+    # Validate settings values before applying
+    errors = []
+    jwt_s = body.get("jwt") or {}
+    if "access_token_expire_minutes" in jwt_s:
+        try:
+            val = int(jwt_s["access_token_expire_minutes"])
+            if val < 1 or val > 525600:  # 1 min to 1 year
+                errors.append("access_token_expire_minutes must be between 1 and 525600")
+        except (ValueError, TypeError):
+            errors.append("access_token_expire_minutes must be an integer")
+    if "refresh_token_expire_days" in jwt_s:
+        try:
+            val = int(jwt_s["refresh_token_expire_days"])
+            if val < 1 or val > 365:
+                errors.append("refresh_token_expire_days must be between 1 and 365")
+        except (ValueError, TypeError):
+            errors.append("refresh_token_expire_days must be an integer")
+
+    pw = body.get("password_policy") or {}
+    if "min_length" in pw:
+        try:
+            val = int(pw["min_length"])
+            if val < 4 or val > 128:
+                errors.append("min_length must be between 4 and 128")
+        except (ValueError, TypeError):
+            errors.append("min_length must be an integer")
+
+    rl = body.get("rate_limit") or {}
+    for key in ("mcp_limit", "login_limit", "register_limit"):
+        if key in rl:
+            try:
+                val = int(rl[key])
+                if val < 1 or val > 10000:
+                    errors.append(f"{key} must be between 1 and 10000")
+            except (ValueError, TypeError):
+                errors.append(f"{key} must be an integer")
+    for key in ("mcp_window", "login_window", "register_window"):
+        if key in rl:
+            try:
+                val = int(rl[key])
+                if val < 1 or val > 86400:  # 1 sec to 1 day
+                    errors.append(f"{key} must be between 1 and 86400")
+            except (ValueError, TypeError):
+                errors.append(f"{key} must be an integer")
+
+    if errors:
+        return JSONResponse(
+            status_code=400,
+            content={"success": False, "errors": errors},
+        )
+
     settings_manager.update(body)
     settings_manager.save()
 
     # Apply all settings to live config immediately
     try:
-        jwt_s = body.get("jwt") or {}
         if "access_token_expire_minutes" in jwt_s:
             _config.jwt.access_token_expire_minutes = int(jwt_s["access_token_expire_minutes"])
         if "refresh_token_expire_days" in jwt_s:

@@ -487,34 +487,29 @@ def log_auth_event(
         details: Optional additional details
     """
     try:
-        import sqlite3
         from datetime import datetime, timezone
 
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            INSERT INTO auth_audit_log (
-                event_type, user_id, username, ip_address,
-                user_agent, success, details, timestamp
+        with get_db_connection(db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO auth_audit_log (
+                    event_type, user_id, username, ip_address,
+                    user_agent, success, details, timestamp
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    event_type,
+                    user_id,
+                    username,
+                    ip_address,
+                    user_agent,
+                    success,
+                    details,
+                    datetime.now(timezone.utc).isoformat(),
+                ),
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                event_type,
-                user_id,
-                username,
-                ip_address,
-                user_agent,
-                success,
-                details,
-                datetime.now(timezone.utc).isoformat(),
-            ),
-        )
-
-        conn.commit()
-        conn.close()
 
         # Also log to file for debugging (optional)
         logger = get_auth_logger()

@@ -116,6 +116,22 @@ def verify_authorization_code(
     conn.row_factory = sqlite3.Row
 
     try:
+        # Atomically mark code as used to prevent race conditions.
+        # UPDATE ... WHERE used = 0 ensures only one concurrent request succeeds.
+        cursor = conn.execute(
+            """
+            UPDATE authorization_codes SET used = 1
+            WHERE code = ? AND client_id = ? AND redirect_uri = ? AND used = 0
+        """,
+            (code, client_id, redirect_uri),
+        )
+
+        if cursor.rowcount == 0:
+            logger.warning("Authorization code not found, mismatched, or already used")
+            conn.commit()
+            return None
+
+        # Now read the row to verify expiration and PKCE
         cursor = conn.execute(
             """
             SELECT * FROM authorization_codes
@@ -126,24 +142,22 @@ def verify_authorization_code(
 
         row = cursor.fetchone()
         if not row:
-            logger.warning(f"Authorization code not found or mismatched client/redirect")
-            return None
-
-        # Check if already used
-        if row["used"]:
-            logger.warning(f"Authorization code already used: {code}")
+            logger.warning("Authorization code disappeared after atomic update")
+            conn.commit()
             return None
 
         # Check expiration
         expires_at = datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00"))
         if datetime.now(timezone.utc) > expires_at:
             logger.warning(f"Authorization code expired: {code}")
+            conn.commit()
             return None
 
         # Verify PKCE if present
         if row["code_challenge"]:
             if not code_verifier:
                 logger.warning("PKCE challenge present but no verifier provided")
+                conn.commit()
                 return None
 
             # Verify code_verifier matches code_challenge
@@ -154,19 +168,14 @@ def verify_authorization_code(
 
                 if verifier_challenge != row["code_challenge"]:
                     logger.warning("PKCE verification failed")
+                    conn.commit()
                     return None
             elif row["code_challenge_method"] == "plain":
                 if code_verifier != row["code_challenge"]:
                     logger.warning("PKCE verification failed (plain)")
+                    conn.commit()
                     return None
 
-        # Mark as used
-        conn.execute(
-            """
-            UPDATE authorization_codes SET used = 1 WHERE code = ?
-        """,
-            (code,),
-        )
         conn.commit()
 
         logger.info(f"Authorization code verified for user {row['user_id']}")
