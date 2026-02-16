@@ -15,8 +15,9 @@ RUN curl -sL https://github.com/tailwindlabs/tailwindcss/releases/download/v3.4.
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy source code
+# Copy source code and entrypoint
 COPY tailwind.config.js ./
+COPY docker-entrypoint.sh ./
 COPY src ./src
 COPY scripts ./scripts
 COPY pyproject.toml ./
@@ -37,5 +38,6 @@ EXPOSE 8000
 # Set environment
 ENV PYTHONUNBUFFERED=1
 
-# Run application
+# Entrypoint rebuilds CSS at startup (handles volume-mounted src)
+ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD ["authmcp-gateway", "start", "--host", "0.0.0.0", "--port", "8000"]
