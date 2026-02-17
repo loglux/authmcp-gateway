@@ -100,7 +100,15 @@ class McpHandler:
                 return JSONResponse(status_code=204, content={})
 
             else:
-                # Proper JSON-RPC error for unknown methods
+                # Codex-style direct JSON-RPC: tool name as method, params as arguments
+                # See: https://github.com/openai/codex/pull/2264
+                # Only for non-namespaced methods (no "/") — namespaced unknowns get -32601
+                if method and "/" not in method:
+                    logger.info(f"Direct JSON-RPC tool call: {method} (Codex-style)")
+                    return await self._handle_tool_call(
+                        jsonrpc_id, method, params, user_id, server_name, request
+                    )
+
                 logger.warning(f"Unknown MCP method: {method}")
                 return self._error_response(jsonrpc_id or 1, -32601, f"Method not found: {method}")
 
