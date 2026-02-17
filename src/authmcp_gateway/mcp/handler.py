@@ -71,7 +71,12 @@ class McpHandler:
                 return JSONResponse(status_code=204, content={})
 
             else:
-                return self._error_response(jsonrpc_id, -32601, f"Method not found: {method}")
+                # Fallback: treat unknown method as a direct tool call
+                # Some MCP clients (e.g. Codex) send tool name as method
+                logger.info(f"Unknown method '{method}', attempting as direct tool call")
+                return await self._handle_tool_call(
+                    jsonrpc_id, method, params, user_id, server_name, request
+                )
 
         except Exception as e:
             logger.exception(f"Error handling MCP request: {e}")
