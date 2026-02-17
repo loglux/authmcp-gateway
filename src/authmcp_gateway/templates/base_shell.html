@@ -119,6 +119,27 @@
             return d.innerHTML;
         }
 
+        // CSRF: read csrf_token cookie and auto-attach to unsafe requests.
+        function getCsrfToken() {
+            const m = document.cookie.match(/(?:^|; )csrf_token=([^;]*)/);
+            return m ? decodeURIComponent(m[1]) : '';
+        }
+        const _originalFetch = window.fetch;
+        window.fetch = function(url, options = {}) {
+            const method = (options.method || 'GET').toUpperCase();
+            if (['POST','PUT','PATCH','DELETE'].includes(method)) {
+                options.headers = options.headers || {};
+                if (options.headers instanceof Headers) {
+                    if (!options.headers.has('X-CSRF-Token')) {
+                        options.headers.set('X-CSRF-Token', getCsrfToken());
+                    }
+                } else if (!options.headers['X-CSRF-Token']) {
+                    options.headers['X-CSRF-Token'] = getCsrfToken();
+                }
+            }
+            return _originalFetch.call(this, url, options);
+        };
+
         // Global toast notification.
         // Usage: showToast('Message') or showToast('Error!', 'error')
         // Types: 'success' (default), 'error', 'info', 'warning'

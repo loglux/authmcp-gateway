@@ -661,6 +661,11 @@ app.add_middleware(
 )
 app.add_middleware(AdminAuthMiddleware, config=config)
 
+# CSRF protection — last added = first executed
+from authmcp_gateway.csrf import CSRFMiddleware
+
+app.add_middleware(CSRFMiddleware, secret_key=config.jwt.secret_key)
+
 logger.info("✓ Application configured")
 logger.info(
     "  - Auth endpoints: /auth/register, /auth/login, /auth/refresh, /auth/logout, /auth/me"
