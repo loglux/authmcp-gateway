@@ -6,9 +6,9 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)](https://hub.docker.com/)
-[![MCP](https://img.shields.io/badge/MCP-compatible-purple.svg)](https://modelcontextprotocol.io)
+[![MCP 2025-03-26](https://img.shields.io/badge/MCP-2025--03--26-purple.svg)](https://modelcontextprotocol.io)
 
-AuthMCP Gateway provides centralized authentication, authorization, and monitoring for MCP servers. It acts as a secure proxy between clients and your MCP backends, adding JWT-based authentication, rate limiting, real-time monitoring, and comprehensive security logging.
+AuthMCP Gateway is a **full MCP protocol proxy** with centralized authentication, authorization, and monitoring. It transparently proxies all MCP capabilities — tools, resources, prompts, and completions — from multiple backend servers through a single authenticated endpoint.
 
 **OAuth + DCR ready:** the gateway supports OAuth 2.0 Authorization Code flow with Dynamic Client Registration (DCR), so MCP clients like Codex can self-register and authenticate without manual client provisioning.
 
@@ -29,6 +29,15 @@ AuthMCP Gateway provides centralized authentication, authorization, and monitori
 ---
 
 ## ✨ Features
+
+### 🔗 **Full MCP Protocol Proxy** (v1.2.0)
+- **Tools** - `tools/list`, `tools/call` with intelligent routing (prefix, mapping, auto-discovery)
+- **Resources** - `resources/list`, `resources/read`, `resources/templates/list`
+- **Prompts** - `prompts/list`, `prompts/get`
+- **Completions** - `completion/complete` with ref-based routing
+- **Dynamic Capabilities** - queries backends on `initialize` and advertises only what they support
+- **Multi-server aggregation** - list methods merge results from all backends; read/get/call routes to the correct one
+- **Protocol version** - MCP 2025-03-26
 
 ### 🔐 **Authentication & Authorization**
 - **OAuth 2.0 + JWT** - Industry-standard authentication flow
@@ -217,10 +226,29 @@ curl -X POST http://localhost:9105/admin/api/mcp-servers \
 
 2. **Use token to access MCP endpoints:**
    ```bash
+   # List tools from all backends
    curl -X POST http://localhost:9105/mcp \
      -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
      -H "Content-Type: application/json" \
      -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+
+   # List resources
+   curl -X POST http://localhost:9105/mcp \
+     -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"jsonrpc":"2.0","id":2,"method":"resources/list"}'
+
+   # List prompts
+   curl -X POST http://localhost:9105/mcp \
+     -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"jsonrpc":"2.0","id":3,"method":"prompts/list"}'
+
+   # Ping
+   curl -X POST http://localhost:9105/mcp \
+     -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"jsonrpc":"2.0","id":4,"method":"ping"}'
    ```
 
 ### For Administrators
@@ -242,12 +270,15 @@ curl -X POST http://localhost:9105/admin/api/mcp-servers \
                │
        ┌───────▼────────────────────────┐
        │       AuthMCP Gateway          │
+       │     MCP 2025-03-26 Proxy      │
        │                                │
-       │  • OAuth 2.0 + DCR             │
+       │  • Full MCP Protocol Proxy     │
+       │  • Tools / Resources / Prompts │
+       │  • OAuth 2.0 + DCR            │
        │  • JWT Authentication          │
        │  • Rate Limiting               │
        │  • Security Logging            │
-       │  • Request Routing             │
+       │  • Multi-Server Aggregation    │
        │  • Health Monitoring           │
        │  • Admin Dashboard             │
        └───────┬────────────────────────┘
@@ -275,6 +306,24 @@ curl -X POST http://localhost:9105/admin/api/mcp-servers \
 - `GET /mcp` - Streamable MCP endpoint (SSE/stream clients)
 - `GET /auth/me` - Current user info
 - `POST /auth/logout` - Logout
+
+### Supported MCP Methods
+
+| Method | Description |
+|--------|-------------|
+| `initialize` | Dynamic capabilities discovery from backends |
+| `ping` | Health check |
+| `tools/list` | Aggregated tools from all backends |
+| `tools/call` | Routed to correct backend (prefix/mapping/auto-discovery) |
+| `resources/list` | Aggregated resources from all backends |
+| `resources/read` | Routed by URI to owning backend |
+| `resources/templates/list` | Aggregated resource templates |
+| `prompts/list` | Aggregated prompts from all backends |
+| `prompts/get` | Routed by name to owning backend |
+| `completion/complete` | Routed by ref type (prompt/resource) |
+| `logging/setLevel` | Accepted (no-op at gateway level) |
+| `notifications/*` | Gracefully ignored |
+| Unknown methods | Returns JSON-RPC `-32601 Method not found` |
 
 ## 🤖 Codex OAuth (DCR) Login (Manual Callback)
 
