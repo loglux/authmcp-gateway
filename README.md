@@ -323,7 +323,8 @@ curl -X POST http://localhost:9105/admin/api/mcp-servers \
 | `completion/complete` | Routed by ref type (prompt/resource) |
 | `logging/setLevel` | Accepted (no-op at gateway level) |
 | `notifications/*` | Gracefully ignored |
-| Unknown methods | Returns JSON-RPC `-32601 Method not found` |
+| Direct tool name (e.g. `rag_query`) | Codex-style: routed as `tools/call` ([openai/codex#2264](https://github.com/openai/codex/pull/2264)) |
+| Unknown namespaced methods | Returns JSON-RPC `-32601 Method not found` |
 
 ## 🤖 Codex OAuth (DCR) Login (Manual Callback)
 
