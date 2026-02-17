@@ -191,6 +191,18 @@
                     </div>
                 </div>
             </div>
+            <div class="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                <div class="flex items-start gap-2">
+                    <i data-lucide="info" class="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0"></i>
+                    <div class="text-sm text-blue-800">
+                        <strong>Codex / OAuth MCP clients:</strong> Two settings are needed for Codex to connect via OAuth:
+                        <ul class="mt-1 ml-4 list-disc space-y-1">
+                            <li><strong>Allow DCR</strong> must be enabled so Codex can self-register as an OAuth client (<code class="bg-blue-100 px-1 rounded">codex mcp login</code>).</li>
+                            <li><strong>Enforce Single Session</strong> (JWT section above) should be disabled if Codex runs on multiple machines, otherwise logging in from one machine invalidates tokens on the others.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
