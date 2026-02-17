@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "authmcp-gateway"
-version = "1.1.8"
+version = "1.1.9"
 description = "Universal Authentication Gateway for MCP (Model Context Protocol) Servers"
 readme = "README.md"
 requires-python = ">=3.11"

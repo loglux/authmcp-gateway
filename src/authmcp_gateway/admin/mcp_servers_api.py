@@ -72,20 +72,20 @@ def parse_jwt_expiration(token: str) -> dict:
     return {"status": "unknown", "has_expiration": False, "message": "Not a JWT token"}
 
 
-async def api_list_mcp_servers(_: Request) -> JSONResponse:
+async def api_list_mcp_servers(request: Request) -> JSONResponse:
     """API: List all MCP servers."""
     from authmcp_gateway.mcp.store import list_mcp_servers
 
-    servers = list_mcp_servers(get_config().auth.sqlite_path)
+    servers = list_mcp_servers(get_config(request).auth.sqlite_path)
 
     return JSONResponse({"servers": servers})
 
 
-async def api_mcp_servers_token_status(_: Request) -> JSONResponse:
+async def api_mcp_servers_token_status(request: Request) -> JSONResponse:
     """API: Get token expiration status for all MCP servers."""
     from authmcp_gateway.mcp.store import list_mcp_servers
 
-    servers = list_mcp_servers(get_config().auth.sqlite_path)
+    servers = list_mcp_servers(get_config(request).auth.sqlite_path)
 
     result = []
     for server in servers:
@@ -112,7 +112,7 @@ async def api_create_mcp_server(request: Request) -> JSONResponse:
     """API: Create new MCP server."""
     from authmcp_gateway.mcp.store import create_mcp_server
 
-    _config = get_config()
+    _config = get_config(request)
     data = await request.json()
 
     server_id = create_mcp_server(
@@ -149,7 +149,7 @@ async def api_delete_mcp_server(request: Request) -> JSONResponse:
     """API: Delete MCP server."""
     from authmcp_gateway.mcp.store import delete_mcp_server
 
-    _config = get_config()
+    _config = get_config(request)
     server_id = int(request.path_params["server_id"])
 
     success = delete_mcp_server(_config.auth.sqlite_path, server_id)
@@ -171,7 +171,7 @@ async def api_update_mcp_server(request: Request) -> JSONResponse:
     """API: Update MCP server."""
     from authmcp_gateway.mcp.store import get_mcp_server, update_mcp_server
 
-    _config = get_config()
+    _config = get_config(request)
     server_id = int(request.path_params["server_id"])
     data = await request.json()
 
@@ -208,7 +208,7 @@ async def api_test_mcp_server(request: Request) -> JSONResponse:
     from authmcp_gateway.mcp.health import HealthChecker
     from authmcp_gateway.mcp.store import get_mcp_server
 
-    _config = get_config()
+    _config = get_config(request)
     server_id = int(request.path_params["server_id"])
     server = get_mcp_server(_config.auth.sqlite_path, server_id)
 
@@ -232,7 +232,7 @@ async def api_get_mcp_server_tools(request: Request) -> JSONResponse:
     from authmcp_gateway.mcp.proxy import McpProxy
     from authmcp_gateway.mcp.store import get_mcp_server
 
-    _config = get_config()
+    _config = get_config(request)
     server_id = int(request.path_params["server_id"])
     server = get_mcp_server(_config.auth.sqlite_path, server_id)
 

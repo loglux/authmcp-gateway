@@ -2,45 +2,34 @@
 
 import logging
 from dataclasses import replace
-from typing import Optional
 
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from authmcp_gateway.auth.password import hash_password, validate_password_strength
 from authmcp_gateway.auth.user_store import create_user, get_all_users
-from authmcp_gateway.config import AppConfig
 from authmcp_gateway.settings_manager import get_settings_manager
 
 logger = logging.getLogger(__name__)
 
-# Global config instance
-_config: Optional[AppConfig] = None
 
-
-def initialize(config: AppConfig) -> None:
-    """Initialize setup wizard with config."""
-    global _config
-    _config = config
-    logger.info("Setup wizard initialized")
-
-
-def is_setup_required() -> bool:
+def is_setup_required(request: Request) -> bool:
     """Check if initial setup is required (no users exist)."""
-    if _config is None:
+    config = request.app.state.config
+    if config is None:
         return False
 
     try:
-        users = get_all_users(_config.auth.sqlite_path)
+        users = get_all_users(config.auth.sqlite_path)
         return len(users) == 0
     except Exception as e:
         logger.error(f"Failed to check setup status: {e}")
         return False
 
 
-async def setup_page(_: Request) -> HTMLResponse:
+async def setup_page(request: Request) -> HTMLResponse:
     """Display setup wizard page."""
-    if not is_setup_required():
+    if not is_setup_required(request):
         return RedirectResponse(url="/admin", status_code=302)
 
     html = """
@@ -233,11 +222,10 @@ async def setup_page(_: Request) -> HTMLResponse:
 
 async def create_admin_user(request: Request) -> JSONResponse:
     """Create initial admin user."""
-    if _config is None:
-        return JSONResponse({"detail": "Config not initialized"}, status_code=500)
+    config = request.app.state.config
 
     # Check if setup is still required
-    if not is_setup_required():
+    if not is_setup_required(request):
         return JSONResponse(
             {"detail": "Setup already completed. Users exist in database."}, status_code=403
         )
@@ -255,7 +243,7 @@ async def create_admin_user(request: Request) -> JSONResponse:
             )
 
         # Validate password strength against settings (if available)
-        policy = _config.auth
+        policy = config.auth
         try:
             settings = get_settings_manager()
             policy_data = settings.get("password_policy", default={}) or {}
@@ -287,7 +275,7 @@ async def create_admin_user(request: Request) -> JSONResponse:
 
         # Create admin user
         user_id = create_user(
-            db_path=_config.auth.sqlite_path,
+            db_path=config.auth.sqlite_path,
             username=username,
             email=email,
             password_hash=password_hash,

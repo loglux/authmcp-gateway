@@ -46,7 +46,7 @@ async def api_logs(request: Request) -> JSONResponse:
 
         where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
 
-        with get_db(get_config().auth.sqlite_path, row_factory=None) as conn:
+        with get_db(get_config(request).auth.sqlite_path, row_factory=None) as conn:
             cursor = conn.cursor()
 
             # Get total count
@@ -183,7 +183,7 @@ async def api_security_events(request: Request) -> JSONResponse:
     last_hours = request.query_params.get("last_hours")
 
     events = get_security_events(
-        db_path=get_config().auth.sqlite_path,
+        db_path=get_config(request).auth.sqlite_path,
         severity=severity,
         event_type=event_type,
         limit=limit,
@@ -201,6 +201,8 @@ async def api_cleanup_db_logs(request: Request) -> JSONResponse:
     body = await request.json()
     days_to_keep = body.get("days_to_keep", 30)
 
-    result = cleanup_old_logs(db_path=get_config().auth.sqlite_path, days_to_keep=days_to_keep)
+    result = cleanup_old_logs(
+        db_path=get_config(request).auth.sqlite_path, days_to_keep=days_to_keep
+    )
 
     return JSONResponse(result)

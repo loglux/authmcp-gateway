@@ -7,7 +7,6 @@ from urllib.parse import urlparse
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from ..config import AppConfig
 from ..rate_limiter import get_rate_limiter
 from .client_store import (
     create_oauth_client,
@@ -19,20 +18,6 @@ from .models import ClientRegistrationRequest, ClientRegistrationResponse, Error
 from .user_store import log_auth_event
 
 logger = logging.getLogger(__name__)
-
-_config: Optional[AppConfig] = None
-
-
-def set_config(config: AppConfig):
-    """Set the global config for DCR endpoints."""
-    global _config
-    _config = config
-
-
-def _get_config() -> AppConfig:
-    if _config is None:
-        raise RuntimeError("Config not initialized")
-    return _config
 
 
 def _error_response(
@@ -116,7 +101,7 @@ def _registration_response(
 
 async def register_client(request: Request) -> JSONResponse:
     """POST /oauth/register - Dynamic client registration."""
-    config = _get_config()
+    config = request.app.state.config
 
     if not config.auth.allow_dcr:
         return _error_response(403, "Dynamic client registration is disabled", "DCR_DISABLED")
@@ -190,7 +175,7 @@ async def register_client(request: Request) -> JSONResponse:
 def _require_registration_token(
     request: Request, client_id: str
 ) -> Tuple[Optional[Dict[str, Any]], Optional[JSONResponse]]:
-    config = _get_config()
+    config = request.app.state.config
     token = _parse_bearer_token(request)
     if not token:
         return None, _error_response(401, "Missing registration access token", "MISSING_TOKEN")
@@ -222,7 +207,7 @@ async def get_client(request: Request) -> JSONResponse:
 
 async def update_client(request: Request) -> JSONResponse:
     """PUT /oauth/register/{client_id} - Replace client metadata."""
-    config = _get_config()
+    config = request.app.state.config
     client_id = request.path_params.get("client_id")
     if not client_id:
         return _error_response(400, "Missing client_id", "INVALID_REQUEST")
@@ -277,7 +262,7 @@ async def update_client(request: Request) -> JSONResponse:
 
 async def delete_client(request: Request) -> JSONResponse:
     """DELETE /oauth/register/{client_id} - Delete client."""
-    config = _get_config()
+    config = request.app.state.config
     client_id = request.path_params.get("client_id")
     if not client_id:
         return _error_response(400, "Missing client_id", "INVALID_REQUEST")

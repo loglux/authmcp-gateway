@@ -158,18 +158,6 @@ def create_app(config=None):
     except Exception as e:
         logger.warning(f"Failed to apply dynamic settings: {e}")
 
-    # Set global config for auth endpoints
-    auth_endpoints.set_config(config)
-    dcr_endpoints.set_config(config)
-
-    # Initialize admin routes
-    admin_routes.initialize(config)
-    admin_login.set_config(config)
-
-    # Initialize setup wizard
-    setup_wizard.initialize(config)
-    logger.info("✓ Setup wizard initialized")
-
     # Initialize token encryption
     initialize_crypto(config.jwt.secret_key)
     logger.info("✓ Token encryption initialized")
@@ -640,7 +628,8 @@ def create_app(config=None):
         ],
     )
 
-    # Store database path in app state for authorize endpoint
+    # Store config on app.state for dependency injection
+    app.state.config = config
     app.state.auth_db_path = config.auth.sqlite_path
 
     # Mount static files with cache headers

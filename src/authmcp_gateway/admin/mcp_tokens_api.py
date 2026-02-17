@@ -20,9 +20,6 @@ __all__ = [
 
 async def admin_mcp_tokens(request: Request) -> HTMLResponse:
     """Admin page: Backend MCP token management."""
-    if get_config() is None:
-        return HTMLResponse("<h1>Error: Config not initialized</h1>", status_code=500)
-
     return render_template("admin/mcp_tokens.html")
 
 
@@ -31,7 +28,7 @@ async def api_get_token_statuses(request: Request) -> JSONResponse:
     """API: Get token status for all MCP servers."""
     from authmcp_gateway.mcp.store import list_mcp_servers
 
-    servers = list_mcp_servers(get_config().auth.sqlite_path, enabled_only=False)
+    servers = list_mcp_servers(get_config(request).auth.sqlite_path, enabled_only=False)
 
     token_statuses = []
     for server in servers:
@@ -93,7 +90,7 @@ async def api_get_token_audit_logs(request: Request) -> JSONResponse:
         server_id = int(server_id)
 
     logs = get_token_audit_logs(
-        db_path=get_config().auth.sqlite_path, mcp_server_id=server_id, limit=limit
+        db_path=get_config(request).auth.sqlite_path, mcp_server_id=server_id, limit=limit
     )
 
     return JSONResponse(logs)

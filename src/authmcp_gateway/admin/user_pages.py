@@ -25,7 +25,7 @@ async def user_portal(request: Request) -> HTMLResponse:
     from authmcp_gateway.auth.jwt_handler import verify_token
     from authmcp_gateway.auth.user_store import get_user_by_id
 
-    _config = get_config()
+    _config = get_config(request)
     token = request.cookies.get("user_token")
     if not token:
         return RedirectResponse(url="/login", status_code=302)
@@ -49,7 +49,7 @@ async def user_portal(request: Request) -> HTMLResponse:
     return render_template("user_portal.html", username=username)
 
 
-async def user_login_page(_: Request) -> HTMLResponse:
+async def user_login_page(request: Request) -> HTMLResponse:
     """User login page (non-admin)."""
     return render_template("user_login.html")
 
@@ -64,7 +64,7 @@ async def user_login_api(request: Request) -> JSONResponse:
         update_last_login,
     )
 
-    _config = get_config()
+    _config = get_config(request)
     body = await request.json()
     username = body.get("username")
     password = body.get("password")
@@ -112,7 +112,7 @@ async def user_login_api(request: Request) -> JSONResponse:
     return response
 
 
-async def user_logout(_: Request) -> Response:
+async def user_logout(request: Request) -> Response:
     """Clear user session cookie."""
     response = RedirectResponse(url="/login", status_code=302)
     response.delete_cookie("user_token")
@@ -125,7 +125,7 @@ async def user_account_token(request: Request) -> JSONResponse:
     from authmcp_gateway.auth.token_service import get_or_create_admin_token
     from authmcp_gateway.auth.user_store import get_user_by_id, is_token_blacklisted
 
-    _config = get_config()
+    _config = get_config(request)
     token = request.cookies.get("user_token")
     if not token:
         return JSONResponse({"detail": "Not authenticated"}, status_code=401)
@@ -176,7 +176,7 @@ async def user_account_rotate_token(request: Request) -> JSONResponse:
     from authmcp_gateway.auth.token_service import rotate_admin_token
     from authmcp_gateway.auth.user_store import is_token_blacklisted
 
-    _config = get_config()
+    _config = get_config(request)
     token = request.cookies.get("user_token")
     if not token:
         return JSONResponse({"detail": "Not authenticated"}, status_code=401)
@@ -226,7 +226,7 @@ async def user_account_info(request: Request) -> JSONResponse:
     from authmcp_gateway.auth.user_store import get_user_by_id, is_token_blacklisted
     from authmcp_gateway.mcp.store import list_mcp_servers
 
-    _config = get_config()
+    _config = get_config(request)
     token = request.cookies.get("user_token")
     if not token:
         return JSONResponse({"detail": "Not authenticated"}, status_code=401)

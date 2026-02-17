@@ -29,11 +29,11 @@ __all__ = [
 ]
 
 
-async def api_stats(_: Request) -> JSONResponse:
+async def api_stats(request: Request) -> JSONResponse:
     """Get dashboard statistics."""
     from authmcp_gateway.db import get_db
 
-    _config = get_config()
+    _config = get_config(request)
     with get_db(_config.auth.sqlite_path, row_factory=None) as conn:
         cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM users")
@@ -68,16 +68,16 @@ async def api_stats(_: Request) -> JSONResponse:
 
 
 @api_error_handler
-async def api_users(_: Request) -> JSONResponse:
+async def api_users(request: Request) -> JSONResponse:
     """Get all users."""
-    users = get_all_users(get_config().auth.sqlite_path)
+    users = get_all_users(get_config(request).auth.sqlite_path)
     return JSONResponse(users)
 
 
 @api_error_handler
 async def api_get_user_mcp_permissions(request: Request) -> JSONResponse:
     """Get MCP server access permissions for a user."""
-    _config = get_config()
+    _config = get_config(request)
     user_id = int(request.path_params["user_id"])
 
     user = get_user_by_id(_config.auth.sqlite_path, user_id)
@@ -113,7 +113,7 @@ async def api_get_user_mcp_permissions(request: Request) -> JSONResponse:
 @api_error_handler
 async def api_set_user_mcp_permission(request: Request) -> JSONResponse:
     """Set MCP server access permission for a user."""
-    _config = get_config()
+    _config = get_config(request)
     user_id = int(request.path_params["user_id"])
     body = await request.json()
     server_id = body.get("server_id")
@@ -149,7 +149,7 @@ async def api_create_user(request: Request) -> JSONResponse:
     from authmcp_gateway.auth.user_store import create_user
     from authmcp_gateway.settings_manager import get_settings_manager
 
-    _config = get_config()
+    _config = get_config(request)
     body = await request.json()
     username = body.get("username")
     email = body.get("email")
@@ -226,7 +226,7 @@ async def api_create_user(request: Request) -> JSONResponse:
 @api_error_handler
 async def api_update_user_status(request: Request) -> Response:
     """Update user active status."""
-    _config = get_config()
+    _config = get_config(request)
     user_id = int(request.path_params["user_id"])
     body = await request.json()
     is_active = body.get("is_active", True)
@@ -254,7 +254,7 @@ async def api_update_user_status(request: Request) -> Response:
 async def api_make_superuser(request: Request) -> Response:
     """Make user a superuser."""
     user_id = int(request.path_params["user_id"])
-    make_user_superuser(get_config().auth.sqlite_path, user_id)
+    make_user_superuser(get_config(request).auth.sqlite_path, user_id)
     return Response(status_code=200)
 
 
@@ -263,7 +263,7 @@ async def api_delete_user(request: Request) -> JSONResponse:
     """Delete user."""
     from authmcp_gateway.auth.user_store import delete_user
 
-    _config = get_config()
+    _config = get_config(request)
     user_id = int(request.path_params["user_id"])
 
     # Safety check: prevent deleting the last active superuser

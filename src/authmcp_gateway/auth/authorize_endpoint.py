@@ -7,7 +7,6 @@ from urllib.parse import urlencode, urlparse
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse, Response
 
-from ..config import get_config
 from ..rate_limiter import get_rate_limiter
 from .client_store import (
     get_oauth_client_by_client_id,
@@ -67,7 +66,7 @@ async def authorize_page(request: Request) -> Response:
 
     # Enforce registered clients if DCR is enabled
     try:
-        config = get_config()
+        config = request.app.state.config
         if config.auth.allow_dcr:
             client = get_oauth_client_by_client_id(config.auth.sqlite_path, client_id)
             if not client:
@@ -93,7 +92,7 @@ async def authorize_page(request: Request) -> Response:
             request, client_id, redirect_uri, code_challenge, code_challenge_method, state, scope
         )
         try:
-            config = get_config()
+            config = request.app.state.config
             update_oauth_client_last_seen(
                 config.auth.sqlite_path,
                 client_id,
@@ -286,12 +285,11 @@ async def _process_login(
     scope: str,
 ) -> Response:
     """Process login and generate authorization code."""
-    # Get database path from app state
-    db_path = request.app.state.auth_db_path
+    config = request.app.state.config
+    db_path = config.auth.sqlite_path
 
     # Rate limiting check
     try:
-        config = get_config()
         if config.rate_limit.enabled:
             limiter = get_rate_limiter()
             client_ip = request.client.host if request.client else "unknown"

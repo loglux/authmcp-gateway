@@ -31,7 +31,7 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
 
         # Skip auth for setup wizard if setup is required
         if path.startswith("/setup"):
-            if is_setup_required():
+            if is_setup_required(request):
                 return await call_next(request)
             # If setup not required, redirect to admin
             if path == "/setup":
@@ -46,7 +46,7 @@ class AdminAuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # If setup required, redirect to setup
-        if is_setup_required():
+        if is_setup_required(request):
             if path.startswith("/admin/api/"):
                 return JSONResponse(
                     {"detail": "Setup required. Please complete initial setup first."},

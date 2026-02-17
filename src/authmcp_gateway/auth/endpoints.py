@@ -55,21 +55,8 @@ from .user_store import (
 
 logger = logging.getLogger(__name__)
 
-# Global config - will be injected at startup
-_config: Optional[AppConfig] = None
 
-
-def set_config(config: AppConfig):
-    """Set global config for endpoints.
-
-    Args:
-        config: Application configuration
-    """
-    global _config
-    _config = config
-
-
-def _get_token_ttl() -> Tuple[int, int]:
+def _get_token_ttl(config) -> Tuple[int, int]:
     """Get token TTL values from settings manager.
 
     Returns:
@@ -82,22 +69,7 @@ def _get_token_ttl() -> Tuple[int, int]:
         return access_ttl, refresh_ttl
     except Exception:
         # Fallback to config if settings manager not available
-        config = _get_config()
         return config.jwt.access_token_expire_minutes, config.jwt.refresh_token_expire_days
-
-
-def _get_config() -> AppConfig:
-    """Get the global config or raise error if not set.
-
-    Returns:
-        AppConfig: The application configuration
-
-    Raises:
-        RuntimeError: If config has not been set
-    """
-    if _config is None:
-        raise RuntimeError("Config not initialized. Call set_config() first.")
-    return _config
 
 
 def _get_password_policy(config: AppConfig):
@@ -205,7 +177,7 @@ async def register(request: Request) -> JSONResponse:
     Returns:
         JSONResponse: 201 with UserResponse on success, error response otherwise
     """
-    config = _get_config()
+    config = request.app.state.config
     db_path = config.auth.sqlite_path
 
     # Check if registration is allowed
@@ -334,7 +306,7 @@ async def login(request: Request) -> JSONResponse:
     Returns:
         JSONResponse: 200 with TokenResponse on success, error response otherwise
     """
-    config = _get_config()
+    config = request.app.state.config
     db_path = config.auth.sqlite_path
 
     # Parse request body
@@ -418,7 +390,7 @@ async def login(request: Request) -> JSONResponse:
         return _error_response(403, "Account is disabled", "ACCOUNT_DISABLED")
 
     # Create access and refresh tokens with dynamic TTL from settings
-    access_ttl, refresh_ttl = _get_token_ttl()
+    access_ttl, refresh_ttl = _get_token_ttl(config)
     try:
         access_token = create_access_token(
             user_id=user["id"],
@@ -495,7 +467,7 @@ async def refresh(request: Request) -> JSONResponse:
     Returns:
         JSONResponse: 200 with TokenResponse on success, error response otherwise
     """
-    config = _get_config()
+    config = request.app.state.config
     db_path = config.auth.sqlite_path
 
     # Parse request body
@@ -549,7 +521,7 @@ async def refresh(request: Request) -> JSONResponse:
         return _error_response(403, "Account is disabled", "ACCOUNT_DISABLED")
 
     # Create new access token with dynamic TTL from settings
-    access_ttl, _ = _get_token_ttl()
+    access_ttl, _ = _get_token_ttl(config)
     try:
         access_token = create_access_token(
             user_id=user["id"],
@@ -594,7 +566,7 @@ async def logout(request: Request) -> JSONResponse:
     Returns:
         JSONResponse: 200 with success message on success, error response otherwise
     """
-    config = _get_config()
+    config = request.app.state.config
     db_path = config.auth.sqlite_path
 
     # Parse request body
@@ -669,7 +641,7 @@ async def me(request: Request) -> JSONResponse:
     Returns:
         JSONResponse: 200 with UserResponse on success, error response otherwise
     """
-    config = _get_config()
+    config = request.app.state.config
     db_path = config.auth.sqlite_path
 
     # Extract token from Authorization header
@@ -741,16 +713,7 @@ async def oauth_token(request: Request) -> JSONResponse:
     - application/x-www-form-urlencoded (OAuth2 standard, Claude Desktop)
     - application/json (easier for special characters in passwords)
     """
-    # Check if config is initialized
-    if _config is None:
-        logger.error("OAuth token endpoint called but config not initialized")
-        return JSONResponse(
-            status_code=500,
-            content={
-                "error": "server_error",
-                "error_description": "Server configuration not initialized",
-            },
-        )
+    config = request.app.state.config
 
     try:
         # Parse request data (support both form-data and JSON)
@@ -767,7 +730,7 @@ async def oauth_token(request: Request) -> JSONResponse:
             grant_type = form_data.get("grant_type")
 
         logger.info(f"OAuth token request: grant_type={grant_type}")
-        logger.debug(f"DB path: {_config.auth.sqlite_path}")
+        logger.debug(f"DB path: {config.auth.sqlite_path}")
 
         if not grant_type:
             return JSONResponse(
@@ -795,15 +758,15 @@ async def oauth_token(request: Request) -> JSONResponse:
                 )
 
             # Rate limiting check
-            if _config.rate_limit.enabled:
+            if config.rate_limit.enabled:
                 limiter = get_rate_limiter()
                 client_ip = request.client.host if request.client else "unknown"
                 identifier = f"oauth_login:{client_ip}"
 
                 allowed, retry_after = limiter.check_limit(
                     identifier=identifier,
-                    limit=_config.rate_limit.login_limit,
-                    window=_config.rate_limit.login_window,
+                    limit=config.rate_limit.login_limit,
+                    window=config.rate_limit.login_window,
                 )
 
                 if not allowed:
@@ -819,11 +782,11 @@ async def oauth_token(request: Request) -> JSONResponse:
                     )
 
             # Get user from database
-            user = get_user_by_username(_config.auth.sqlite_path, username)
+            user = get_user_by_username(config.auth.sqlite_path, username)
             if not user:
                 logger.warning(f"OAuth login failed: invalid credentials - {username}")
                 log_auth_event(
-                    _config.auth.sqlite_path,
+                    config.auth.sqlite_path,
                     "mcp_oauth_error",
                     None,
                     username,
@@ -844,7 +807,7 @@ async def oauth_token(request: Request) -> JSONResponse:
             if not verify_password(password, user["password_hash"]):
                 logger.warning(f"OAuth login failed: invalid credentials - {username}")
                 log_auth_event(
-                    _config.auth.sqlite_path,
+                    config.auth.sqlite_path,
                     "mcp_oauth_error",
                     user["id"],
                     username,
@@ -873,15 +836,15 @@ async def oauth_token(request: Request) -> JSONResponse:
                 )
 
             # Create tokens with dynamic TTL from settings
-            access_ttl, refresh_ttl = _get_token_ttl()
+            access_ttl, refresh_ttl = _get_token_ttl(config)
             access_token = create_access_token(
                 user["id"],
                 user["username"],
                 bool(user["is_superuser"]),
-                _config.jwt,
+                config.jwt,
                 expire_minutes=access_ttl,
             )
-            refresh_token = create_refresh_token(user["id"], _config.jwt, expire_days=refresh_ttl)
+            refresh_token = create_refresh_token(user["id"], config.jwt, expire_days=refresh_ttl)
 
             # Save refresh token (hash full token, consistent with /auth/login)
             from datetime import datetime, timezone
@@ -890,14 +853,14 @@ async def oauth_token(request: Request) -> JSONResponse:
             refresh_payload = decode_token_unsafe(refresh_token)
             expires_at = datetime.fromtimestamp(refresh_payload["exp"], tz=timezone.utc)
 
-            save_refresh_token(_config.auth.sqlite_path, user["id"], refresh_hash, expires_at)
+            save_refresh_token(config.auth.sqlite_path, user["id"], refresh_hash, expires_at)
 
             # Update current access token JTI in database
             access_jti = get_token_jti(access_token)
             access_payload = decode_token_unsafe(access_token)
             access_expires_at = datetime.fromtimestamp(access_payload["exp"], tz=timezone.utc)
             upsert_user_access_token(
-                _config.auth.sqlite_path,
+                config.auth.sqlite_path,
                 user["id"],
                 "",  # Don't store full token
                 access_jti,
@@ -905,11 +868,11 @@ async def oauth_token(request: Request) -> JSONResponse:
             )
 
             # Update last login
-            update_last_login(_config.auth.sqlite_path, user["id"])
+            update_last_login(config.auth.sqlite_path, user["id"])
 
             # Log success
             log_auth_event(
-                _config.auth.sqlite_path,
+                config.auth.sqlite_path,
                 "mcp_oauth_token",
                 user["id"],
                 username,
@@ -927,7 +890,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 content={
                     "access_token": access_token,
                     "token_type": "bearer",
-                    "expires_in": _config.jwt.access_token_expire_minutes * 60,
+                    "expires_in": config.jwt.access_token_expire_minutes * 60,
                     "refresh_token": refresh_token,
                 },
             )
@@ -951,7 +914,7 @@ async def oauth_token(request: Request) -> JSONResponse:
 
             # Verify refresh token
             try:
-                verify_token(refresh_token_value, "refresh", _config.jwt)
+                verify_token(refresh_token_value, "refresh", config.jwt)
             except jwt.ExpiredSignatureError:
                 logger.warning("OAuth refresh failed: token expired")
                 return JSONResponse(
@@ -973,7 +936,7 @@ async def oauth_token(request: Request) -> JSONResponse:
 
             # Verify refresh token is not revoked (hash full token, consistent with /auth/login)
             refresh_hash = hash_token(refresh_token_value)
-            user_id = verify_refresh_token(_config.auth.sqlite_path, refresh_hash)
+            user_id = verify_refresh_token(config.auth.sqlite_path, refresh_hash)
 
             if not user_id:
                 logger.warning("OAuth refresh failed: token revoked or not found")
@@ -986,7 +949,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 )
 
             # Get user info
-            user = get_user_by_id(_config.auth.sqlite_path, user_id)
+            user = get_user_by_id(config.auth.sqlite_path, user_id)
             if not user or not user["is_active"]:
                 return JSONResponse(
                     status_code=403,
@@ -997,12 +960,12 @@ async def oauth_token(request: Request) -> JSONResponse:
                 )
 
             # Create new access token with dynamic TTL from settings
-            access_ttl, _ = _get_token_ttl()
+            access_ttl, _ = _get_token_ttl(config)
             new_access_token = create_access_token(
                 user["id"],
                 user["username"],
                 bool(user["is_superuser"]),
-                _config.jwt,
+                config.jwt,
                 expire_minutes=access_ttl,
             )
 
@@ -1013,7 +976,7 @@ async def oauth_token(request: Request) -> JSONResponse:
             access_payload = decode_token_unsafe(new_access_token)
             access_expires_at = datetime.fromtimestamp(access_payload["exp"], tz=timezone.utc)
             upsert_user_access_token(
-                _config.auth.sqlite_path,
+                config.auth.sqlite_path,
                 user["id"],
                 "",  # Don't store full token
                 access_jti,
@@ -1024,7 +987,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 if refresh_client_id:
                     issued_at = datetime.fromtimestamp(access_payload["iat"], tz=timezone.utc)
                     update_oauth_client_token_meta(
-                        _config.auth.sqlite_path,
+                        config.auth.sqlite_path,
                         refresh_client_id,
                         issued_at.isoformat(),
                         access_expires_at.isoformat(),
@@ -1040,7 +1003,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 content={
                     "access_token": new_access_token,
                     "token_type": "bearer",
-                    "expires_in": _config.jwt.access_token_expire_minutes * 60,
+                    "expires_in": config.jwt.access_token_expire_minutes * 60,
                 },
             )
 
@@ -1063,7 +1026,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 )
 
             # Enforce registered clients when DCR is enabled
-            if _config.auth.allow_dcr:
+            if config.auth.allow_dcr:
                 if not client_id or not redirect_uri:
                     return JSONResponse(
                         status_code=400,
@@ -1072,7 +1035,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                             "error_description": "Missing client_id or redirect_uri",
                         },
                     )
-                client = get_oauth_client_by_client_id(_config.auth.sqlite_path, client_id)
+                client = get_oauth_client_by_client_id(config.auth.sqlite_path, client_id)
                 if not client:
                     return JSONResponse(
                         status_code=401,
@@ -1120,7 +1083,7 @@ async def oauth_token(request: Request) -> JSONResponse:
 
             # Verify authorization code and get user info
             code_info = verify_authorization_code(
-                db_path=_config.auth.sqlite_path,
+                db_path=config.auth.sqlite_path,
                 code=code,
                 client_id=client_id or "",
                 redirect_uri=redirect_uri or "",
@@ -1130,7 +1093,7 @@ async def oauth_token(request: Request) -> JSONResponse:
             if not code_info:
                 logger.warning("Invalid or expired authorization code")
                 log_auth_event(
-                    _config.auth.sqlite_path,
+                    config.auth.sqlite_path,
                     "mcp_oauth_error",
                     username=None,
                     ip_address=request.client.host if request.client else None,
@@ -1147,11 +1110,11 @@ async def oauth_token(request: Request) -> JSONResponse:
                 )
 
             # Get user
-            user = get_user_by_id(_config.auth.sqlite_path, code_info["user_id"])
+            user = get_user_by_id(config.auth.sqlite_path, code_info["user_id"])
             if not user:
                 logger.error(f"User not found for id {code_info['user_id']}")
                 log_auth_event(
-                    _config.auth.sqlite_path,
+                    config.auth.sqlite_path,
                     "mcp_oauth_error",
                     user_id=code_info.get("user_id"),
                     username=None,
@@ -1170,14 +1133,14 @@ async def oauth_token(request: Request) -> JSONResponse:
                 user_id=user["id"],
                 username=user["username"],
                 is_superuser=user["is_superuser"],
-                config=_config.jwt,
+                config=config.jwt,
             )
 
             # Update client last seen info
             try:
                 if client_id:
                     update_oauth_client_last_seen(
-                        _config.auth.sqlite_path,
+                        config.auth.sqlite_path,
                         client_id,
                         request.client.host if request.client else None,
                         request.headers.get("user-agent"),
@@ -1185,7 +1148,7 @@ async def oauth_token(request: Request) -> JSONResponse:
             except Exception as e:
                 logger.debug(f"Failed to update client last_seen: {e}")
 
-            refresh_token = create_refresh_token(user_id=user["id"], config=_config.jwt)
+            refresh_token = create_refresh_token(user_id=user["id"], config=config.jwt)
 
             # Save refresh token (hash full token, consistent with /auth/login)
             from datetime import datetime, timezone
@@ -1194,14 +1157,14 @@ async def oauth_token(request: Request) -> JSONResponse:
             refresh_payload = decode_token_unsafe(refresh_token)
             expires_at = datetime.fromtimestamp(refresh_payload["exp"], tz=timezone.utc)
 
-            save_refresh_token(_config.auth.sqlite_path, user["id"], refresh_hash, expires_at)
+            save_refresh_token(config.auth.sqlite_path, user["id"], refresh_hash, expires_at)
 
             # Update current access token JTI in database
             access_jti = get_token_jti(access_token)
             access_payload = decode_token_unsafe(access_token)
             access_expires_at = datetime.fromtimestamp(access_payload["exp"], tz=timezone.utc)
             upsert_user_access_token(
-                _config.auth.sqlite_path,
+                config.auth.sqlite_path,
                 user["id"],
                 "",  # Don't store full token
                 access_jti,
@@ -1211,7 +1174,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 if client_id:
                     issued_at = datetime.fromtimestamp(access_payload["iat"], tz=timezone.utc)
                     update_oauth_client_token_meta(
-                        _config.auth.sqlite_path,
+                        config.auth.sqlite_path,
                         client_id,
                         issued_at.isoformat(),
                         access_expires_at.isoformat(),
@@ -1220,11 +1183,11 @@ async def oauth_token(request: Request) -> JSONResponse:
                 logger.debug(f"Failed to update client token meta: {e}")
 
             # Update last login
-            update_last_login(_config.auth.sqlite_path, user["id"])
+            update_last_login(config.auth.sqlite_path, user["id"])
 
             # Log success
             log_auth_event(
-                _config.auth.sqlite_path,
+                config.auth.sqlite_path,
                 "mcp_oauth_token",
                 user["id"],
                 user["username"],
@@ -1242,7 +1205,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 content={
                     "access_token": access_token,
                     "token_type": "bearer",
-                    "expires_in": _config.jwt.access_token_expire_minutes * 60,
+                    "expires_in": config.jwt.access_token_expire_minutes * 60,
                     "refresh_token": refresh_token,
                 },
             )

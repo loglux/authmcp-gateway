@@ -11,14 +11,6 @@ from authmcp_gateway.rate_limiter import get_rate_limiter
 
 logger = logging.getLogger(__name__)
 
-_config = None
-
-
-def set_config(config):
-    """Set global config."""
-    global _config
-    _config = config
-
 
 async def admin_login_page(request: Request) -> HTMLResponse:
     """Admin login page."""
@@ -160,6 +152,7 @@ async def admin_login_page(request: Request) -> HTMLResponse:
 
 async def admin_login_api(request: Request) -> Response:
     """Process admin login."""
+    config = request.app.state.config
     try:
         data = await request.json()
         username = data.get("username")
@@ -169,15 +162,15 @@ async def admin_login_api(request: Request) -> Response:
             return JSONResponse({"detail": "Username and password required"}, status_code=400)
 
         # Rate limiting check
-        if _config.rate_limit.enabled:
+        if config.rate_limit.enabled:
             limiter = get_rate_limiter()
             client_ip = request.client.host if request.client else "unknown"
             identifier = f"admin_login:{client_ip}"
 
             allowed, retry_after = limiter.check_limit(
                 identifier=identifier,
-                limit=_config.rate_limit.login_limit,
-                window=_config.rate_limit.login_window,
+                limit=config.rate_limit.login_limit,
+                window=config.rate_limit.login_window,
             )
 
             if not allowed:
@@ -192,11 +185,11 @@ async def admin_login_api(request: Request) -> Response:
                 )
 
         # Get user
-        user = get_user_by_username(_config.auth.sqlite_path, username)
+        user = get_user_by_username(config.auth.sqlite_path, username)
         if not user:
             logger.warning(f"Admin login failed: invalid credentials - {username}")
             log_auth_event(
-                db_path=_config.auth.sqlite_path,
+                db_path=config.auth.sqlite_path,
                 event_type="admin_login",
                 username=username,
                 ip_address=request.client.host if request.client else None,
@@ -210,7 +203,7 @@ async def admin_login_api(request: Request) -> Response:
         if not user.get("is_superuser"):
             logger.warning(f"Admin login failed: not superuser - {username}")
             log_auth_event(
-                db_path=_config.auth.sqlite_path,
+                db_path=config.auth.sqlite_path,
                 event_type="admin_login",
                 user_id=user["id"],
                 username=username,
@@ -228,7 +221,7 @@ async def admin_login_api(request: Request) -> Response:
         if not verify_password(password, user["password_hash"]):
             logger.warning(f"Admin login failed: invalid credentials - {username}")
             log_auth_event(
-                db_path=_config.auth.sqlite_path,
+                db_path=config.auth.sqlite_path,
                 event_type="admin_login",
                 user_id=user["id"],
                 username=username,
@@ -243,7 +236,7 @@ async def admin_login_api(request: Request) -> Response:
         if not user.get("is_active"):
             logger.warning(f"Admin login failed: inactive user - {username}")
             log_auth_event(
-                db_path=_config.auth.sqlite_path,
+                db_path=config.auth.sqlite_path,
                 event_type="admin_login",
                 user_id=user["id"],
                 username=username,
@@ -257,21 +250,21 @@ async def admin_login_api(request: Request) -> Response:
         from authmcp_gateway.auth.token_service import get_or_create_admin_token
 
         access_token, _ = get_or_create_admin_token(
-            _config.auth.sqlite_path,
+            config.auth.sqlite_path,
             user["id"],
             user["username"],
             True,
-            _config.jwt,
-            _config.jwt.admin_token_expire_minutes,
+            config.jwt,
+            config.jwt.admin_token_expire_minutes,
             current_token=request.cookies.get("admin_token"),
         )
 
         # Update last login
-        update_last_login(_config.auth.sqlite_path, user["id"])
+        update_last_login(config.auth.sqlite_path, user["id"])
 
         # Log successful login
         log_auth_event(
-            db_path=_config.auth.sqlite_path,
+            db_path=config.auth.sqlite_path,
             event_type="admin_login",
             user_id=user["id"],
             username=username,
@@ -298,7 +291,7 @@ async def admin_login_api(request: Request) -> Response:
             httponly=True,
             secure=is_https,  # Based on current request, not config
             samesite="lax",
-            max_age=_config.jwt.admin_token_expire_minutes * 60,
+            max_age=config.jwt.admin_token_expire_minutes * 60,
         )
 
         return response

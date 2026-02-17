@@ -9,7 +9,7 @@ use the ``admin_routes.function_name`` pattern unchanged.
 import logging
 from functools import wraps
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable
 
 from jinja2 import Environment, FileSystemLoader
 from starlette.requests import Request
@@ -37,25 +37,13 @@ def requires_admin(func):
 TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
 jinja_env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)), autoescape=True)
 
-# Global config instance
-_config: Optional[AppConfig] = None
 
+def get_config(request: Request) -> AppConfig:
+    """Return the config instance from app state.
 
-def initialize(config: AppConfig) -> None:
-    """Initialize admin routes with config."""
-    global _config
-    _config = config
-    logger.info("Admin routes initialized")
-
-
-def get_config() -> AppConfig:
-    """Return the live config instance.
-
-    Submodules must call this at *runtime* instead of importing ``_config``
-    directly, because ``from routes import _config`` copies the ``None``
-    reference at import time and never sees later updates from ``initialize()``.
+    Submodules call this at *runtime* to access the live AppConfig.
     """
-    return _config
+    return request.app.state.config
 
 
 def render_template(template_name: str, **context) -> HTMLResponse:
@@ -77,7 +65,6 @@ def api_error_handler(func: Callable) -> Callable:
     """Decorator for consistent error handling in admin API endpoints.
 
     Handles:
-    - Config initialization check
     - Exception catching and logging
     - Consistent error response format
 
@@ -90,16 +77,9 @@ def api_error_handler(func: Callable) -> Callable:
 
     @wraps(func)
     async def wrapper(*args, **kwargs) -> JSONResponse:
-        # Check if config is initialized
-        if _config is None:
-            logger.error(f"{func.__name__}: Config not initialized")
-            return JSONResponse({"error": "Config not initialized"}, status_code=500)
-
         try:
-            # Call the actual function
             return await func(*args, **kwargs)
         except Exception as e:
-            # Log the error with context
             logger.exception(f"{func.__name__} failed: {e}")
             return JSONResponse({"error": str(e)}, status_code=500)
 

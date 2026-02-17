@@ -56,7 +56,7 @@ async def admin_mcp_requests_api(request: Request) -> JSONResponse:
         success = success_param.lower() == "true"
 
     requests = get_mcp_requests(
-        db_path=get_config().auth.sqlite_path,
+        db_path=get_config(request).auth.sqlite_path,
         limit=limit,
         last_seconds=last_seconds,
         method=method,
@@ -72,7 +72,7 @@ async def api_mcp_stats(request: Request) -> JSONResponse:
     from authmcp_gateway.mcp.store import list_mcp_servers
     from authmcp_gateway.security.logger import get_mcp_request_stats
 
-    _config = get_config()
+    _config = get_config(request)
     last_hours = int(request.query_params.get("last_hours", "24"))
     include_top_tools = request.query_params.get("include_top_tools", "false").lower() == "true"
 

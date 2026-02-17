@@ -24,7 +24,7 @@ __all__ = [
 
 async def admin_settings(request: Request) -> HTMLResponse:
     """Admin settings page with current user's access token."""
-    _config = get_config()
+    _config = get_config(request)
     # Get current user from request state (set by AdminAuthMiddleware)
     user_id = request.state.user_id
     username = request.state.username
@@ -59,7 +59,7 @@ async def admin_settings(request: Request) -> HTMLResponse:
 @api_error_handler
 async def api_admin_access_token(request: Request) -> JSONResponse:
     """API: Get current admin access token."""
-    _config = get_config()
+    _config = get_config(request)
     user_id = request.state.user_id
     username = request.state.username
     is_superuser = request.state.is_superuser
@@ -82,7 +82,7 @@ async def api_admin_access_token(request: Request) -> JSONResponse:
 @api_error_handler
 async def api_admin_rotate_token(request: Request) -> JSONResponse:
     """API: Rotate admin access token."""
-    _config = get_config()
+    _config = get_config(request)
     user_id = request.state.user_id
     username = request.state.username
     is_superuser = request.state.is_superuser
@@ -114,7 +114,7 @@ async def api_admin_rotate_token(request: Request) -> JSONResponse:
     return response
 
 
-async def api_get_settings(_: Request) -> JSONResponse:
+async def api_get_settings(request: Request) -> JSONResponse:
     """Get current settings."""
     from authmcp_gateway.settings_manager import get_settings_manager
 
@@ -127,7 +127,7 @@ async def api_save_settings(request: Request) -> JSONResponse:
     """Save settings."""
     from authmcp_gateway.settings_manager import get_settings_manager
 
-    _config = get_config()
+    _config = get_config(request)
     settings_manager = get_settings_manager()
 
     body = await request.json()
@@ -250,11 +250,11 @@ async def api_save_settings(request: Request) -> JSONResponse:
 
 
 @api_error_handler
-async def api_list_oauth_clients(_: Request) -> JSONResponse:
+async def api_list_oauth_clients(request: Request) -> JSONResponse:
     """List OAuth clients."""
     from authmcp_gateway.auth.client_store import list_oauth_clients
 
-    clients = list_oauth_clients(get_config().auth.sqlite_path)
+    clients = list_oauth_clients(get_config(request).auth.sqlite_path)
     return JSONResponse(clients)
 
 
@@ -264,7 +264,7 @@ async def api_rotate_oauth_client_token(request: Request) -> JSONResponse:
     client_id = request.path_params["client_id"]
     from authmcp_gateway.auth.client_store import rotate_registration_token
 
-    new_token = rotate_registration_token(get_config().auth.sqlite_path, client_id)
+    new_token = rotate_registration_token(get_config(request).auth.sqlite_path, client_id)
     if not new_token:
         return JSONResponse({"error": "Client not found"}, status_code=404)
     return JSONResponse({"registration_access_token": new_token})
@@ -276,7 +276,7 @@ async def api_delete_oauth_client(request: Request) -> JSONResponse:
     client_id = request.path_params["client_id"]
     from authmcp_gateway.auth.client_store import delete_oauth_client
 
-    deleted = delete_oauth_client(get_config().auth.sqlite_path, client_id)
+    deleted = delete_oauth_client(get_config(request).auth.sqlite_path, client_id)
     if not deleted:
         return JSONResponse({"error": "Client not found"}, status_code=404)
     return JSONResponse({"success": True})
