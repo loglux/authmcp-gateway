@@ -182,6 +182,14 @@
                         <p class="text-sm text-gray-600">Require authentication for all MCP endpoints</p>
                     </div>
                 </div>
+                <div class="flex items-start">
+                    <input type="checkbox" id="allowDcr"
+                           class="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500 mt-1">
+                    <div class="ml-3">
+                        <label for="allowDcr" class="font-medium text-gray-900">Allow Dynamic Client Registration (DCR)</label>
+                        <p class="text-sm text-gray-600">Enable /oauth/register for MCP clients like Codex to self-register OAuth clients</p>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -297,6 +305,7 @@
                     const system = settings.system || {};
                     document.getElementById('allowRegistration').checked = system.allow_registration !== false;
                     document.getElementById('authRequired').checked = system.auth_required !== false;
+                    document.getElementById('allowDcr').checked = system.allow_dcr === true;
 
                     // Rate limits
                     const rl = settings.rate_limit || {};
@@ -340,7 +349,8 @@
                     },
                     system: {
                         allow_registration: document.getElementById('allowRegistration').checked,
-                        auth_required: document.getElementById('authRequired').checked
+                        auth_required: document.getElementById('authRequired').checked,
+                        allow_dcr: document.getElementById('allowDcr').checked
                     },
                     rate_limit: {
                         mcp_limit: parseIntStrict('mcpLimit', 1, 10000, 'MCP request limit'),

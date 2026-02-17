@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 
 import httpx
 
-from .proxy import get_auth_headers
+from .proxy import get_auth_headers, parse_sse_response
 from .store import list_mcp_servers, update_server_health
 
 logger = logging.getLogger(__name__)
@@ -29,6 +29,7 @@ class HealthChecker:
         self.timeout = timeout
         self._running = False
         self._task = None
+        self._session_ids: Dict[int, str] = {}  # server_id → mcp-session-id
 
     def start(self):
         """Start health checking background task."""
@@ -117,13 +118,39 @@ class HealthChecker:
 
             # Ping server with tools/list request
             async with httpx.AsyncClient(timeout=self.timeout) as client:
+                # Include mcp-session-id if we have one
+                session_id = self._session_ids.get(server_id)
+                if session_id:
+                    headers["mcp-session-id"] = session_id
+
                 response = await client.post(
                     server_url,
                     json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
                     headers=headers,
                 )
 
-                # Handle 401 with token refresh (NEW)
+                # Handle 400 "no valid session" — initialize first
+                if response.status_code == 400:
+                    body_text = response.text[:200] if response.text else ""
+                    if "session" in body_text.lower():
+                        logger.info(f"Health check: {server_name} requires session, initializing")
+                        session_id = await self._initialize_session(
+                            client, server_url, headers, server_id, server_name
+                        )
+                        if session_id:
+                            headers["mcp-session-id"] = session_id
+                            response = await client.post(
+                                server_url,
+                                json={
+                                    "jsonrpc": "2.0",
+                                    "id": 1,
+                                    "method": "tools/list",
+                                    "params": {},
+                                },
+                                headers=headers,
+                            )
+
+                # Handle 401 with token refresh
                 if response.status_code == 401 and server.get("refresh_token_hash"):
                     logger.warning(
                         f"Got 401 during health check for {server_name}, attempting token refresh"
@@ -142,6 +169,9 @@ class HealthChecker:
                             # Reload server with new token and retry
                             server = get_mcp_server(self.db_path, server_id)
                             headers = self._get_auth_headers(server)
+                            session_id = self._session_ids.get(server_id)
+                            if session_id:
+                                headers["mcp-session-id"] = session_id
                             response = await client.post(
                                 server_url,
                                 json={
@@ -165,7 +195,7 @@ class HealthChecker:
                         )
 
                 response.raise_for_status()
-                data = response.json()
+                data = parse_sse_response(response)
 
                 # Calculate response time
                 response_time = (datetime.now(timezone.utc) - start_time).total_seconds() * 1000
@@ -244,6 +274,58 @@ class HealthChecker:
                 "error": error_msg,
                 "checked_at": datetime.now(timezone.utc),
             }
+
+    async def _initialize_session(
+        self,
+        client: httpx.AsyncClient,
+        server_url: str,
+        headers: Dict[str, str],
+        server_id: int,
+        server_name: str,
+    ) -> str:
+        """Send initialize to get mcp-session-id from a Streamable HTTP backend.
+
+        Returns:
+            Session ID string, or empty string if not available.
+        """
+        try:
+            # Remove stale session ID for the init request
+            init_headers = {k: v for k, v in headers.items() if k != "mcp-session-id"}
+            resp = await client.post(
+                server_url,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {
+                        "protocolVersion": "2025-03-26",
+                        "capabilities": {},
+                        "clientInfo": {"name": "authmcp-gateway", "version": "2.0.0"},
+                    },
+                },
+                headers=init_headers,
+            )
+            session_id = resp.headers.get("mcp-session-id", "")
+            if session_id:
+                self._session_ids[server_id] = session_id
+                logger.info(f"Health check: got session ID for {server_name}")
+
+                # Send initialized notification (best-effort)
+                try:
+                    notify_headers = dict(init_headers)
+                    notify_headers["mcp-session-id"] = session_id
+                    await client.post(
+                        server_url,
+                        json={"jsonrpc": "2.0", "method": "notifications/initialized"},
+                        headers=notify_headers,
+                    )
+                except Exception:
+                    pass
+
+            return session_id
+        except Exception as e:
+            logger.debug(f"Health check: initialize failed for {server_name}: {e}")
+            return ""
 
     def _get_auth_headers(self, server: Dict[str, Any]) -> Dict[str, str]:
         """Get authentication headers for backend MCP server."""

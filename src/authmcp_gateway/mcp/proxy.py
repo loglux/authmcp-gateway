@@ -4,6 +4,7 @@ Supports full MCP protocol: tools, resources, prompts, completions.
 """
 
 import asyncio
+import json
 import logging
 import os
 from datetime import datetime, timezone
@@ -30,7 +31,7 @@ def normalize_server_name(name: str) -> str:
 
 def get_auth_headers(server: Dict[str, Any]) -> Dict[str, str]:
     """Get authentication headers for a backend MCP server."""
-    headers = {"Content-Type": "application/json", "Accept": "application/json"}
+    headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
 
     auth_type = server.get("auth_type", "none")
     auth_token = server.get("auth_token")
@@ -41,6 +42,57 @@ def get_auth_headers(server: Dict[str, Any]) -> Dict[str, str]:
         headers["Authorization"] = f"Basic {auth_token}"
 
     return headers
+
+
+def parse_sse_response(response: httpx.Response) -> Dict[str, Any]:
+    """Parse an HTTP response, handling both JSON and SSE (text/event-stream) content types.
+
+    MCP Streamable HTTP backends may return text/event-stream even for single JSON-RPC
+    responses. In that case the JSON payload is wrapped in SSE `data:` lines.
+
+    Returns:
+        Parsed JSON-RPC response dict.
+
+    Raises:
+        ValueError: If no valid JSON-RPC message found in response.
+    """
+    content_type = response.headers.get("content-type", "")
+
+    # Normal JSON response — fast path
+    if "application/json" in content_type:
+        return response.json()
+
+    # SSE response — parse data: lines to find JSON-RPC message
+    if "text/event-stream" in content_type:
+        text = response.text
+        last_json_message = None
+
+        for line in text.splitlines():
+            line = line.strip()
+            if line.startswith("data:"):
+                data_str = line[5:].strip()
+                if not data_str:
+                    continue
+                try:
+                    parsed = json.loads(data_str)
+                    # Look for JSON-RPC response (has "result" or "error")
+                    if isinstance(parsed, dict) and ("result" in parsed or "error" in parsed):
+                        return parsed
+                    last_json_message = parsed
+                except json.JSONDecodeError:
+                    continue
+
+        # Return last valid JSON message if no explicit result/error found
+        if last_json_message:
+            return last_json_message
+
+        raise ValueError(f"No valid JSON-RPC message found in SSE response: {text[:200]}")
+
+    # Unknown content type — try JSON anyway
+    try:
+        return response.json()
+    except Exception:
+        raise ValueError(f"Unexpected content-type '{content_type}', body: {response.text[:200]}")
 
 
 class McpProxy:
@@ -56,6 +108,7 @@ class McpProxy:
         self._capabilities_cache: Dict[int, Dict[str, Any]] = {}
         self._cache_timestamp: Dict[int, datetime] = {}
         self._cache_ttl = 60  # seconds
+        self._session_ids: Dict[int, str] = {}  # server_id → mcp-session-id
         self._http_client: Optional[httpx.AsyncClient] = None
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -95,6 +148,11 @@ class McpProxy:
         server_id = server["id"]
         headers = self._get_auth_headers(server)
 
+        # Include mcp-session-id if we have one (Streamable HTTP transport)
+        session_id = self._session_ids.get(server_id)
+        if session_id:
+            headers["mcp-session-id"] = session_id
+
         payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}
 
         client = await self._get_client()
@@ -123,6 +181,8 @@ class McpProxy:
                 if success:
                     server = get_mcp_server(self.db_path, server_id)
                     headers = self._get_auth_headers(server)
+                    if session_id:
+                        headers["mcp-session-id"] = session_id
                     response = await client.post(server_url, json=payload, headers=headers)
                     logger.info(
                         f"Retry after token refresh succeeded for {method} on {server_name}"
@@ -132,8 +192,28 @@ class McpProxy:
             except Exception as refresh_error:
                 logger.error(f"Exception during token refresh: {refresh_error}")
 
+        # Handle 400 "no valid session" — need to initialize first
+        if response.status_code == 400 and method != "initialize":
+            body_text = response.text[:200] if response.text else ""
+            if "session" in body_text.lower():
+                logger.info(f"Session expired/missing for {server_name}, re-initializing")
+                self._session_ids.pop(server_id, None)
+                await self._fetch_capabilities_from_server(server)
+                session_id = self._session_ids.get(server_id)
+                if session_id:
+                    headers["mcp-session-id"] = session_id
+                    response = await client.post(server_url, json=payload, headers=headers)
+
         response.raise_for_status()
-        return response.json()
+
+        # Capture mcp-session-id from response (set on initialize, may update)
+        resp_session_id = response.headers.get("mcp-session-id")
+        if resp_session_id:
+            self._session_ids[server_id] = resp_session_id
+            if _MCP_DEBUG:
+                logger.debug(f"Stored mcp-session-id for {server_name}: {resp_session_id}")
+
+        return parse_sse_response(response)
 
     def _get_servers(
         self, user_id: Optional[int] = None, server_name: Optional[str] = None
@@ -662,6 +742,7 @@ class McpProxy:
             self._prompts_cache.pop(server_id, None)
             self._capabilities_cache.pop(server_id, None)
             self._cache_timestamp.pop(server_id, None)
+            self._session_ids.pop(server_id, None)
             logger.info(f"Invalidated cache for server {server_id}")
         else:
             self._tools_cache.clear()
@@ -669,6 +750,7 @@ class McpProxy:
             self._prompts_cache.clear()
             self._capabilities_cache.clear()
             self._cache_timestamp.clear()
+            self._session_ids.clear()
             logger.info("Invalidated all cache")
 
     def _get_auth_headers(self, server: Dict[str, Any]) -> Dict[str, str]:
