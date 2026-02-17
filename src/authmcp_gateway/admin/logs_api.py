@@ -9,6 +9,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from authmcp_gateway.admin.routes import api_error_handler, get_config
+from authmcp_gateway.db import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -30,11 +31,6 @@ async def api_logs(request: Request) -> JSONResponse:
     days = request.query_params.get("days")  # Filter by days (e.g., "1", "7", "30")
 
     try:
-        import sqlite3
-
-        conn = sqlite3.connect(get_config().auth.sqlite_path)
-        cursor = conn.cursor()
-
         # Build WHERE clause
         where_clauses = []
         params = []
@@ -50,39 +46,40 @@ async def api_logs(request: Request) -> JSONResponse:
 
         where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
 
-        # Get total count
-        cursor.execute(f"SELECT COUNT(*) FROM auth_audit_log {where_sql}", params)
-        total = cursor.fetchone()[0]
+        with get_db(get_config().auth.sqlite_path, row_factory=None) as conn:
+            cursor = conn.cursor()
 
-        # Get paginated results (sorted by timestamp descending)
-        cursor.execute(
-            f"""
-            SELECT event_type, user_id, username, ip_address, user_agent,
-                   success, details, timestamp
-            FROM auth_audit_log
-            {where_sql}
-            ORDER BY timestamp DESC
-            LIMIT ? OFFSET ?
-            """,
-            params + [limit, offset],
-        )
+            # Get total count
+            cursor.execute(f"SELECT COUNT(*) FROM auth_audit_log {where_sql}", params)
+            total = cursor.fetchone()[0]
 
-        logs = []
-        for row in cursor.fetchall():
-            logs.append(
-                {
-                    "event_type": row[0],
-                    "user_id": row[1],
-                    "username": row[2],
-                    "ip_address": row[3],
-                    "user_agent": row[4],
-                    "success": bool(row[5]),
-                    "details": row[6],
-                    "timestamp": row[7],
-                }
+            # Get paginated results (sorted by timestamp descending)
+            cursor.execute(
+                f"""
+                SELECT event_type, user_id, username, ip_address, user_agent,
+                       success, details, timestamp
+                FROM auth_audit_log
+                {where_sql}
+                ORDER BY timestamp DESC
+                LIMIT ? OFFSET ?
+                """,
+                params + [limit, offset],
             )
 
-        conn.close()
+            logs = []
+            for row in cursor.fetchall():
+                logs.append(
+                    {
+                        "event_type": row[0],
+                        "user_id": row[1],
+                        "username": row[2],
+                        "ip_address": row[3],
+                        "user_agent": row[4],
+                        "success": bool(row[5]),
+                        "details": row[6],
+                        "timestamp": row[7],
+                    }
+                )
 
         return JSONResponse({"logs": logs, "total": total, "limit": limit, "offset": offset})
 

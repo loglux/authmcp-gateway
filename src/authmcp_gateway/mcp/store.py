@@ -2,9 +2,10 @@
 
 import logging
 import sqlite3
-from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+
+from authmcp_gateway.db import get_db
 
 from .crypto import decrypt_token_safe, encrypt_token
 
@@ -21,16 +22,9 @@ def _decrypt_server_dict(server: Dict[str, Any]) -> Dict[str, Any]:
     return server
 
 
-@contextmanager
 def _db_conn(db_path: str, row_factory=None):
-    """Context manager for SQLite connections ensuring proper cleanup."""
-    conn = sqlite3.connect(db_path)
-    if row_factory:
-        conn.row_factory = row_factory
-    try:
-        yield conn
-    finally:
-        conn.close()
+    """Backward-compatible wrapper: defaults to raw tuples (row_factory=None)."""
+    return get_db(db_path, row_factory=row_factory)
 
 
 def init_mcp_database(db_path: str) -> None:

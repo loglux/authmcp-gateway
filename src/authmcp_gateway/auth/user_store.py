@@ -1,12 +1,12 @@
 """SQLite database operations for user authentication."""
 
 import hashlib
-import os
-import sqlite3
-from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
+
+# Unified DB context manager — re-exported for backward compatibility
+from authmcp_gateway.db import get_db as get_db_connection  # noqa: F401
 
 # File-based logging setup
 from authmcp_gateway.logging_config import (
@@ -25,44 +25,6 @@ def get_auth_logger():
         log_file = Path("data/logs/auth.log")
         _auth_logger = setup_file_logger("auth_events", log_file)
     return _auth_logger
-
-
-@contextmanager
-def get_db_connection(db_path: str):
-    """Context manager for database connections.
-
-    Automatically creates parent directories if they don't exist.
-
-    Args:
-        db_path: Path to SQLite database file
-
-    Yields:
-        sqlite3.Connection: Database connection with row factory enabled
-
-    Usage:
-        with get_db_connection(db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM users")
-    """
-    # Ensure parent directory exists
-    # Convert to absolute path if relative
-    if not os.path.isabs(db_path):
-        db_path = os.path.abspath(db_path)
-
-    db_dir = os.path.dirname(db_path)
-    if db_dir and not os.path.exists(db_dir):
-        os.makedirs(db_dir, exist_ok=True)
-
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    try:
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
 
 
 def init_database(db_path: str):

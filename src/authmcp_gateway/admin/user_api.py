@@ -31,10 +31,11 @@ __all__ = [
 
 async def api_stats(_: Request) -> JSONResponse:
     """Get dashboard statistics."""
+    from authmcp_gateway.db import get_db
+
     _config = get_config()
-    conn = sqlite3.connect(_config.auth.sqlite_path)
-    cursor = conn.cursor()
-    try:
+    with get_db(_config.auth.sqlite_path, row_factory=None) as conn:
+        cursor = conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM users")
         total_users = cursor.fetchone()[0]
         cursor.execute("SELECT COUNT(*) FROM users WHERE is_active = 1")
@@ -49,8 +50,6 @@ async def api_stats(_: Request) -> JSONResponse:
             (day_ago,),
         )
         recent_logins = cursor.fetchone()[0]
-    finally:
-        conn.close()
 
     return JSONResponse(
         {

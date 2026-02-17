@@ -4,9 +4,10 @@ import base64
 import hashlib
 import logging
 import secrets
-import sqlite3
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
+
+from authmcp_gateway.db import get_db
 
 logger = logging.getLogger(__name__)
 
@@ -17,8 +18,7 @@ def create_authorization_code_table(db_path: str):
     Args:
         db_path: Path to SQLite database
     """
-    conn = sqlite3.connect(db_path)
-    try:
+    with get_db(db_path, row_factory=None) as conn:
         conn.execute("""
             CREATE TABLE IF NOT EXISTS authorization_codes (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,10 +35,7 @@ def create_authorization_code_table(db_path: str):
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         """)
-        conn.commit()
-        logger.info("Authorization codes table initialized")
-    finally:
-        conn.close()
+    logger.info("Authorization codes table initialized")
 
 
 def generate_authorization_code(
@@ -69,8 +66,7 @@ def generate_authorization_code(
     code = secrets.token_urlsafe(32)
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in_seconds)
 
-    conn = sqlite3.connect(db_path)
-    try:
+    with get_db(db_path, row_factory=None) as conn:
         conn.execute(
             """
             INSERT INTO authorization_codes
@@ -89,12 +85,9 @@ def generate_authorization_code(
                 expires_at,
             ),
         )
-        conn.commit()
 
-        logger.info(f"Generated authorization code for user {user_id}, client {client_id}")
-        return code
-    finally:
-        conn.close()
+    logger.info(f"Generated authorization code for user {user_id}, client {client_id}")
+    return code
 
 
 def verify_authorization_code(
@@ -112,10 +105,7 @@ def verify_authorization_code(
     Returns:
         Dict with user_id and scope if valid, None otherwise
     """
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-
-    try:
+    with get_db(db_path) as conn:
         # Atomically mark code as used to prevent race conditions.
         # UPDATE ... WHERE used = 0 ensures only one concurrent request succeeds.
         cursor = conn.execute(
@@ -128,7 +118,6 @@ def verify_authorization_code(
 
         if cursor.rowcount == 0:
             logger.warning("Authorization code not found, mismatched, or already used")
-            conn.commit()
             return None
 
         # Now read the row to verify expiration and PKCE
@@ -143,21 +132,18 @@ def verify_authorization_code(
         row = cursor.fetchone()
         if not row:
             logger.warning("Authorization code disappeared after atomic update")
-            conn.commit()
             return None
 
         # Check expiration
         expires_at = datetime.fromisoformat(row["expires_at"].replace("Z", "+00:00"))
         if datetime.now(timezone.utc) > expires_at:
             logger.warning(f"Authorization code expired: {code}")
-            conn.commit()
             return None
 
         # Verify PKCE if present
         if row["code_challenge"]:
             if not code_verifier:
                 logger.warning("PKCE challenge present but no verifier provided")
-                conn.commit()
                 return None
 
             # Verify code_verifier matches code_challenge
@@ -168,22 +154,15 @@ def verify_authorization_code(
 
                 if verifier_challenge != row["code_challenge"]:
                     logger.warning("PKCE verification failed")
-                    conn.commit()
                     return None
             elif row["code_challenge_method"] == "plain":
                 if code_verifier != row["code_challenge"]:
                     logger.warning("PKCE verification failed (plain)")
-                    conn.commit()
                     return None
 
-        conn.commit()
+    logger.info(f"Authorization code verified for user {row['user_id']}")
 
-        logger.info(f"Authorization code verified for user {row['user_id']}")
-
-        return {"user_id": row["user_id"], "scope": row["scope"]}
-
-    finally:
-        conn.close()
+    return {"user_id": row["user_id"], "scope": row["scope"]}
 
 
 def cleanup_expired_codes(db_path: str):
@@ -192,8 +171,7 @@ def cleanup_expired_codes(db_path: str):
     Args:
         db_path: Path to SQLite database
     """
-    conn = sqlite3.connect(db_path)
-    try:
+    with get_db(db_path, row_factory=None) as conn:
         cursor = conn.execute(
             """
             DELETE FROM authorization_codes
@@ -203,9 +181,6 @@ def cleanup_expired_codes(db_path: str):
         )
 
         deleted = cursor.rowcount
-        conn.commit()
 
-        if deleted > 0:
-            logger.info(f"Cleaned up {deleted} expired/used authorization codes")
-    finally:
-        conn.close()
+    if deleted > 0:
+        logger.info(f"Cleaned up {deleted} expired/used authorization codes")
