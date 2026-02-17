@@ -1,44 +1,34 @@
-"""MCP Protocol handler - Gateway endpoint for MCP requests."""
+"""MCP Protocol handler - Gateway endpoint for MCP requests.
+
+Supports full MCP protocol: tools, resources, prompts, completions, ping.
+"""
 
 import logging
+import time
 from typing import Any, Dict, Optional
 
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from .proxy import McpProxy, ToolNotFoundError
+from .proxy import McpProxy, PromptNotFoundError, ResourceNotFoundError, ToolNotFoundError
 
 logger = logging.getLogger(__name__)
 
 
 class McpHandler:
-    """Handles MCP jsonrpc requests and routes to backend servers."""
+    """Handles MCP JSON-RPC requests and routes to backend servers."""
 
     def __init__(self, db_path: str):
-        """Initialize MCP handler.
-
-        Args:
-            db_path: Path to SQLite database
-        """
         self.db_path = db_path
         self.proxy = McpProxy(db_path)
 
     async def handle_request(
         self, request: Request, server_name: Optional[str] = None
     ) -> JSONResponse:
-        """Handle MCP jsonrpc request.
-
-        Args:
-            request: Starlette request
-            server_name: Optional server name to filter tools/calls
-
-        Returns:
-            JSONResponse with jsonrpc result
-        """
+        """Handle MCP JSON-RPC request."""
         try:
-            # Parse jsonrpc request
             data = await request.json()
-            jsonrpc_id = data.get("id", 1)
+            jsonrpc_id = data.get("id")
             method = data.get("method")
             params = data.get("params", {})
 
@@ -46,11 +36,23 @@ class McpHandler:
                 f"MCP request: method={method}, params={params}, server_name={server_name}"
             )
 
-            # Extract user_id from request state (set by auth middleware)
             user_id = getattr(request.state, "user_id", None)
 
-            # Handle different MCP methods
-            if method == "tools/list":
+            # --- Dispatch ---
+            if method == "initialize":
+                return await self._handle_initialize(
+                    jsonrpc_id, params, user_id, server_name, request
+                )
+
+            elif method == "ping":
+                return JSONResponse({"jsonrpc": "2.0", "id": jsonrpc_id, "result": {}})
+
+            elif method in {"notifications/initialized", "initialized"}:
+                if jsonrpc_id is not None:
+                    return JSONResponse({"jsonrpc": "2.0", "id": jsonrpc_id, "result": {}})
+                return JSONResponse(status_code=204, content={})
+
+            elif method == "tools/list":
                 return await self._handle_tools_list(jsonrpc_id, user_id, server_name, request)
 
             elif method == "tools/call":
@@ -60,27 +62,102 @@ class McpHandler:
                     jsonrpc_id, tool_name, arguments, user_id, server_name, request
                 )
 
-            elif method == "initialize":
-                return await self._handle_initialize(jsonrpc_id, params, server_name, request)
+            elif method == "resources/list":
+                return await self._handle_resources_list(jsonrpc_id, user_id, server_name, request)
 
-            elif method in {"notifications/initialized", "initialized"}:
-                # MCP clients send an initialized notification after successful initialize.
-                # It's a notification, so no response is required if id is absent.
-                if "id" in data:
+            elif method == "resources/read":
+                return await self._handle_resource_read(
+                    jsonrpc_id, params, user_id, server_name, request
+                )
+
+            elif method == "resources/templates/list":
+                return await self._handle_resource_templates_list(
+                    jsonrpc_id, user_id, server_name, request
+                )
+
+            elif method == "prompts/list":
+                return await self._handle_prompts_list(jsonrpc_id, user_id, server_name, request)
+
+            elif method == "prompts/get":
+                return await self._handle_prompt_get(
+                    jsonrpc_id, params, user_id, server_name, request
+                )
+
+            elif method == "completion/complete":
+                return await self._handle_completion(
+                    jsonrpc_id, params, user_id, server_name, request
+                )
+
+            elif method == "logging/setLevel":
+                # Accept the level but we don't use it for backend routing
+                logger.info(f"Client set log level: {params.get('level')}")
+                return JSONResponse({"jsonrpc": "2.0", "id": jsonrpc_id, "result": {}})
+
+            elif method and method.startswith("notifications/"):
+                # Gracefully ignore any other notifications
+                if jsonrpc_id is not None:
                     return JSONResponse({"jsonrpc": "2.0", "id": jsonrpc_id, "result": {}})
                 return JSONResponse(status_code=204, content={})
 
             else:
-                # Fallback: treat unknown method as a direct tool call
-                # Some MCP clients (e.g. Codex) send tool name as method
-                logger.info(f"Unknown method '{method}', attempting as direct tool call")
-                return await self._handle_tool_call(
-                    jsonrpc_id, method, params, user_id, server_name, request
-                )
+                # Proper JSON-RPC error for unknown methods
+                logger.warning(f"Unknown MCP method: {method}")
+                return self._error_response(jsonrpc_id or 1, -32601, f"Method not found: {method}")
 
         except Exception as e:
             logger.exception(f"Error handling MCP request: {e}")
             return self._error_response(1, -32603, f"Internal error: {str(e)}")
+
+    # ========================================================================
+    # INITIALIZE
+    # ========================================================================
+
+    async def _handle_initialize(
+        self,
+        jsonrpc_id: int,
+        params: Dict[str, Any],
+        user_id: Optional[int],
+        server_name: Optional[str] = None,
+        request: Optional[Request] = None,
+    ) -> JSONResponse:
+        """Handle initialize with dynamic capabilities from backends."""
+        logger.info(f"Handling initialize request (server: {server_name or 'all'})")
+
+        display_name = "authmcp-gateway"
+        if server_name:
+            display_name = server_name
+
+        # Discover actual capabilities from backends
+        try:
+            capabilities = await self.proxy.get_aggregated_capabilities(
+                user_id=user_id, server_name=server_name
+            )
+        except Exception as e:
+            logger.error(f"Failed to discover capabilities: {e}")
+            capabilities = {"tools": {}}
+
+        self._log_mcp(
+            method="initialize",
+            user_id=user_id,
+            success=True,
+            request=request,
+        )
+
+        return JSONResponse(
+            {
+                "jsonrpc": "2.0",
+                "id": jsonrpc_id,
+                "result": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": capabilities,
+                    "serverInfo": {"name": display_name, "version": "2.0.0"},
+                },
+            }
+        )
+
+    # ========================================================================
+    # TOOLS
+    # ========================================================================
 
     async def _handle_tools_list(
         self,
@@ -89,26 +166,12 @@ class McpHandler:
         server_name: Optional[str] = None,
         request: Optional[Request] = None,
     ) -> JSONResponse:
-        """Handle tools/list request.
-
-        Args:
-            jsonrpc_id: JSON-RPC request ID
-            user_id: Optional user ID for filtering
-            server_name: Optional server name to filter tools
-            request: Starlette request object
-
-        Returns:
-            JSONResponse with tools list
-        """
-        import time
-
+        """Handle tools/list request."""
         start_time = time.time()
-        error_msg = None
 
         try:
             tools = await self.proxy.list_tools(user_id=user_id, server_name=server_name)
 
-            # Format tools according to MCP protocol
             formatted_tools = []
             for tool in tools:
                 formatted_tool = {
@@ -116,61 +179,32 @@ class McpHandler:
                     "description": tool.get("description"),
                     "inputSchema": tool.get("inputSchema", {}),
                 }
-
-                # Add metadata (optional)
-                if "_server_id" in tool:
-                    if "x-gateway" not in formatted_tool:
-                        formatted_tool["x-gateway"] = {}
-                    formatted_tool["x-gateway"]["server_id"] = tool["_server_id"]
-                    formatted_tool["x-gateway"]["server_name"] = tool["_server_name"]
-
+                if tool.get("annotations"):
+                    formatted_tool["annotations"] = tool["annotations"]
                 formatted_tools.append(formatted_tool)
 
             logger.info(f"Returning {len(formatted_tools)} tools")
-
-            # Log MCP request
-            response_time = int((time.time() - start_time) * 1000)
-            try:
-                from authmcp_gateway.security.logger import log_mcp_request
-
-                log_mcp_request(
-                    db_path=self.db_path,
-                    user_id=user_id,
-                    mcp_server_id=None,  # Multiple servers
-                    method="tools/list",
-                    success=True,
-                    response_time_ms=response_time,
-                    ip_address=request.client.host if request and request.client else None,
-                )
-            except Exception as log_err:
-                logger.error(f"Failed to log MCP request: {log_err}")
-
+            self._log_mcp(
+                method="tools/list",
+                user_id=user_id,
+                success=True,
+                response_time_ms=self._elapsed(start_time),
+                request=request,
+            )
             return JSONResponse(
                 {"jsonrpc": "2.0", "id": jsonrpc_id, "result": {"tools": formatted_tools}}
             )
 
         except Exception as e:
             logger.exception(f"Error in tools/list: {e}")
-            error_msg = str(e)
-
-            # Log failed request
-            try:
-                from authmcp_gateway.security.logger import log_mcp_request
-
-                response_time = int((time.time() - start_time) * 1000)
-                log_mcp_request(
-                    db_path=self.db_path,
-                    user_id=user_id,
-                    mcp_server_id=None,
-                    method="tools/list",
-                    success=False,
-                    error_message=error_msg,
-                    response_time_ms=response_time,
-                    ip_address=request.client.host if request and request.client else None,
-                )
-            except Exception as log_err:
-                logger.error(f"Failed to log MCP request: {log_err}")
-
+            self._log_mcp(
+                method="tools/list",
+                user_id=user_id,
+                success=False,
+                error_message=str(e),
+                response_time_ms=self._elapsed(start_time),
+                request=request,
+            )
             return self._error_response(jsonrpc_id, -32603, str(e))
 
     async def _handle_tool_call(
@@ -182,82 +216,74 @@ class McpHandler:
         server_name: Optional[str] = None,
         request: Optional[Request] = None,
     ) -> JSONResponse:
-        """Handle tools/call request.
+        """Handle tools/call request."""
+        if not tool_name:
+            return self._error_response(jsonrpc_id, -32602, "Missing required parameter: name")
 
-        Args:
-            jsonrpc_id: JSON-RPC request ID
-            tool_name: Tool name
-            arguments: Tool arguments
-            user_id: Optional user ID
-            server_name: Optional server name to restrict tool calls
+        logger.info(f"Calling tool: {tool_name} (server: {server_name or 'any'})")
+        start_time = time.time()
 
-        Returns:
-            JSONResponse with tool call result
-        """
         try:
-            if not tool_name:
-                return self._error_response(jsonrpc_id, -32602, "Missing required parameter: name")
+            result, server = await self.proxy.call_tool(
+                tool_name=tool_name,
+                arguments=arguments,
+                user_id=user_id,
+                server_name=server_name,
+            )
+            server_id = server.get("id") if server else None
 
-            logger.info(f"Calling tool: {tool_name} (server: {server_name or 'any'})")
-
-            import time
-
-            start_time = time.time()
-
-            def _log_tool_call(
-                success: bool,
-                error_msg: Optional[str] = None,
-                mcp_server_id: Optional[int] = None,
-            ):
-                response_time = int((time.time() - start_time) * 1000)
-                try:
-                    from authmcp_gateway.security.logger import log_mcp_request
-
-                    log_mcp_request(
-                        db_path=self.db_path,
-                        user_id=user_id,
-                        mcp_server_id=mcp_server_id,
-                        method="tools/call",
-                        tool_name=tool_name,
-                        success=success,
-                        error_message=error_msg,
-                        response_time_ms=response_time,
-                        ip_address=request.client.host if request and request.client else None,
-                    )
-                except Exception as log_err:
-                    logger.error(f"Failed to log tool call: {log_err}")
-
-            # Route and execute tool call via proxy
-            try:
-                result, server = await self.proxy.call_tool(
+            if "result" in result:
+                self._log_mcp(
+                    method="tools/call",
                     tool_name=tool_name,
-                    arguments=arguments,
                     user_id=user_id,
-                    server_name=server_name,
+                    mcp_server_id=server_id,
+                    success=True,
+                    response_time_ms=self._elapsed(start_time),
+                    request=request,
                 )
-                server_id = server.get("id") if server else None
+                return JSONResponse(
+                    {"jsonrpc": "2.0", "id": jsonrpc_id, "result": result["result"]}
+                )
+            elif "error" in result:
+                error_msg = str(result.get("error"))
+                self._log_mcp(
+                    method="tools/call",
+                    tool_name=tool_name,
+                    user_id=user_id,
+                    mcp_server_id=server_id,
+                    success=False,
+                    error_message=error_msg,
+                    response_time_ms=self._elapsed(start_time),
+                    request=request,
+                )
+                return JSONResponse({"jsonrpc": "2.0", "id": jsonrpc_id, "error": result["error"]})
+            else:
+                error_msg = "Invalid response from backend server"
+                self._log_mcp(
+                    method="tools/call",
+                    tool_name=tool_name,
+                    user_id=user_id,
+                    mcp_server_id=server_id,
+                    success=False,
+                    error_message=error_msg,
+                    response_time_ms=self._elapsed(start_time),
+                    request=request,
+                )
+                return self._error_response(jsonrpc_id, -32603, error_msg)
 
-                # Return result from backend server
-                if "result" in result:
-                    _log_tool_call(True, mcp_server_id=server_id)
-                    return JSONResponse(
-                        {"jsonrpc": "2.0", "id": jsonrpc_id, "result": result["result"]}
-                    )
-                elif "error" in result:
-                    error_msg = str(result.get("error"))
-                    _log_tool_call(False, error_msg, mcp_server_id=server_id)
-                    return JSONResponse(
-                        {"jsonrpc": "2.0", "id": jsonrpc_id, "error": result["error"]}
-                    )
-                else:
-                    error_msg = "Invalid response from backend server"
-                    _log_tool_call(False, error_msg, mcp_server_id=server_id)
-                    return self._error_response(jsonrpc_id, -32603, error_msg)
-
-            except ToolNotFoundError as e:
-                logger.warning(f"Tool not found: {tool_name}")
-                _log_tool_call(False, str(e))
-                return self._error_response(jsonrpc_id, -32601, str(e))
+        except ToolNotFoundError as e:
+            logger.warning(f"Tool not found: {tool_name}")
+            self._log_mcp(
+                method="tools/call",
+                tool_name=tool_name,
+                user_id=user_id,
+                success=False,
+                error_message=str(e),
+                response_time_ms=self._elapsed(start_time),
+                request=request,
+            )
+            return self._error_response(jsonrpc_id, -32601, str(e))
 
         except PermissionError as e:
             logger.warning(f"Permission denied: {e}")
@@ -267,54 +293,358 @@ class McpHandler:
             logger.exception(f"Error calling tool '{tool_name}': {e}")
             return self._error_response(jsonrpc_id, -32603, str(e))
 
-    async def _handle_initialize(
+    # ========================================================================
+    # RESOURCES
+    # ========================================================================
+
+    async def _handle_resources_list(
         self,
         jsonrpc_id: int,
-        params: Dict[str, Any],
+        user_id: Optional[int],
         server_name: Optional[str] = None,
         request: Optional[Request] = None,
     ) -> JSONResponse:
-        """Handle initialize request.
+        """Handle resources/list request."""
+        start_time = time.time()
 
-        Args:
-            jsonrpc_id: JSON-RPC request ID
-            params: Initialize parameters
-            server_name: Optional server name for scoped endpoint
+        try:
+            resources = await self.proxy.list_resources(user_id=user_id, server_name=server_name)
 
-        Returns:
-            JSONResponse with initialize result
-        """
-        logger.info(f"Handling initialize request (server: {server_name or 'all'})")
+            # Strip internal metadata before returning
+            formatted = []
+            for r in resources:
+                item = {k: v for k, v in r.items() if not k.startswith("_")}
+                formatted.append(item)
 
-        # Customize server name if scoped to specific backend
-        display_name = "fastmcp-auth-gateway"
-        if server_name:
-            display_name = f"{server_name}"
+            logger.info(f"Returning {len(formatted)} resources")
+            self._log_mcp(
+                method="resources/list",
+                user_id=user_id,
+                success=True,
+                response_time_ms=self._elapsed(start_time),
+                request=request,
+            )
+            return JSONResponse(
+                {"jsonrpc": "2.0", "id": jsonrpc_id, "result": {"resources": formatted}}
+            )
 
-        return JSONResponse(
-            {
-                "jsonrpc": "2.0",
-                "id": jsonrpc_id,
-                "result": {
-                    "protocolVersion": "2024-11-05",
-                    "capabilities": {"tools": {}, "resources": {}, "prompts": {}},
-                    "serverInfo": {"name": display_name, "version": "2.0.0"},
-                },
-            }
-        )
+        except Exception as e:
+            logger.exception(f"Error in resources/list: {e}")
+            self._log_mcp(
+                method="resources/list",
+                user_id=user_id,
+                success=False,
+                error_message=str(e),
+                response_time_ms=self._elapsed(start_time),
+                request=request,
+            )
+            return self._error_response(jsonrpc_id, -32603, str(e))
+
+    async def _handle_resource_read(
+        self,
+        jsonrpc_id: int,
+        params: Dict[str, Any],
+        user_id: Optional[int],
+        server_name: Optional[str] = None,
+        request: Optional[Request] = None,
+    ) -> JSONResponse:
+        """Handle resources/read request."""
+        uri = params.get("uri")
+        if not uri:
+            return self._error_response(jsonrpc_id, -32602, "Missing required parameter: uri")
+
+        start_time = time.time()
+
+        try:
+            data, server = await self.proxy.read_resource(
+                uri=uri, user_id=user_id, server_name=server_name
+            )
+            server_id = server.get("id") if server else None
+
+            if "result" in data:
+                self._log_mcp(
+                    method="resources/read",
+                    user_id=user_id,
+                    mcp_server_id=server_id,
+                    success=True,
+                    response_time_ms=self._elapsed(start_time),
+                    request=request,
+                )
+                return JSONResponse({"jsonrpc": "2.0", "id": jsonrpc_id, "result": data["result"]})
+            elif "error" in data:
+                self._log_mcp(
+                    method="resources/read",
+                    user_id=user_id,
+                    mcp_server_id=server_id,
+                    success=False,
+                    error_message=str(data["error"]),
+                    response_time_ms=self._elapsed(start_time),
+                    request=request,
+                )
+                return JSONResponse({"jsonrpc": "2.0", "id": jsonrpc_id, "error": data["error"]})
+            else:
+                return self._error_response(jsonrpc_id, -32603, "Invalid backend response")
+
+        except ResourceNotFoundError as e:
+            logger.warning(f"Resource not found: {uri}")
+            self._log_mcp(
+                method="resources/read",
+                user_id=user_id,
+                success=False,
+                error_message=str(e),
+                response_time_ms=self._elapsed(start_time),
+                request=request,
+            )
+            return self._error_response(jsonrpc_id, -32602, str(e))
+
+        except PermissionError as e:
+            return self._error_response(jsonrpc_id, -32000, str(e))
+
+        except Exception as e:
+            logger.exception(f"Error reading resource '{uri}': {e}")
+            return self._error_response(jsonrpc_id, -32603, str(e))
+
+    async def _handle_resource_templates_list(
+        self,
+        jsonrpc_id: int,
+        user_id: Optional[int],
+        server_name: Optional[str] = None,
+        request: Optional[Request] = None,
+    ) -> JSONResponse:
+        """Handle resources/templates/list request."""
+        start_time = time.time()
+
+        try:
+            templates = await self.proxy.list_resource_templates(
+                user_id=user_id, server_name=server_name
+            )
+
+            formatted = []
+            for t in templates:
+                item = {k: v for k, v in t.items() if not k.startswith("_")}
+                formatted.append(item)
+
+            self._log_mcp(
+                method="resources/templates/list",
+                user_id=user_id,
+                success=True,
+                response_time_ms=self._elapsed(start_time),
+                request=request,
+            )
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": jsonrpc_id,
+                    "result": {"resourceTemplates": formatted},
+                }
+            )
+
+        except Exception as e:
+            logger.exception(f"Error in resources/templates/list: {e}")
+            return self._error_response(jsonrpc_id, -32603, str(e))
+
+    # ========================================================================
+    # PROMPTS
+    # ========================================================================
+
+    async def _handle_prompts_list(
+        self,
+        jsonrpc_id: int,
+        user_id: Optional[int],
+        server_name: Optional[str] = None,
+        request: Optional[Request] = None,
+    ) -> JSONResponse:
+        """Handle prompts/list request."""
+        start_time = time.time()
+
+        try:
+            prompts = await self.proxy.list_prompts(user_id=user_id, server_name=server_name)
+
+            formatted = []
+            for p in prompts:
+                item = {k: v for k, v in p.items() if not k.startswith("_")}
+                formatted.append(item)
+
+            logger.info(f"Returning {len(formatted)} prompts")
+            self._log_mcp(
+                method="prompts/list",
+                user_id=user_id,
+                success=True,
+                response_time_ms=self._elapsed(start_time),
+                request=request,
+            )
+            return JSONResponse(
+                {"jsonrpc": "2.0", "id": jsonrpc_id, "result": {"prompts": formatted}}
+            )
+
+        except Exception as e:
+            logger.exception(f"Error in prompts/list: {e}")
+            self._log_mcp(
+                method="prompts/list",
+                user_id=user_id,
+                success=False,
+                error_message=str(e),
+                response_time_ms=self._elapsed(start_time),
+                request=request,
+            )
+            return self._error_response(jsonrpc_id, -32603, str(e))
+
+    async def _handle_prompt_get(
+        self,
+        jsonrpc_id: int,
+        params: Dict[str, Any],
+        user_id: Optional[int],
+        server_name: Optional[str] = None,
+        request: Optional[Request] = None,
+    ) -> JSONResponse:
+        """Handle prompts/get request."""
+        name = params.get("name")
+        if not name:
+            return self._error_response(jsonrpc_id, -32602, "Missing required parameter: name")
+
+        arguments = params.get("arguments")
+        start_time = time.time()
+
+        try:
+            data, server = await self.proxy.get_prompt(
+                name=name, arguments=arguments, user_id=user_id, server_name=server_name
+            )
+            server_id = server.get("id") if server else None
+
+            if "result" in data:
+                self._log_mcp(
+                    method="prompts/get",
+                    user_id=user_id,
+                    mcp_server_id=server_id,
+                    success=True,
+                    response_time_ms=self._elapsed(start_time),
+                    request=request,
+                )
+                return JSONResponse({"jsonrpc": "2.0", "id": jsonrpc_id, "result": data["result"]})
+            elif "error" in data:
+                self._log_mcp(
+                    method="prompts/get",
+                    user_id=user_id,
+                    mcp_server_id=server_id,
+                    success=False,
+                    error_message=str(data["error"]),
+                    response_time_ms=self._elapsed(start_time),
+                    request=request,
+                )
+                return JSONResponse({"jsonrpc": "2.0", "id": jsonrpc_id, "error": data["error"]})
+            else:
+                return self._error_response(jsonrpc_id, -32603, "Invalid backend response")
+
+        except PromptNotFoundError as e:
+            logger.warning(f"Prompt not found: {name}")
+            self._log_mcp(
+                method="prompts/get",
+                user_id=user_id,
+                success=False,
+                error_message=str(e),
+                response_time_ms=self._elapsed(start_time),
+                request=request,
+            )
+            return self._error_response(jsonrpc_id, -32602, str(e))
+
+        except PermissionError as e:
+            return self._error_response(jsonrpc_id, -32000, str(e))
+
+        except Exception as e:
+            logger.exception(f"Error getting prompt '{name}': {e}")
+            return self._error_response(jsonrpc_id, -32603, str(e))
+
+    # ========================================================================
+    # COMPLETION
+    # ========================================================================
+
+    async def _handle_completion(
+        self,
+        jsonrpc_id: int,
+        params: Dict[str, Any],
+        user_id: Optional[int],
+        server_name: Optional[str] = None,
+        request: Optional[Request] = None,
+    ) -> JSONResponse:
+        """Handle completion/complete request."""
+        ref = params.get("ref")
+        argument = params.get("argument")
+        if not ref or not argument:
+            return self._error_response(
+                jsonrpc_id, -32602, "Missing required parameters: ref, argument"
+            )
+
+        start_time = time.time()
+
+        try:
+            data, server = await self.proxy.complete(
+                ref=ref, argument=argument, user_id=user_id, server_name=server_name
+            )
+            server_id = server.get("id") if server else None
+
+            if "result" in data:
+                self._log_mcp(
+                    method="completion/complete",
+                    user_id=user_id,
+                    mcp_server_id=server_id,
+                    success=True,
+                    response_time_ms=self._elapsed(start_time),
+                    request=request,
+                )
+                return JSONResponse({"jsonrpc": "2.0", "id": jsonrpc_id, "result": data["result"]})
+            elif "error" in data:
+                return JSONResponse({"jsonrpc": "2.0", "id": jsonrpc_id, "error": data["error"]})
+            else:
+                return self._error_response(jsonrpc_id, -32603, "Invalid backend response")
+
+        except (ResourceNotFoundError, PromptNotFoundError) as e:
+            return self._error_response(jsonrpc_id, -32602, str(e))
+
+        except Exception as e:
+            logger.exception(f"Error in completion/complete: {e}")
+            return self._error_response(jsonrpc_id, -32603, str(e))
+
+    # ========================================================================
+    # HELPERS
+    # ========================================================================
+
+    @staticmethod
+    def _elapsed(start_time: float) -> int:
+        """Return elapsed milliseconds since start_time."""
+        return int((time.time() - start_time) * 1000)
+
+    def _log_mcp(
+        self,
+        method: str,
+        user_id: Optional[int] = None,
+        mcp_server_id: Optional[int] = None,
+        tool_name: Optional[str] = None,
+        success: bool = True,
+        error_message: Optional[str] = None,
+        response_time_ms: Optional[int] = None,
+        request: Optional[Request] = None,
+    ) -> None:
+        """Log MCP request to security logger (best-effort)."""
+        try:
+            from authmcp_gateway.security.logger import log_mcp_request
+
+            log_mcp_request(
+                db_path=self.db_path,
+                user_id=user_id,
+                mcp_server_id=mcp_server_id,
+                method=method,
+                tool_name=tool_name,
+                success=success,
+                error_message=error_message,
+                response_time_ms=response_time_ms,
+                ip_address=request.client.host if request and request.client else None,
+            )
+        except Exception as log_err:
+            logger.error(f"Failed to log MCP request: {log_err}")
 
     def _error_response(self, jsonrpc_id: int, code: int, message: str) -> JSONResponse:
-        """Create JSON-RPC error response.
-
-        Args:
-            jsonrpc_id: JSON-RPC request ID
-            code: Error code
-            message: Error message
-
-        Returns:
-            JSONResponse with error
-        """
+        """Create JSON-RPC error response."""
         return JSONResponse(
             {"jsonrpc": "2.0", "id": jsonrpc_id, "error": {"code": code, "message": message}},
             status_code=200,
-        )  # JSON-RPC errors use 200 status
+        )
