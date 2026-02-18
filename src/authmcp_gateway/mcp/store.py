@@ -59,7 +59,8 @@ def init_mcp_database(db_path: str) -> None:
                 refresh_token_hash TEXT,
                 token_expires_at TIMESTAMP,
                 token_last_refreshed TIMESTAMP,
-                refresh_endpoint TEXT DEFAULT '/oauth/token'
+                refresh_endpoint TEXT DEFAULT '/oauth/token',
+                timeout INTEGER DEFAULT NULL
             )
         """)
 
@@ -93,6 +94,13 @@ def init_mcp_database(db_path: str) -> None:
         try:
             cursor.execute("ALTER TABLE mcp_servers ADD COLUMN refresh_token_encrypted TEXT")
             logger.info("Added refresh_token_encrypted column to mcp_servers")
+        except sqlite3.OperationalError:
+            pass  # Column already exists
+
+        # Add timeout column if missing (migration for existing DBs)
+        try:
+            cursor.execute("ALTER TABLE mcp_servers ADD COLUMN timeout INTEGER DEFAULT NULL")
+            logger.info("Added timeout column to mcp_servers")
         except sqlite3.OperationalError:
             pass  # Column already exists
 
@@ -132,6 +140,7 @@ def create_mcp_server(
     auth_type: str = "none",
     auth_token: Optional[str] = None,
     routing_strategy: str = "prefix",
+    timeout: Optional[int] = None,
 ) -> int:
     """Create a new MCP server entry.
 
@@ -145,6 +154,7 @@ def create_mcp_server(
         auth_type: Auth method for backend ("none", "bearer", "basic")
         auth_token: Token for backend auth
         routing_strategy: Routing strategy ("prefix", "explicit", "auto")
+        timeout: Per-server request timeout in seconds (None = use global default)
 
     Returns:
         int: Created server ID
@@ -169,9 +179,9 @@ def create_mcp_server(
             """
             INSERT INTO mcp_servers (
                 name, description, url, tool_prefix, enabled,
-                auth_type, auth_token, routing_strategy, updated_at
+                auth_type, auth_token, routing_strategy, timeout, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
@@ -182,6 +192,7 @@ def create_mcp_server(
                 auth_type,
                 encrypted_token,
                 routing_strategy,
+                timeout,
                 datetime.now(timezone.utc).isoformat(),
             ),
         )
@@ -312,6 +323,7 @@ def update_mcp_server(db_path: str, server_id: int, **fields) -> bool:
         "token_expires_at",
         "token_last_refreshed",
         "refresh_endpoint",
+        "timeout",
     }
 
     # Reject any keys not in the whitelist

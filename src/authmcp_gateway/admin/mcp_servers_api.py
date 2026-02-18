@@ -26,7 +26,19 @@ __all__ = [
 
 async def admin_mcp_servers(_: Request) -> HTMLResponse:
     """MCP servers management page."""
-    return render_template("admin/mcp_servers.html", active_page="mcp-servers")
+    from authmcp_gateway.settings_manager import get_settings_manager
+
+    try:
+        sm = get_settings_manager()
+        default_timeout = sm.get("timeouts", "proxy_timeout", default=30)
+    except Exception:
+        default_timeout = 30
+
+    return render_template(
+        "admin/mcp_servers.html",
+        active_page="mcp-servers",
+        default_timeout=default_timeout,
+    )
 
 
 def parse_jwt_expiration(token: str) -> dict:
@@ -115,6 +127,14 @@ async def api_create_mcp_server(request: Request) -> JSONResponse:
     _config = get_config(request)
     data = await request.json()
 
+    # Parse timeout: None means "use global default"
+    timeout_val = data.get("timeout")
+    if timeout_val is not None:
+        try:
+            timeout_val = int(timeout_val) if timeout_val else None
+        except (ValueError, TypeError):
+            timeout_val = None
+
     server_id = create_mcp_server(
         db_path=_config.auth.sqlite_path,
         name=data["name"],
@@ -125,6 +145,7 @@ async def api_create_mcp_server(request: Request) -> JSONResponse:
         auth_type=data.get("auth_type", "none"),
         auth_token=data.get("auth_token"),
         routing_strategy=data.get("routing_strategy", "prefix"),
+        timeout=timeout_val,
     )
 
     # Trigger health check for new server
@@ -174,6 +195,13 @@ async def api_update_mcp_server(request: Request) -> JSONResponse:
     _config = get_config(request)
     server_id = int(request.path_params["server_id"])
     data = await request.json()
+
+    # Sanitize timeout: empty/zero → None (use global default)
+    if "timeout" in data:
+        try:
+            data["timeout"] = int(data["timeout"]) if data["timeout"] else None
+        except (ValueError, TypeError):
+            data["timeout"] = None
 
     # Update server
     success = update_mcp_server(db_path=_config.auth.sqlite_path, server_id=server_id, **data)

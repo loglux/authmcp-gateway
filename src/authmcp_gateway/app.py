@@ -162,15 +162,20 @@ def create_app(config=None):
     initialize_crypto(config.jwt.secret_key)
     logger.info("✓ Token encryption initialized")
 
+    # Read timeout settings (per-server overrides are in DB, global defaults here)
+    proxy_timeout = settings_manager.get("timeouts", "proxy_timeout", default=30)
+    health_check_timeout = settings_manager.get("timeouts", "health_check_timeout", default=10)
+    health_check_interval = settings_manager.get("timeouts", "health_check_interval", default=60)
+
     # Initialize MCP Gateway components
-    mcp_proxy = McpProxy(config.auth.sqlite_path, timeout=config.request_timeout_seconds)
+    mcp_proxy = McpProxy(config.auth.sqlite_path, timeout=proxy_timeout)
     mcp_handler = McpHandler(config.auth.sqlite_path)
 
     # Initialize health checker
     health_checker = initialize_health_checker(
         db_path=config.auth.sqlite_path,
-        interval=60,
-        timeout=10,
+        interval=health_check_interval,
+        timeout=health_check_timeout,
     )
 
     # Initialize token manager and refresher

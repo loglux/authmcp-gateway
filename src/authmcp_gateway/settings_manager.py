@@ -91,6 +91,11 @@ class SettingsManager:
                 "register_limit": 3,
                 "register_window": 300,
             },
+            "timeouts": {
+                "proxy_timeout": 30,
+                "health_check_timeout": 10,
+                "health_check_interval": 60,
+            },
         }
 
     def get(self, *keys: str, default: Any = None) -> Any:

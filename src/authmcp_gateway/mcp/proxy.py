@@ -148,6 +148,9 @@ class McpProxy:
         server_id = server["id"]
         headers = self._get_auth_headers(server)
 
+        # Per-server timeout override (DB field → global default)
+        server_timeout = server.get("timeout") or self.timeout
+
         # Include mcp-session-id if we have one (Streamable HTTP transport)
         session_id = self._session_ids.get(server_id)
         if session_id:
@@ -156,7 +159,9 @@ class McpProxy:
         payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}
 
         client = await self._get_client()
-        response = await client.post(server_url, json=payload, headers=headers)
+        response = await client.post(
+            server_url, json=payload, headers=headers, timeout=server_timeout
+        )
 
         if _MCP_DEBUG:
             snippet = response.text[:300] if response.text else ""
@@ -183,7 +188,9 @@ class McpProxy:
                     headers = self._get_auth_headers(server)
                     if session_id:
                         headers["mcp-session-id"] = session_id
-                    response = await client.post(server_url, json=payload, headers=headers)
+                    response = await client.post(
+                        server_url, json=payload, headers=headers, timeout=server_timeout
+                    )
                     logger.info(
                         f"Retry after token refresh succeeded for {method} on {server_name}"
                     )
@@ -202,7 +209,9 @@ class McpProxy:
                 session_id = self._session_ids.get(server_id)
                 if session_id:
                     headers["mcp-session-id"] = session_id
-                    response = await client.post(server_url, json=payload, headers=headers)
+                    response = await client.post(
+                        server_url, json=payload, headers=headers, timeout=server_timeout
+                    )
 
         response.raise_for_status()
 

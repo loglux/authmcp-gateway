@@ -116,8 +116,11 @@ class HealthChecker:
             # Prepare auth headers
             headers = self._get_auth_headers(server)
 
+            # Per-server timeout override (DB field → global default)
+            server_timeout = server.get("timeout") or self.timeout
+
             # Ping server with tools/list request
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
+            async with httpx.AsyncClient(timeout=server_timeout) as client:
                 # Include mcp-session-id if we have one
                 session_id = self._session_ids.get(server_id)
                 if session_id:
@@ -228,7 +231,7 @@ class HealthChecker:
                 return result
 
         except httpx.TimeoutException:
-            error_msg = f"Timeout after {self.timeout}s"
+            error_msg = f"Timeout after {server_timeout}s"
             logger.warning(f"Health check: {server_name} - {error_msg}")
 
             update_server_health(self.db_path, server_id, status="offline", error=error_msg)
