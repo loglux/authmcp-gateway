@@ -126,17 +126,49 @@ class HealthChecker:
                 if session_id:
                     headers["mcp-session-id"] = session_id
 
-                response = await client.post(
-                    server_url,
-                    json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
-                    headers=headers,
-                )
+                try:
+                    response = await client.post(
+                        server_url,
+                        json={"jsonrpc": "2.0", "id": 1, "method": "tools/list", "params": {}},
+                        headers=headers,
+                    )
+                except httpx.TimeoutException:
+                    # Stale session can cause backends to hang instead of returning 400.
+                    # If we had a session, clear it and retry with fresh initialize.
+                    if session_id:
+                        logger.info(
+                            f"Health check: {server_name} timed out with session, "
+                            "retrying with fresh initialize"
+                        )
+                        del self._session_ids[server_id]
+                        headers.pop("mcp-session-id", None)
+                        session_id = await self._initialize_session(
+                            client, server_url, headers, server_id, server_name
+                        )
+                        if session_id:
+                            headers["mcp-session-id"] = session_id
+                            response = await client.post(
+                                server_url,
+                                json={
+                                    "jsonrpc": "2.0",
+                                    "id": 1,
+                                    "method": "tools/list",
+                                    "params": {},
+                                },
+                                headers=headers,
+                            )
+                        else:
+                            raise  # Re-raise timeout if init also failed
+                    else:
+                        raise  # No session to clear, genuine timeout
 
                 # Handle 400 "no valid session" — initialize first
                 if response.status_code == 400:
                     body_text = response.text[:200] if response.text else ""
                     if "session" in body_text.lower():
                         logger.info(f"Health check: {server_name} requires session, initializing")
+                        self._session_ids.pop(server_id, None)
+                        headers.pop("mcp-session-id", None)
                         session_id = await self._initialize_session(
                             client, server_url, headers, server_id, server_name
                         )
