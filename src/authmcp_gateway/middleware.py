@@ -112,8 +112,14 @@ def _inject_security_schemes(body: bytes, scopes: Optional[str] = None) -> bytes
         Modified response body with securitySchemes injected
     """
     try:
-        data = json.loads(body.decode("utf-8"))
-    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        # Handle gzip-compressed responses from backends
+        raw = body
+        if len(raw) >= 2 and raw[:2] == b"\x1f\x8b":
+            import gzip
+
+            raw = gzip.decompress(raw)
+        data = json.loads(raw.decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
         logger.warning(
             "Failed to parse tools/list JSON for securitySchemes injection: %s",
             e,
@@ -385,8 +391,11 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
         raw_body = b"".join([chunk async for chunk in response.body_iterator])
         modified_body = _inject_security_schemes(raw_body, self.oauth_scopes)
 
+        # Build clean headers — remove size/encoding headers that conflict
+        # with the modified body (decompressed gzip, added securitySchemes)
         headers = dict(response.headers)
-        headers.pop("content-length", None)
+        for h in ("content-length", "content-encoding", "transfer-encoding"):
+            headers.pop(h, None)
         return Response(
             content=modified_body,
             status_code=response.status_code,
