@@ -658,7 +658,7 @@ def create_app(config=None):
         logger.info(f"✓ Static files mounted from {static_dir}")
 
     # Add middleware (order matters: last added = first executed)
-    app.add_middleware(GZipMiddleware, minimum_size=1000)
+    # GZip must be OUTSIDE McpAuth so it compresses the final (modified) body
     app.add_middleware(ContentTypeFixMiddleware)
     app.add_middleware(
         McpAuthMiddleware,
@@ -668,6 +668,7 @@ def create_app(config=None):
         oauth_scopes="openid profile email",
     )
     app.add_middleware(AdminAuthMiddleware, config=config)
+    app.add_middleware(GZipMiddleware, minimum_size=1000)
 
     # CSRF protection — last added = first executed
     app.add_middleware(CSRFMiddleware, secret_key=config.jwt.secret_key)
