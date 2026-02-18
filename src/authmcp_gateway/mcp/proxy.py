@@ -159,9 +159,29 @@ class McpProxy:
         payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}
 
         client = await self._get_client()
-        response = await client.post(
-            server_url, json=payload, headers=headers, timeout=server_timeout
-        )
+        try:
+            response = await client.post(
+                server_url, json=payload, headers=headers, timeout=server_timeout
+            )
+        except httpx.TimeoutException:
+            # Stale session can cause backends to hang instead of returning 400.
+            # If we had a session, clear it and retry with fresh initialize.
+            if session_id:
+                logger.info(
+                    f"Timeout with stale session for {server_name}/{method}, "
+                    "retrying with fresh initialize"
+                )
+                self._session_ids.pop(server_id, None)
+                headers.pop("mcp-session-id", None)
+                await self._fetch_capabilities_from_server(server)
+                session_id = self._session_ids.get(server_id)
+                if session_id:
+                    headers["mcp-session-id"] = session_id
+                response = await client.post(
+                    server_url, json=payload, headers=headers, timeout=server_timeout
+                )
+            else:
+                raise
 
         if _MCP_DEBUG:
             snippet = response.text[:300] if response.text else ""
