@@ -392,15 +392,23 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
         modified_body = _inject_security_schemes(raw_body, self.oauth_scopes)
 
         # Build clean headers — remove size/encoding headers that conflict
-        # with the modified body (decompressed gzip, added securitySchemes)
+        # with the modified body (decompressed gzip, added securitySchemes).
+        # Use StreamingResponse so BaseHTTPMiddleware doesn't set a fixed
+        # Content-Length that conflicts with downstream GZip compression.
         headers = dict(response.headers)
         for h in ("content-length", "content-encoding", "transfer-encoding"):
             headers.pop(h, None)
-        return Response(
-            content=modified_body,
+        headers["content-type"] = "application/json"
+
+        async def body_iter():
+            yield modified_body
+
+        from starlette.responses import StreamingResponse
+
+        return StreamingResponse(
+            content=body_iter(),
             status_code=response.status_code,
             headers=headers,
-            media_type="application/json",
         )
 
 
