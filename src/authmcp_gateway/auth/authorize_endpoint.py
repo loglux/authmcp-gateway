@@ -64,20 +64,47 @@ async def authorize_page(request: Request) -> Response:
     except Exception:
         return HTMLResponse("<h1>Error</h1><p>Invalid redirect_uri format.</p>", status_code=400)
 
-    # Enforce registered clients if DCR is enabled
+    # Validate client_id — seamless approach:
+    # 1. Known DCR client → strict redirect_uri check against registered URIs
+    # 2. URL-based client_id (e.g. https://claude.ai) → accept if redirect_uri same-origin
+    # 3. Unknown non-URL client → reject
     try:
         config = request.app.state.config
-        if config.auth.allow_dcr:
-            client = get_oauth_client_by_client_id(config.auth.sqlite_path, client_id)
-            if not client:
-                return HTMLResponse("<h1>Error</h1><p>Unknown client_id.</p>", status_code=400)
-            if not is_redirect_uri_allowed(client, redirect_uri):
+
+        # Check DCR-registered clients first
+        registered_client = get_oauth_client_by_client_id(config.auth.sqlite_path, client_id)
+        if registered_client:
+            if not is_redirect_uri_allowed(registered_client, redirect_uri):
                 return HTMLResponse(
                     "<h1>Error</h1><p>redirect_uri not registered for this client.</p>",
                     status_code=400,
                 )
+            logger.info(f"DCR client accepted: {client_id}")
+        else:
+            # Not registered — accept URL-based client_id with same-origin redirect
+            parsed_client_id = urlparse(client_id)
+            is_url_client = parsed_client_id.scheme in ("http", "https") and parsed_client_id.netloc
+
+            if is_url_client:
+                parsed_redirect = urlparse(redirect_uri)
+                if parsed_redirect.netloc != parsed_client_id.netloc:
+                    logger.warning(
+                        f"URL-based client_id origin mismatch: "
+                        f"client={parsed_client_id.netloc} redirect={parsed_redirect.netloc}"
+                    )
+                    return HTMLResponse(
+                        "<h1>Error</h1><p>redirect_uri must be on the same origin as client_id.</p>",
+                        status_code=400,
+                    )
+                logger.info(f"URL-based client_id accepted: {client_id}")
+            else:
+                logger.warning(f"Unknown non-URL client_id rejected: {client_id}")
+                return HTMLResponse(
+                    "<h1>Error</h1><p>Unknown client_id. Use DCR to register or provide a URL-based client_id.</p>",
+                    status_code=400,
+                )
     except Exception as e:
-        logger.error(f"DCR validation failed: {e}")
+        logger.error(f"Client validation failed: {e}")
         return HTMLResponse("<h1>Error</h1><p>Client validation failed.</p>", status_code=400)
 
     # GET request: show login form

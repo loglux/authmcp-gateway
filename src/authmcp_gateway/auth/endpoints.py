@@ -1025,26 +1025,23 @@ async def oauth_token(request: Request) -> JSONResponse:
                     },
                 )
 
-            # Enforce registered clients when DCR is enabled
-            if config.auth.allow_dcr:
-                if not client_id or not redirect_uri:
-                    return JSONResponse(
-                        status_code=400,
-                        content={
-                            "error": "invalid_request",
-                            "error_description": "Missing client_id or redirect_uri",
-                        },
-                    )
-                client = get_oauth_client_by_client_id(config.auth.sqlite_path, client_id)
-                if not client:
-                    return JSONResponse(
-                        status_code=401,
-                        content={
-                            "error": "invalid_client",
-                            "error_description": "Unknown client_id",
-                        },
-                    )
-                if not is_redirect_uri_allowed(client, redirect_uri):
+            # Validate client — seamless approach:
+            # 1. Known DCR client → strict auth (secret, redirect_uri)
+            # 2. URL-based client_id → accept (public client, PKCE protects the flow)
+            # 3. Unknown non-URL → reject
+            if not client_id or not redirect_uri:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": "invalid_request",
+                        "error_description": "Missing client_id or redirect_uri",
+                    },
+                )
+
+            registered_client = get_oauth_client_by_client_id(config.auth.sqlite_path, client_id)
+            if registered_client:
+                # DCR-registered: strict validation
+                if not is_redirect_uri_allowed(registered_client, redirect_uri):
                     return JSONResponse(
                         status_code=400,
                         content={
@@ -1052,10 +1049,12 @@ async def oauth_token(request: Request) -> JSONResponse:
                             "error_description": "redirect_uri not registered for this client",
                         },
                     )
-                auth_method = client.get("token_endpoint_auth_method") or "none"
+                auth_method = registered_client.get("token_endpoint_auth_method") or "none"
                 if auth_method == "client_secret_basic":
                     basic_id, basic_secret = _parse_basic_auth(request)
-                    if basic_id != client_id or not verify_client_secret(client, basic_secret):
+                    if basic_id != client_id or not verify_client_secret(
+                        registered_client, basic_secret
+                    ):
                         return JSONResponse(
                             status_code=401,
                             content={
@@ -1064,7 +1063,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                             },
                         )
                 elif auth_method == "client_secret_post":
-                    if not verify_client_secret(client, data.get("client_secret")):
+                    if not verify_client_secret(registered_client, data.get("client_secret")):
                         return JSONResponse(
                             status_code=401,
                             content={
@@ -1078,6 +1077,19 @@ async def oauth_token(request: Request) -> JSONResponse:
                         content={
                             "error": "invalid_request",
                             "error_description": f"Unsupported token_endpoint_auth_method: {auth_method}",
+                        },
+                    )
+            else:
+                # Not registered — accept URL-based client_id (public client)
+                from urllib.parse import urlparse
+
+                parsed_cid = urlparse(client_id)
+                if not (parsed_cid.scheme in ("http", "https") and parsed_cid.netloc):
+                    return JSONResponse(
+                        status_code=401,
+                        content={
+                            "error": "invalid_client",
+                            "error_description": "Unknown client_id",
                         },
                     )
 
