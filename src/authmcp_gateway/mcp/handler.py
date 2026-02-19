@@ -298,6 +298,10 @@ class McpHandler:
             logger.warning(f"Permission denied: {e}")
             return self._error_response(jsonrpc_id, -32000, str(e))
 
+        except ValueError as e:
+            logger.warning(f"Invalid params: {e}")
+            return self._error_response(jsonrpc_id, -32602, str(e))
+
         except Exception as e:
             logger.exception(f"Error calling tool '{tool_name}': {e}")
             return self._error_response(jsonrpc_id, -32603, str(e))

@@ -128,6 +128,7 @@ class McpProxy:
         self._http_client: Optional[httpx.AsyncClient] = None
         self._dedup_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
         self._dedup_ttl_seconds: int = 60
+        self._dedup_inflight: Dict[str, asyncio.Future] = {}
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create shared httpx.AsyncClient."""
@@ -150,6 +151,7 @@ class McpProxy:
         server: Dict[str, Any],
         method: str,
         params: Optional[Dict[str, Any]] = None,
+        allow_retry: bool = True,
     ) -> Dict[str, Any]:
         """Send a JSON-RPC request to a backend server and return parsed response.
 
@@ -186,7 +188,7 @@ class McpProxy:
         except httpx.TimeoutException:
             # Stale session can cause backends to hang instead of returning 400.
             # If we had a session, clear it and retry with fresh initialize.
-            if session_id:
+            if allow_retry and session_id:
                 logger.info(
                     f"Timeout with stale session for {server_name}/{method}, "
                     "retrying with fresh initialize"
@@ -246,7 +248,7 @@ class McpProxy:
                 logger.error(f"Exception during token refresh: {refresh_error}")
 
         # Handle 400 "no valid session" — need to initialize first
-        if response.status_code == 400 and method != "initialize":
+        if allow_retry and response.status_code == 400 and method != "initialize":
             body_text = response.text[:200] if response.text else ""
             if "session" in body_text.lower():
                 logger.info(f"Session expired/missing for {server_name}, re-initializing")
@@ -464,7 +466,11 @@ class McpProxy:
         if user_id and not check_user_mcp_access(self.db_path, user_id, server["id"]):
             raise PermissionError(f"User {user_id} doesn't have access to server {server['name']}")
 
-        dedup_key = self._build_dedup_key(server, tool_name, arguments or {})
+        args = arguments or {}
+        if tool_name == "send_message" and not args.get("client_request_id"):
+            raise ValueError("client_request_id is required for send_message")
+
+        dedup_key = self._build_dedup_key(server, tool_name, args)
         if dedup_key:
             cached = self._get_dedup_cached(dedup_key)
             if cached is not None:
@@ -479,9 +485,36 @@ class McpProxy:
                     data["result"]["_meta"]["tool_name"] = tool_name
                 return data, server
 
-        data = await self._proxy_jsonrpc(
-            server, "tools/call", {"name": tool_name, "arguments": arguments or {}}
-        )
+            inflight = self._dedup_inflight.get(dedup_key)
+            if inflight is not None:
+                logger.info("Dedup in-flight for tool '%s' (server: %s)", tool_name, server["name"])
+                data = await inflight
+                # Add gateway metadata
+                if "result" in data:
+                    if "_meta" not in data["result"]:
+                        data["result"]["_meta"] = {}
+                    data["result"]["_meta"]["server_id"] = server["id"]
+                    data["result"]["_meta"]["server_name"] = server["name"]
+                    data["result"]["_meta"]["tool_name"] = tool_name
+                return data, server
+
+            loop = asyncio.get_running_loop()
+            inflight_future = loop.create_future()
+            self._dedup_inflight[dedup_key] = inflight_future
+
+        try:
+            data = await self._proxy_jsonrpc(
+                server,
+                "tools/call",
+                {"name": tool_name, "arguments": args},
+                allow_retry=not (tool_name == "send_message" and args.get("client_request_id")),
+            )
+        except Exception as exc:
+            if dedup_key:
+                inflight = self._dedup_inflight.pop(dedup_key, None)
+                if inflight is not None and not inflight.done():
+                    inflight.set_exception(exc)
+            raise
 
         # Temporary: log full response for tools/call diagnosis
         result_obj = data.get("result", {})
@@ -511,6 +544,10 @@ class McpProxy:
 
         if dedup_key and self._is_success_result(data):
             self._set_dedup_cache(dedup_key, data)
+        if dedup_key:
+            inflight = self._dedup_inflight.pop(dedup_key, None)
+            if inflight is not None and not inflight.done():
+                inflight.set_result(data)
 
         logger.info(f"Tool '{tool_name}' executed on {server['name']}")
         return data, server
