@@ -4,9 +4,11 @@ Supports full MCP protocol: tools, resources, prompts, completions.
 """
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -124,6 +126,8 @@ class McpProxy:
         self._session_ids: Dict[int, str] = {}  # server_id → mcp-session-id
         self._request_id_counter: int = 0
         self._http_client: Optional[httpx.AsyncClient] = None
+        self._dedup_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+        self._dedup_ttl_seconds: int = 60
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create shared httpx.AsyncClient."""
@@ -460,6 +464,21 @@ class McpProxy:
         if user_id and not check_user_mcp_access(self.db_path, user_id, server["id"]):
             raise PermissionError(f"User {user_id} doesn't have access to server {server['name']}")
 
+        dedup_key = self._build_dedup_key(server, tool_name, arguments or {})
+        if dedup_key:
+            cached = self._get_dedup_cached(dedup_key)
+            if cached is not None:
+                logger.info("Dedup hit for tool '%s' (server: %s)", tool_name, server["name"])
+                data = cached
+                # Add gateway metadata
+                if "result" in data:
+                    if "_meta" not in data["result"]:
+                        data["result"]["_meta"] = {}
+                    data["result"]["_meta"]["server_id"] = server["id"]
+                    data["result"]["_meta"]["server_name"] = server["name"]
+                    data["result"]["_meta"]["tool_name"] = tool_name
+                return data, server
+
         data = await self._proxy_jsonrpc(
             server, "tools/call", {"name": tool_name, "arguments": arguments or {}}
         )
@@ -489,6 +508,9 @@ class McpProxy:
             data["result"]["_meta"]["server_id"] = server["id"]
             data["result"]["_meta"]["server_name"] = server["name"]
             data["result"]["_meta"]["tool_name"] = tool_name
+
+        if dedup_key and self._is_success_result(data):
+            self._set_dedup_cache(dedup_key, data)
 
         logger.info(f"Tool '{tool_name}' executed on {server['name']}")
         return data, server
@@ -843,6 +865,53 @@ class McpProxy:
             self._cache_timestamp.clear()
             self._session_ids.clear()
             logger.info("Invalidated all cache")
+
+    def _build_dedup_key(
+        self, server: Dict[str, Any], tool_name: str, arguments: Dict[str, Any]
+    ) -> Optional[str]:
+        client_request_id = arguments.get("client_request_id")
+        if client_request_id:
+            return f"{server['id']}:{tool_name}:req:{client_request_id}"
+
+        if tool_name != "send_message":
+            return None
+
+        recipient = (
+            arguments.get("recipient_jid")
+            or arguments.get("chat_id")
+            or arguments.get("to")
+            or arguments.get("jid")
+            or arguments.get("group_jid")
+        )
+        body = arguments.get("message") or arguments.get("text") or arguments.get("body")
+        if not recipient or not body:
+            return None
+
+        payload = {"recipient": recipient, "body": body}
+        raw = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        digest = hashlib.sha256(raw).hexdigest()
+        return f"{server['id']}:{tool_name}:sha256:{digest}"
+
+    def _get_dedup_cached(self, key: str) -> Optional[Dict[str, Any]]:
+        now = time.time()
+        item = self._dedup_cache.get(key)
+        if not item:
+            return None
+        ts, data = item
+        if now - ts > self._dedup_ttl_seconds:
+            self._dedup_cache.pop(key, None)
+            return None
+        return data
+
+    def _set_dedup_cache(self, key: str, data: Dict[str, Any]) -> None:
+        self._dedup_cache[key] = (time.time(), data)
+
+    def _is_success_result(self, data: Dict[str, Any]) -> bool:
+        result = data.get("result")
+        if not isinstance(result, dict):
+            return False
+        is_error = result.get("isError")
+        return is_error is False or is_error is None
 
     def _get_auth_headers(self, server: Dict[str, Any]) -> Dict[str, str]:
         """Get authentication headers for backend MCP server."""
