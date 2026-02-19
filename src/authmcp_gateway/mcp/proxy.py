@@ -467,8 +467,6 @@ class McpProxy:
             raise PermissionError(f"User {user_id} doesn't have access to server {server['name']}")
 
         args = arguments or {}
-        if tool_name == "send_message" and not args.get("client_request_id"):
-            raise ValueError("client_request_id is required for send_message")
 
         dedup_key = self._build_dedup_key(server, tool_name, args)
         if dedup_key:
