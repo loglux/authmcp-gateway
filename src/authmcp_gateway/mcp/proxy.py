@@ -66,6 +66,7 @@ def parse_sse_response(response: httpx.Response) -> Dict[str, Any]:
     if "text/event-stream" in content_type:
         text = response.text
         last_json_message = None
+        all_jsonrpc = []
 
         for line in text.splitlines():
             line = line.strip()
@@ -75,12 +76,24 @@ def parse_sse_response(response: httpx.Response) -> Dict[str, Any]:
                     continue
                 try:
                     parsed = json.loads(data_str)
-                    # Look for JSON-RPC response (has "result" or "error")
+                    # Collect all JSON-RPC responses (has "result" or "error")
                     if isinstance(parsed, dict) and ("result" in parsed or "error" in parsed):
-                        return parsed
-                    last_json_message = parsed
+                        all_jsonrpc.append(parsed)
+                    else:
+                        last_json_message = parsed
                 except json.JSONDecodeError:
                     continue
+
+        if len(all_jsonrpc) > 1:
+            logger.warning(
+                "SSE response contains %d JSON-RPC messages (returning last). IDs: %s",
+                len(all_jsonrpc),
+                [m.get("id") for m in all_jsonrpc],
+            )
+        # Return the LAST JSON-RPC response — earlier ones may be from
+        # session warm-up (e.g. tools/list before tools/call)
+        if all_jsonrpc:
+            return all_jsonrpc[-1]
 
         # Return last valid JSON message if no explicit result/error found
         if last_json_message:
@@ -109,6 +122,7 @@ class McpProxy:
         self._cache_timestamp: Dict[int, datetime] = {}
         self._cache_ttl = 60  # seconds
         self._session_ids: Dict[int, str] = {}  # server_id → mcp-session-id
+        self._request_id_counter: int = 0
         self._http_client: Optional[httpx.AsyncClient] = None
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -156,7 +170,9 @@ class McpProxy:
         if session_id:
             headers["mcp-session-id"] = session_id
 
-        payload = {"jsonrpc": "2.0", "id": 1, "method": method, "params": params or {}}
+        self._request_id_counter += 1
+        request_id = self._request_id_counter
+        payload = {"jsonrpc": "2.0", "id": request_id, "method": method, "params": params or {}}
 
         client = await self._get_client()
         try:
@@ -172,8 +188,14 @@ class McpProxy:
                     "retrying with fresh initialize"
                 )
                 self._session_ids.pop(server_id, None)
+                self._capabilities_cache.pop(server_id, None)
+                self._cache_timestamp.pop(server_id, None)
+                self._tools_cache.pop(server_id, None)
                 headers.pop("mcp-session-id", None)
                 await self._fetch_capabilities_from_server(server)
+                # Warm up: some backends require tools/list before tools/call
+                if method not in ("initialize", "tools/list"):
+                    await self._fetch_tools_from_server(server)
                 session_id = self._session_ids.get(server_id)
                 if session_id:
                     headers["mcp-session-id"] = session_id
@@ -225,7 +247,13 @@ class McpProxy:
             if "session" in body_text.lower():
                 logger.info(f"Session expired/missing for {server_name}, re-initializing")
                 self._session_ids.pop(server_id, None)
+                self._capabilities_cache.pop(server_id, None)
+                self._cache_timestamp.pop(server_id, None)
+                self._tools_cache.pop(server_id, None)
                 await self._fetch_capabilities_from_server(server)
+                # Warm up: some backends require tools/list before tools/call
+                if method not in ("initialize", "tools/list"):
+                    await self._fetch_tools_from_server(server)
                 session_id = self._session_ids.get(server_id)
                 if session_id:
                     headers["mcp-session-id"] = session_id
@@ -291,14 +319,17 @@ class McpProxy:
             # Send initialized notification (fire-and-forget)
             try:
                 client = await self._get_client()
-                headers = self._get_auth_headers(server)
+                notify_headers = self._get_auth_headers(server)
+                session_id = self._session_ids.get(server_id)
+                if session_id:
+                    notify_headers["mcp-session-id"] = session_id
                 await client.post(
                     server["url"],
                     json={
                         "jsonrpc": "2.0",
                         "method": "notifications/initialized",
                     },
-                    headers=headers,
+                    headers=notify_headers,
                 )
             except Exception:
                 pass  # Best-effort notification
@@ -365,6 +396,12 @@ class McpProxy:
         logger.info(f"Aggregated {len(all_tools)} tools from {len(servers)} servers")
         return all_tools
 
+    async def _ensure_session(self, server: Dict[str, Any]) -> None:
+        """Ensure we have a valid session with the server (initialize if needed)."""
+        server_id = server["id"]
+        if server_id not in self._session_ids:
+            await self._fetch_capabilities_from_server(server)
+
     async def _fetch_tools_from_server(self, server: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Fetch tools list from a backend MCP server."""
         server_id = server["id"]
@@ -373,6 +410,9 @@ class McpProxy:
         if self._is_cache_valid(server_id) and server_id in self._tools_cache:
             logger.debug(f"Using cached tools for server {server_name}")
             return self._tools_cache[server_id]
+
+        # Ensure session exists before requesting tools
+        await self._ensure_session(server)
 
         try:
             data = await self._proxy_jsonrpc(server, "tools/list")
@@ -422,6 +462,24 @@ class McpProxy:
 
         data = await self._proxy_jsonrpc(
             server, "tools/call", {"name": tool_name, "arguments": arguments or {}}
+        )
+
+        # Temporary: log full response for tools/call diagnosis
+        result_obj = data.get("result", {})
+        if isinstance(result_obj, dict):
+            result_keys = list(result_obj.keys())
+            is_error = result_obj.get("isError")
+            content_preview = str(result_obj.get("content", ""))[:300]
+        else:
+            result_keys = "N/A"
+            is_error = None
+            content_preview = str(result_obj)[:300]
+        logger.info(
+            "tools/call response for '%s': keys=%s, isError=%s, content=%s",
+            tool_name,
+            result_keys,
+            is_error,
+            content_preview,
         )
 
         # Add gateway metadata
@@ -513,6 +571,8 @@ class McpProxy:
 
         if self._is_cache_valid(server_id) and server_id in self._resources_cache:
             return self._resources_cache[server_id]
+
+        await self._ensure_session(server)
 
         try:
             data = await self._proxy_jsonrpc(server, "resources/list")
@@ -644,6 +704,8 @@ class McpProxy:
 
         if self._is_cache_valid(server_id) and server_id in self._prompts_cache:
             return self._prompts_cache[server_id]
+
+        await self._ensure_session(server)
 
         try:
             data = await self._proxy_jsonrpc(server, "prompts/list")

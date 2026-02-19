@@ -8,7 +8,7 @@ import time
 from typing import Any, Dict, Optional
 
 from starlette.requests import Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from .proxy import McpProxy, PromptNotFoundError, ResourceNotFoundError, ToolNotFoundError
 
@@ -50,7 +50,8 @@ class McpHandler:
             elif method in {"notifications/initialized", "initialized"}:
                 if jsonrpc_id is not None:
                     return JSONResponse({"jsonrpc": "2.0", "id": jsonrpc_id, "result": {}})
-                return JSONResponse(status_code=204, content={})
+                # 204 must not include a response body
+                return Response(status_code=204)
 
             elif method == "tools/list":
                 return await self._handle_tools_list(jsonrpc_id, user_id, server_name, request)

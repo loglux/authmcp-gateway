@@ -16,20 +16,30 @@ logger = logging.getLogger(__name__)
 class HealthChecker:
     """Periodic health checker for backend MCP servers."""
 
-    def __init__(self, db_path: str, interval: int = 60, timeout: int = 10):
+    def __init__(
+        self,
+        db_path: str,
+        interval: int = 60,
+        timeout: int = 10,
+        shared_session_ids: Dict[int, str] | None = None,
+    ):
         """Initialize health checker.
 
         Args:
             db_path: Path to SQLite database
             interval: Check interval in seconds
             timeout: Request timeout in seconds
+            shared_session_ids: Optional shared session dict (from McpProxy) to
+                avoid creating competing sessions on single-session backends
         """
         self.db_path = db_path
         self.interval = interval
         self.timeout = timeout
         self._running = False
         self._task = None
-        self._session_ids: Dict[int, str] = {}  # server_id → mcp-session-id
+        self._session_ids: Dict[int, str] = (
+            shared_session_ids if shared_session_ids is not None else {}
+        )
 
     def start(self):
         """Start health checking background task."""
@@ -385,17 +395,23 @@ def get_health_checker() -> HealthChecker:
     return _health_checker
 
 
-def initialize_health_checker(db_path: str, interval: int = 60, timeout: int = 10) -> HealthChecker:
+def initialize_health_checker(
+    db_path: str,
+    interval: int = 60,
+    timeout: int = 10,
+    shared_session_ids: Dict[int, str] | None = None,
+) -> HealthChecker:
     """Initialize global health checker.
 
     Args:
         db_path: Path to SQLite database
         interval: Check interval in seconds
         timeout: Request timeout in seconds
+        shared_session_ids: Optional shared session dict from McpProxy
 
     Returns:
         HealthChecker instance
     """
     global _health_checker
-    _health_checker = HealthChecker(db_path, interval, timeout)
+    _health_checker = HealthChecker(db_path, interval, timeout, shared_session_ids)
     return _health_checker

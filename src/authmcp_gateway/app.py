@@ -176,6 +176,7 @@ def create_app(config=None):
         db_path=config.auth.sqlite_path,
         interval=health_check_interval,
         timeout=health_check_timeout,
+        shared_session_ids=mcp_proxy._session_ids,
     )
 
     # Initialize token manager and refresher
@@ -659,6 +660,17 @@ def create_app(config=None):
 
     # Add middleware (order matters: last added = first executed)
     # GZip must be OUTSIDE McpAuth so it compresses the final (modified) body
+    class McpAwareGZipMiddleware(GZipMiddleware):
+        """Skip gzip for MCP endpoints to avoid Content-Length mismatches."""
+
+        async def __call__(self, scope, receive, send):
+            if scope.get("type") == "http":
+                path = scope.get("path", "")
+                if path == "/mcp" or path.startswith("/mcp/"):
+                    await self.app(scope, receive, send)
+                    return
+            await super().__call__(scope, receive, send)
+
     app.add_middleware(ContentTypeFixMiddleware)
     app.add_middleware(
         McpAuthMiddleware,
@@ -668,7 +680,7 @@ def create_app(config=None):
         oauth_scopes="openid profile email",
     )
     app.add_middleware(AdminAuthMiddleware, config=config)
-    app.add_middleware(GZipMiddleware, minimum_size=1000)
+    app.add_middleware(McpAwareGZipMiddleware, minimum_size=1000)
 
     # CSRF protection — last added = first executed
     app.add_middleware(CSRFMiddleware, secret_key=config.jwt.secret_key)
