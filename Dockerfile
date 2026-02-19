@@ -36,7 +36,9 @@ RUN mkdir -p /app/data /app/data/logs
 EXPOSE 8000
 
 # Set environment
+ARG GIT_COMMIT=unknown
 ENV PYTHONUNBUFFERED=1
+ENV GIT_COMMIT=$GIT_COMMIT
 
 # Entrypoint rebuilds CSS at startup (handles volume-mounted src)
 ENTRYPOINT ["./docker-entrypoint.sh"]

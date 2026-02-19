@@ -37,6 +37,14 @@ def requires_admin(func):
 TEMPLATE_DIR = Path(__file__).parent.parent / "templates"
 jinja_env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)), autoescape=True)
 
+# Inject version info as global template variables
+import os as _os
+
+from authmcp_gateway import __version__ as _app_version
+
+jinja_env.globals["app_version"] = _app_version
+jinja_env.globals["git_commit"] = _os.environ.get("GIT_COMMIT", "unknown")
+
 
 def get_config(request: Request) -> AppConfig:
     """Return the config instance from app state.

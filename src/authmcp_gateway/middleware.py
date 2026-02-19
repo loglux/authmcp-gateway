@@ -4,7 +4,6 @@ import json
 import logging
 from typing import Optional, Set
 
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 
@@ -145,15 +144,15 @@ def _inject_security_schemes(body: bytes, scopes: Optional[str] = None) -> bytes
     return json.dumps(data).encode("utf-8")
 
 
-class McpAuthMiddleware(BaseHTTPMiddleware):
-    """Authentication middleware for MCP server.
+class McpAuthMiddleware:
+    """Pure ASGI authentication middleware for MCP server.
 
     Handles:
     - CORS origin validation
     - Static bearer token authentication
     - JWT bearer token authentication with blacklist checking
     - Trusted IP bypass
-    - OAuth 2.0 security schemes injection
+    - OAuth 2.0 security schemes injection into tools/list responses
     """
 
     def __init__(
@@ -164,63 +163,56 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
         mcp_public_url: str,
         oauth_scopes: Optional[str] = None,
     ):
-        """Initialize authentication middleware.
-
-        Args:
-            app: ASGI application
-            jwt_config: JWT configuration object
-            auth_db_path: Path to auth database for blacklist checks
-            mcp_public_url: Public URL of the MCP server
-            oauth_scopes: OAuth scopes (space or comma-separated)
-        """
-        super().__init__(app)
+        self.app = app
         self.jwt_config = jwt_config
         self.auth_db_path = auth_db_path
         self.mcp_public_url = mcp_public_url
         self.oauth_scopes = oauth_scopes
 
-    async def dispatch(self, request: Request, call_next):
-        """Process request through authentication middleware.
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
 
-        Args:
-            request: Incoming HTTP request
-            call_next: Next middleware/handler in chain
+        # Build a Request object for header access
+        request = Request(scope, receive)
 
-        Returns:
-            HTTP response
-        """
         # CORS origin validation
         if _allowed_origins and request.headers.get("origin"):
             origin = request.headers.get("origin")
             if origin not in _allowed_origins:
                 logger.warning("Origin not allowed: %s", origin)
-                return PlainTextResponse("Forbidden", status_code=403)
+                resp = PlainTextResponse("Forbidden", status_code=403)
+                await resp(scope, receive, send)
+                return
 
         # Skip auth if not required
         if not _auth_required:
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
         # Allow well-known and health endpoints
-        path = request.url.path
+        path = scope.get("path", "")
         if path.startswith("/.well-known/") or path.startswith("/health"):
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
         # Skip auth for admin endpoints (they have their own middleware)
         if path.startswith("/admin"):
-            return await call_next(request)
-
-        # Allow unauthenticated access only for explicitly public endpoints above.
-        # All other methods (including GET for SSE) require auth.
+            await self.app(scope, receive, send)
+            return
 
         # Only authenticate MCP endpoints
         is_gateway = path == "/mcp"
-        is_server_specific = path.startswith("/mcp/") and path != "/mcp/"  # /mcp/{server_name}
-        is_internal = path == _streamable_path  # /mcp-internal
+        is_server_specific = path.startswith("/mcp/") and path != "/mcp/"
+        is_internal = path == _streamable_path
 
         if not is_gateway and not is_server_specific and not is_internal:
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
-        # Parse request body to get MCP method
+        # Read request body to get MCP method.
+        # We must buffer it to replay for downstream handlers.
         body = await request.body()
         method = None
         request_id = None
@@ -231,6 +223,17 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
         except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as e:
             payload = {}
             logger.warning("Invalid JSON payload for MCP request: %s", e)
+
+        # Create a replay receive so downstream can read the body again
+        body_sent = False
+
+        async def replay_receive():
+            nonlocal body_sent
+            if not body_sent:
+                body_sent = True
+                return {"type": "http.request", "body": body, "more_body": False}
+            # After body is sent, delegate to original receive (for disconnect etc.)
+            return await receive()
 
         # Check trusted IP
         client_host = None
@@ -264,7 +267,6 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
             else:
                 # Verify JWT token
                 try:
-                    # Import here to avoid circular dependencies
                     from .auth.jwt_handler import get_token_jti, verify_token
                     from .auth.user_store import get_current_user_token_jti, is_token_blacklisted
 
@@ -274,7 +276,9 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
                     jti = get_token_jti(token)
                     if jti and is_token_blacklisted(self.auth_db_path, jti):
                         logger.warning("Token is blacklisted. jti=%s", jti)
-                        return _unauthorized(self.mcp_public_url, self.oauth_scopes)
+                        resp = _unauthorized(self.mcp_public_url, self.oauth_scopes)
+                        await resp(scope, receive, send)
+                        return
 
                     # Enforce single active token per user (if enabled)
                     if self.jwt_config.enforce_single_session and "sub" in token_payload:
@@ -285,7 +289,9 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
                                 logger.warning(
                                     "Token is not current. jti=%s expected=%s", jti, current_jti
                                 )
-                                return _unauthorized(self.mcp_public_url, self.oauth_scopes)
+                                resp = _unauthorized(self.mcp_public_url, self.oauth_scopes)
+                                await resp(scope, receive, send)
+                                return
                         except (ValueError, TypeError):
                             pass
 
@@ -293,10 +299,10 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
                     if scopes:
                         logger.info("JWT token scopes=%s", scopes)
 
-                    # Extract user_id from token and store in request state for MCP Gateway
+                    # Extract user_id from token and store in request state
                     if "sub" in token_payload:
                         try:
-                            request.state.user_id = int(token_payload["sub"])
+                            scope.setdefault("state", {})["user_id"] = int(token_payload["sub"])
                         except (ValueError, TypeError):
                             logger.warning("Invalid user_id in token: %s", token_payload.get("sub"))
 
@@ -305,111 +311,119 @@ class McpAuthMiddleware(BaseHTTPMiddleware):
                     logger.exception("JWT verification failed.")
                     token_payload = None
 
-        # For gateway endpoint (/mcp): NEVER allow trusted IP bypass
+        # Authorization checks
         if is_gateway:
             if not token_payload:
                 logger.info(
                     "Unauthorized gateway call (JWT required). method=%s id=%s", method, request_id
                 )
-
-                # Log security event
-                try:
-                    from .security.logger import log_security_event
-
-                    log_security_event(
-                        db_path=self.auth_db_path,
-                        event_type="unauthorized_access",
-                        severity="medium",
-                        ip_address=client_host,
-                        endpoint=path,
-                        method=method,
-                        details={"request_id": request_id, "mcp_method": method},
-                    )
-                except Exception as log_err:
-                    logger.error(f"Failed to log security event: {log_err}")
-
-                return _unauthorized(self.mcp_public_url, self.oauth_scopes)
-        # For internal endpoint (/mcp-internal): Allow trusted IP bypass
+                self._log_security_event(client_host, path, method, request_id)
+                resp = _unauthorized(self.mcp_public_url, self.oauth_scopes)
+                await resp(scope, receive, send)
+                return
         else:
-            # Require auth for tools/call
             if method in {"tools/call"} and not token_payload and not trusted_ip:
                 logger.info("Unauthorized tools/call (missing or invalid token). id=%s", request_id)
+                self._log_security_event(client_host, path, method, request_id)
+                resp = _unauthorized(self.mcp_public_url, self.oauth_scopes)
+                await resp(scope, receive, send)
+                return
 
-                # Log security event
-                try:
-                    from .security.logger import log_security_event
-
-                    log_security_event(
-                        db_path=self.auth_db_path,
-                        event_type="unauthorized_access",
-                        severity="medium",
-                        ip_address=client_host,
-                        endpoint=path,
-                        details={"request_id": request_id, "mcp_method": method},
-                    )
-                except Exception as log_err:
-                    logger.error(f"Failed to log security event: {log_err}")
-
-                return _unauthorized(self.mcp_public_url, self.oauth_scopes)
-
-            # Require auth for all MCP methods except initialization
             if (
                 method not in {None, "initialize", "notifications/initialized"}
                 and not token_payload
                 and not trusted_ip
             ):
                 logger.info("Unauthorized MCP call. method=%s id=%s", method, request_id)
+                self._log_security_event(client_host, path, method, request_id)
+                resp = _unauthorized(self.mcp_public_url, self.oauth_scopes)
+                await resp(scope, receive, send)
+                return
 
-                # Log security event
-                try:
-                    from .security.logger import log_security_event
-
-                    log_security_event(
-                        db_path=self.auth_db_path,
-                        event_type="unauthorized_access",
-                        severity="medium",
-                        ip_address=client_host,
-                        endpoint=path,
-                        details={"request_id": request_id, "mcp_method": method},
-                    )
-                except Exception as log_err:
-                    logger.error(f"Failed to log security event: {log_err}")
-
-                return _unauthorized(self.mcp_public_url, self.oauth_scopes)
-
-        # Process request
-        response = await call_next(request)
-
-        # Inject security schemes into tools/list response
+        # For non-tools/list requests, pass through directly
         if method != "tools/list":
-            return response
+            await self.app(scope, replay_receive, send)
+            return
 
-        content_type = response.headers.get("content-type", "")
-        if "application/json" not in content_type:
-            return response
+        # For tools/list: intercept response to inject securitySchemes
+        response_started = False
+        initial_message = None
+        body_chunks = []
 
-        raw_body = b"".join([chunk async for chunk in response.body_iterator])
-        modified_body = _inject_security_schemes(raw_body, self.oauth_scopes)
+        async def intercept_send(message):
+            nonlocal response_started, initial_message
 
-        # Build clean headers — remove size/encoding headers that conflict
-        # with the modified body (decompressed gzip, added securitySchemes).
-        # Use StreamingResponse so BaseHTTPMiddleware doesn't set a fixed
-        # Content-Length that conflicts with downstream GZip compression.
-        headers = dict(response.headers)
-        for h in ("content-length", "content-encoding", "transfer-encoding"):
-            headers.pop(h, None)
-        headers["content-type"] = "application/json"
+            if message["type"] == "http.response.start":
+                # Buffer the start message — we may need to modify headers
+                initial_message = message
+                response_started = True
+                return
 
-        async def body_iter():
-            yield modified_body
+            if message["type"] == "http.response.body":
+                body_chunks.append(message.get("body", b""))
+                more_body = message.get("more_body", False)
 
-        from starlette.responses import StreamingResponse
+                if not more_body:
+                    # All body received — now inject securitySchemes
+                    full_body = b"".join(body_chunks)
 
-        return StreamingResponse(
-            content=body_iter(),
-            status_code=response.status_code,
-            headers=headers,
-        )
+                    # Check content-type from initial_message
+                    headers = dict(
+                        (k.lower(), v) for k, v in (initial_message.get("headers") or [])
+                    )
+                    ct = headers.get(b"content-type", b"").decode("utf-8", errors="ignore")
+
+                    if "application/json" in ct:
+                        modified_body = _inject_security_schemes(full_body, self.oauth_scopes)
+                    else:
+                        modified_body = full_body
+
+                    # Rebuild headers: remove old content-length/encoding,
+                    # set correct content-length for modified body
+                    new_headers = []
+                    skip = {b"content-length", b"content-encoding", b"transfer-encoding"}
+                    for k, v in initial_message.get("headers") or []:
+                        if k.lower() not in skip:
+                            new_headers.append((k, v))
+                    new_headers.append((b"content-length", str(len(modified_body)).encode()))
+
+                    # Send start with corrected headers
+                    await send(
+                        {
+                            "type": "http.response.start",
+                            "status": initial_message.get("status", 200),
+                            "headers": new_headers,
+                        }
+                    )
+                    # Send body in one shot
+                    await send(
+                        {
+                            "type": "http.response.body",
+                            "body": modified_body,
+                            "more_body": False,
+                        }
+                    )
+                # If more_body is True, just keep buffering
+                return
+
+        await self.app(scope, replay_receive, intercept_send)
+
+    def _log_security_event(self, client_host, path, method, request_id):
+        """Log unauthorized access security event."""
+        try:
+            from .security.logger import log_security_event
+
+            log_security_event(
+                db_path=self.auth_db_path,
+                event_type="unauthorized_access",
+                severity="medium",
+                ip_address=client_host,
+                endpoint=path,
+                method=method,
+                details={"request_id": request_id, "mcp_method": method},
+            )
+        except Exception as log_err:
+            logger.error(f"Failed to log security event: {log_err}")
 
 
 class ContentTypeFixMiddleware:
@@ -420,21 +434,9 @@ class ContentTypeFixMiddleware:
     """
 
     def __init__(self, app):
-        """Initialize content type fix middleware.
-
-        Args:
-            app: ASGI application
-        """
         self.app = app
 
     async def __call__(self, scope, receive, send):
-        """Process request through content type fix middleware.
-
-        Args:
-            scope: ASGI scope
-            receive: ASGI receive callable
-            send: ASGI send callable
-        """
         if scope["type"] != "http":
             await self.app(scope, receive, send)
             return

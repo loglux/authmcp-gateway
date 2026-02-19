@@ -87,6 +87,16 @@
                     <span x-show="sidebarOpen" class="ml-3 font-medium slide-in">Logout</span>
                 </a>
             </div>
+
+            <!-- Version footer -->
+            <div class="px-3 pb-3 border-t border-white/10" x-show="sidebarOpen">
+                <div class="flex items-center justify-between px-3 pt-3 text-xs text-white/40">
+                    <span>v{{ app_version }}{% if git_commit and git_commit != 'unknown' %} ({{ git_commit }}){% endif %}</span>
+                    <a href="https://github.com/loglux/authmcp-gateway" target="_blank" rel="noopener" class="hover:text-white/70 transition-colors" title="GitHub">
+                        <i data-lucide="github" class="w-4 h-4"></i>
+                    </a>
+                </div>
+            </div>
         </aside>
 
         <!-- Main Content -->

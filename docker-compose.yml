@@ -1,6 +1,9 @@
 services:
   authmcp-gateway:
-    build: .
+    build:
+      context: .
+      args:
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
     container_name: authmcp-gateway
     ports:
       - "${GATEWAY_PORT:-9105}:8000"
