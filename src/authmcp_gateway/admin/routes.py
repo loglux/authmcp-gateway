@@ -174,7 +174,19 @@ def _get_sidebar_nav(active_page: str = "") -> str:
 
 async def admin_dashboard(_: Request) -> HTMLResponse:
     """Admin dashboard page."""
-    return render_template("admin/dashboard.html", active_page="dashboard")
+    from authmcp_gateway.settings_manager import get_settings_manager
+
+    settings_manager = get_settings_manager()
+    activity_window_seconds = settings_manager.get(
+        "ui",
+        "mcp_activity_window_seconds",
+        default=7200,
+    )
+    return render_template(
+        "admin/dashboard.html",
+        active_page="dashboard",
+        activity_window_seconds=activity_window_seconds,
+    )
 
 
 async def admin_users(_: Request) -> HTMLResponse:

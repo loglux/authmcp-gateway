@@ -17,6 +17,18 @@
                 </span>
                 <span class="text-sm text-gray-600">Live</span>
             </div>
+            <div class="flex items-center gap-1 bg-gray-100 rounded-md p-1">
+                <button @click="setWindow(1800)" :class="lastSeconds === 1800 ? 'bg-white shadow text-gray-900' : 'text-gray-600'"
+                        class="px-2 py-1 text-xs rounded-md transition">30m</button>
+                <button @click="setWindow(3600)" :class="lastSeconds === 3600 ? 'bg-white shadow text-gray-900' : 'text-gray-600'"
+                        class="px-2 py-1 text-xs rounded-md transition">1h</button>
+                <button @click="setWindow(7200)" :class="lastSeconds === 7200 ? 'bg-white shadow text-gray-900' : 'text-gray-600'"
+                        class="px-2 py-1 text-xs rounded-md transition">2h</button>
+                <button @click="setWindow(21600)" :class="lastSeconds === 21600 ? 'bg-white shadow text-gray-900' : 'text-gray-600'"
+                        class="px-2 py-1 text-xs rounded-md transition">6h</button>
+                <button @click="setWindow(86400)" :class="lastSeconds === 86400 ? 'bg-white shadow text-gray-900' : 'text-gray-600'"
+                        class="px-2 py-1 text-xs rounded-md transition">24h</button>
+            </div>
             <button @click="toggleAutoRefresh()" 
                     :class="autoRefresh ? 'bg-green-600' : 'bg-gray-400'"
                     class="px-3 py-1.5 text-white text-sm rounded-md hover:opacity-90 transition">
@@ -278,7 +290,7 @@ function mcpActivity() {
         stats: {},
         autoRefresh: true,
         refreshInterval: null,
-        lastSeconds: 3600,
+        lastSeconds: {{ activity_window_seconds | default(7200) }},
         filterMethod: '',
         filterSuccess: '',
         authEvents: [],
@@ -335,6 +347,20 @@ function mcpActivity() {
             } catch (error) {
                 console.error('Failed to load MCP auth events:', error);
             }
+        },
+
+        async setWindow(seconds) {
+            this.lastSeconds = seconds;
+            try {
+                await fetch('/admin/api/settings', {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ ui: { mcp_activity_window_seconds: seconds } })
+                });
+            } catch (error) {
+                console.error('Failed to persist activity window setting:', error);
+            }
+            this.loadRequests();
         },
 
         startAutoRefresh() {

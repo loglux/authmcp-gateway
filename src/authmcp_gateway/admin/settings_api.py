@@ -177,6 +177,15 @@ async def api_save_settings(request: Request) -> JSONResponse:
             except (ValueError, TypeError):
                 errors.append(f"{key} must be an integer")
 
+    ui = body.get("ui") or {}
+    if "mcp_activity_window_seconds" in ui:
+        try:
+            val = int(ui["mcp_activity_window_seconds"])
+            if val < 60 or val > 86400:
+                errors.append("mcp_activity_window_seconds must be between 60 and 86400")
+        except (ValueError, TypeError):
+            errors.append("mcp_activity_window_seconds must be an integer")
+
     if errors:
         return JSONResponse(
             status_code=400,

@@ -27,7 +27,19 @@ __all__ = [
 @requires_admin
 async def admin_mcp_activity(request: Request) -> HTMLResponse:
     """MCP Activity monitoring page - real-time view."""
-    return render_template("admin/mcp_activity.html", active_page="mcp-activity")
+    from authmcp_gateway.settings_manager import get_settings_manager
+
+    settings_manager = get_settings_manager()
+    activity_window_seconds = settings_manager.get(
+        "ui",
+        "mcp_activity_window_seconds",
+        default=7200,
+    )
+    return render_template(
+        "admin/mcp_activity.html",
+        active_page="mcp-activity",
+        activity_window_seconds=activity_window_seconds,
+    )
 
 
 @requires_admin

@@ -91,6 +91,9 @@ class SettingsManager:
                 "register_limit": 3,
                 "register_window": 300,
             },
+            "ui": {
+                "mcp_activity_window_seconds": 7200,
+            },
             "timeouts": {
                 "proxy_timeout": 30,
                 "health_check_timeout": 10,
