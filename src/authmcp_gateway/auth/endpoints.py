@@ -104,9 +104,9 @@ def _get_client_ip(request: Request) -> Optional[str]:
     Returns:
         Optional[str]: Client IP address or None
     """
-    if request.client:
-        return request.client.host
-    return None
+    from authmcp_gateway.utils import get_request_ip
+
+    return get_request_ip(request)
 
 
 def _parse_basic_auth(request: Request) -> Tuple[Optional[str], Optional[str]]:
@@ -760,7 +760,7 @@ async def oauth_token(request: Request) -> JSONResponse:
             # Rate limiting check
             if config.rate_limit.enabled:
                 limiter = get_rate_limiter()
-                client_ip = request.client.host if request.client else "unknown"
+                client_ip = _get_client_ip(request) or "unknown"
                 identifier = f"oauth_login:{client_ip}"
 
                 allowed, retry_after = limiter.check_limit(
@@ -790,7 +790,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                     "mcp_oauth_error",
                     None,
                     username,
-                    request.client.host if request.client else None,
+                    _get_client_ip(request),
                     request.headers.get("user-agent"),
                     False,
                     "Password grant: invalid credentials",
@@ -811,7 +811,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                     "mcp_oauth_error",
                     user["id"],
                     username,
-                    request.client.host if request.client else None,
+                    _get_client_ip(request),
                     request.headers.get("user-agent"),
                     False,
                     "Password grant: invalid credentials",
@@ -876,7 +876,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 "mcp_oauth_token",
                 user["id"],
                 username,
-                request.client.host if request.client else None,
+                _get_client_ip(request),
                 request.headers.get("user-agent"),
                 True,
                 "Token issued via password grant",
@@ -1108,7 +1108,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                     config.auth.sqlite_path,
                     "mcp_oauth_error",
                     username=None,
-                    ip_address=request.client.host if request.client else None,
+                    ip_address=_get_client_ip(request),
                     user_agent=request.headers.get("user-agent"),
                     success=False,
                     details=f"Token exchange failed (invalid code). client_id={client_id or ''} redirect_uri={redirect_uri or ''}",
@@ -1130,7 +1130,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                     "mcp_oauth_error",
                     user_id=code_info.get("user_id"),
                     username=None,
-                    ip_address=request.client.host if request.client else None,
+                    ip_address=_get_client_ip(request),
                     user_agent=request.headers.get("user-agent"),
                     success=False,
                     details=f"Token exchange failed (user not found). client_id={client_id or ''} redirect_uri={redirect_uri or ''}",
@@ -1154,7 +1154,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                     update_oauth_client_last_seen(
                         config.auth.sqlite_path,
                         client_id,
-                        request.client.host if request.client else None,
+                        _get_client_ip(request),
                         request.headers.get("user-agent"),
                     )
             except Exception as e:
@@ -1203,7 +1203,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 "mcp_oauth_token",
                 user["id"],
                 user["username"],
-                request.client.host if request.client else None,
+                _get_client_ip(request),
                 request.headers.get("user-agent"),
                 True,
                 f"Token issued via auth code. client_id={client_id or ''} redirect_uri={redirect_uri or ''}",

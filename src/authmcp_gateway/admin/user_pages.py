@@ -6,6 +6,7 @@ from starlette.requests import Request
 from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from authmcp_gateway.admin.routes import get_config, render_template
+from authmcp_gateway.utils import get_request_ip
 
 logger = logging.getLogger(__name__)
 
@@ -78,7 +79,7 @@ async def user_login_api(request: Request) -> JSONResponse:
             db_path=_config.auth.sqlite_path,
             event_type="login",
             username=username,
-            ip_address=request.client.host if request.client else None,
+            ip_address=get_request_ip(request),
             user_agent=request.headers.get("user-agent"),
             success=False,
             details="Invalid credentials",

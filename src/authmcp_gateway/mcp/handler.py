@@ -10,6 +10,8 @@ from typing import Any, Dict, Optional
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
+from authmcp_gateway.utils import get_request_ip
+
 from .proxy import McpProxy, PromptNotFoundError, ResourceNotFoundError, ToolNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -650,7 +652,7 @@ class McpHandler:
                 success=success,
                 error_message=error_message,
                 response_time_ms=response_time_ms,
-                ip_address=request.client.host if request and request.client else None,
+                ip_address=get_request_ip(request),
             )
         except Exception as log_err:
             logger.error(f"Failed to log MCP request: {log_err}")

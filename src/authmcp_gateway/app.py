@@ -37,6 +37,7 @@ from .middleware import (
 )
 from .rate_limiter import get_rate_limiter
 from .settings_manager import initialize_settings
+from .utils import get_request_ip
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO").upper())
 logger = logging.getLogger("authmcp-gateway")
@@ -268,7 +269,7 @@ def create_app(config=None):
 
         limiter = get_rate_limiter()
         user_id = getattr(request.state, "user_id", None)
-        client_ip = request.client.host if request.client else "unknown"
+        client_ip = get_request_ip(request) or "unknown"
         identifier = f"mcp:{user_id or client_ip}"
 
         allowed, retry_after = limiter.check_limit(

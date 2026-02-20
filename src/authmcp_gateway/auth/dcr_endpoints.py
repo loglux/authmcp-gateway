@@ -8,6 +8,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from ..rate_limiter import get_rate_limiter
+from ..utils import get_request_ip
 from .client_store import (
     create_oauth_client,
     delete_oauth_client,
@@ -28,9 +29,7 @@ def _error_response(
 
 
 def _get_client_ip(request: Request) -> Optional[str]:
-    if request.client:
-        return request.client.host
-    return None
+    return get_request_ip(request)
 
 
 def _parse_bearer_token(request: Request) -> Optional[str]:

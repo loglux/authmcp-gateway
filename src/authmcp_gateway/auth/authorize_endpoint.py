@@ -7,6 +7,8 @@ from urllib.parse import urlencode, urlparse
 from starlette.requests import Request
 from starlette.responses import HTMLResponse, RedirectResponse, Response
 
+from authmcp_gateway.utils import get_request_ip
+
 from ..rate_limiter import get_rate_limiter
 from .client_store import (
     get_oauth_client_by_client_id,
@@ -123,7 +125,7 @@ async def authorize_page(request: Request) -> Response:
             update_oauth_client_last_seen(
                 config.auth.sqlite_path,
                 client_id,
-                request.client.host if request.client else None,
+                get_request_ip(request),
                 request.headers.get("user-agent"),
             )
         except Exception as e:
@@ -319,7 +321,7 @@ async def _process_login(
     try:
         if config.rate_limit.enabled:
             limiter = get_rate_limiter()
-            client_ip = request.client.host if request.client else "unknown"
+            client_ip = get_request_ip(request) or "unknown"
             identifier = f"authorize:{client_ip}"
 
             allowed, retry_after = limiter.check_limit(
@@ -365,7 +367,7 @@ async def _process_login(
             db_path=db_path,
             event_type="mcp_oauth_error",
             username=username,
-            ip_address=request.client.host if request.client else None,
+            ip_address=get_request_ip(request),
             user_agent=request.headers.get("user-agent"),
             success=False,
             details=f"Authorization failed (invalid credentials). client_id={client_id} redirect_uri={redirect_uri}",
@@ -389,7 +391,7 @@ async def _process_login(
             event_type="mcp_oauth_error",
             user_id=user["id"],
             username=user["username"],
-            ip_address=request.client.host if request.client else None,
+            ip_address=get_request_ip(request),
             user_agent=request.headers.get("user-agent"),
             success=False,
             details=f"Authorization failed (inactive user). client_id={client_id} redirect_uri={redirect_uri}",
@@ -425,7 +427,7 @@ async def _process_login(
             event_type="mcp_oauth_authorize",
             user_id=user["id"],
             username=user["username"],
-            ip_address=request.client.host if request.client else None,
+            ip_address=get_request_ip(request),
             user_agent=request.headers.get("user-agent"),
             success=True,
             details=f"Authorization code issued. client_id={client_id} redirect_uri={redirect_uri} scope={scope}",
@@ -447,7 +449,7 @@ async def _process_login(
             db_path=db_path,
             event_type="mcp_oauth_error",
             username=username,
-            ip_address=request.client.host if request.client else None,
+            ip_address=get_request_ip(request),
             user_agent=request.headers.get("user-agent"),
             success=False,
             details=f"Authorization error. client_id={client_id} redirect_uri={redirect_uri}",

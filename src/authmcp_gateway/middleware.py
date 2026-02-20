@@ -7,7 +7,7 @@ from typing import Optional, Set
 from starlette.requests import Request
 from starlette.responses import JSONResponse, PlainTextResponse, Response
 
-from .utils import _parse_scopes
+from .utils import _parse_scopes, get_request_ip
 
 logger = logging.getLogger(__name__)
 
@@ -317,14 +317,14 @@ class McpAuthMiddleware:
                 logger.info(
                     "Unauthorized gateway call (JWT required). method=%s id=%s", method, request_id
                 )
-                self._log_security_event(client_host, path, method, request_id)
+                self._log_security_event(get_request_ip(request), path, method, request_id)
                 resp = _unauthorized(self.mcp_public_url, self.oauth_scopes)
                 await resp(scope, receive, send)
                 return
         else:
             if method in {"tools/call"} and not token_payload and not trusted_ip:
                 logger.info("Unauthorized tools/call (missing or invalid token). id=%s", request_id)
-                self._log_security_event(client_host, path, method, request_id)
+                self._log_security_event(get_request_ip(request), path, method, request_id)
                 resp = _unauthorized(self.mcp_public_url, self.oauth_scopes)
                 await resp(scope, receive, send)
                 return
@@ -335,7 +335,7 @@ class McpAuthMiddleware:
                 and not trusted_ip
             ):
                 logger.info("Unauthorized MCP call. method=%s id=%s", method, request_id)
-                self._log_security_event(client_host, path, method, request_id)
+                self._log_security_event(get_request_ip(request), path, method, request_id)
                 resp = _unauthorized(self.mcp_public_url, self.oauth_scopes)
                 await resp(scope, receive, send)
                 return

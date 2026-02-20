@@ -8,6 +8,7 @@ from starlette.responses import HTMLResponse, JSONResponse, RedirectResponse, Re
 from authmcp_gateway.auth.password import verify_password
 from authmcp_gateway.auth.user_store import get_user_by_username, log_auth_event, update_last_login
 from authmcp_gateway.rate_limiter import get_rate_limiter
+from authmcp_gateway.utils import get_request_ip
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +165,7 @@ async def admin_login_api(request: Request) -> Response:
         # Rate limiting check
         if config.rate_limit.enabled:
             limiter = get_rate_limiter()
-            client_ip = request.client.host if request.client else "unknown"
+            client_ip = get_request_ip(request) or "unknown"
             identifier = f"admin_login:{client_ip}"
 
             allowed, retry_after = limiter.check_limit(
@@ -192,7 +193,7 @@ async def admin_login_api(request: Request) -> Response:
                 db_path=config.auth.sqlite_path,
                 event_type="admin_login",
                 username=username,
-                ip_address=request.client.host if request.client else None,
+                ip_address=get_request_ip(request),
                 user_agent=request.headers.get("user-agent"),
                 success=False,
                 details="Invalid credentials",
@@ -207,7 +208,7 @@ async def admin_login_api(request: Request) -> Response:
                 event_type="admin_login",
                 user_id=user["id"],
                 username=username,
-                ip_address=request.client.host if request.client else None,
+                ip_address=get_request_ip(request),
                 user_agent=request.headers.get("user-agent"),
                 success=False,
                 details="Not a superuser",
@@ -225,7 +226,7 @@ async def admin_login_api(request: Request) -> Response:
                 event_type="admin_login",
                 user_id=user["id"],
                 username=username,
-                ip_address=request.client.host if request.client else None,
+                ip_address=get_request_ip(request),
                 user_agent=request.headers.get("user-agent"),
                 success=False,
                 details="Invalid credentials",
@@ -240,7 +241,7 @@ async def admin_login_api(request: Request) -> Response:
                 event_type="admin_login",
                 user_id=user["id"],
                 username=username,
-                ip_address=request.client.host if request.client else None,
+                ip_address=get_request_ip(request),
                 user_agent=request.headers.get("user-agent"),
                 success=False,
                 details="Account disabled",
@@ -268,7 +269,7 @@ async def admin_login_api(request: Request) -> Response:
             event_type="admin_login",
             user_id=user["id"],
             username=username,
-            ip_address=request.client.host if request.client else None,
+            ip_address=get_request_ip(request),
             user_agent=request.headers.get("user-agent"),
             success=True,
             details="Admin login successful",
