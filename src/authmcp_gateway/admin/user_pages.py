@@ -21,6 +21,14 @@ __all__ = [
 ]
 
 
+def _is_https_request(request: Request) -> bool:
+    """Return True when request is served via HTTPS (directly or behind proxy)."""
+    host = (request.url.hostname or "").lower()
+    if host in {"localhost", "127.0.0.1", "::1"}:
+        return False
+    return request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https"
+
+
 async def user_portal(request: Request) -> HTMLResponse:
     """User portal page for obtaining access token (non-admin)."""
     from authmcp_gateway.auth.jwt_handler import verify_token
@@ -58,7 +66,7 @@ async def user_login_page(request: Request) -> HTMLResponse:
 async def user_login_api(request: Request) -> JSONResponse:
     """Login for non-admin users and set user_token cookie."""
     from authmcp_gateway.auth.password import verify_password
-    from authmcp_gateway.auth.token_service import get_or_create_admin_token
+    from authmcp_gateway.auth.token_service import get_or_create_user_token
     from authmcp_gateway.auth.user_store import (
         get_user_by_username,
         log_auth_event,
@@ -91,7 +99,7 @@ async def user_login_api(request: Request) -> JSONResponse:
 
     update_last_login(_config.auth.sqlite_path, user["id"])
 
-    access_token, _ = get_or_create_admin_token(
+    access_token, _ = get_or_create_user_token(
         _config.auth.sqlite_path,
         user["id"],
         user["username"],
@@ -102,12 +110,13 @@ async def user_login_api(request: Request) -> JSONResponse:
     )
 
     response = JSONResponse({"success": True})
+    is_https = _is_https_request(request)
     response.set_cookie(
         "user_token",
         access_token,
         httponly=True,
         samesite="lax",
-        secure=True,
+        secure=is_https,
         max_age=_config.jwt.access_token_expire_minutes * 60,
     )
     return response
@@ -123,7 +132,7 @@ async def user_logout(request: Request) -> Response:
 async def user_account_token(request: Request) -> JSONResponse:
     """Return access token for authenticated non-admin user."""
     from authmcp_gateway.auth.jwt_handler import decode_token_unsafe, verify_token
-    from authmcp_gateway.auth.token_service import get_or_create_admin_token
+    from authmcp_gateway.auth.token_service import get_or_create_user_token
     from authmcp_gateway.auth.user_store import get_user_by_id, is_token_blacklisted
 
     _config = get_config(request)
@@ -149,7 +158,7 @@ async def user_account_token(request: Request) -> JSONResponse:
         user = get_user_by_id(_config.auth.sqlite_path, int(user_id))
         username = user["username"] if user else ""
 
-    access_token, _ = get_or_create_admin_token(
+    access_token, _ = get_or_create_user_token(
         _config.auth.sqlite_path,
         int(user_id),
         username,
@@ -160,12 +169,13 @@ async def user_account_token(request: Request) -> JSONResponse:
     )
 
     response = JSONResponse({"access_token": access_token})
+    is_https = _is_https_request(request)
     response.set_cookie(
         "user_token",
         access_token,
         httponly=True,
         samesite="lax",
-        secure=True,
+        secure=is_https,
         max_age=_config.jwt.access_token_expire_minutes * 60,
     )
     return response
@@ -174,7 +184,7 @@ async def user_account_token(request: Request) -> JSONResponse:
 async def user_account_rotate_token(request: Request) -> JSONResponse:
     """Rotate access token for authenticated non-admin user."""
     from authmcp_gateway.auth.jwt_handler import decode_token_unsafe, verify_token
-    from authmcp_gateway.auth.token_service import rotate_admin_token
+    from authmcp_gateway.auth.token_service import rotate_user_token
     from authmcp_gateway.auth.user_store import is_token_blacklisted
 
     _config = get_config(request)
@@ -196,7 +206,7 @@ async def user_account_rotate_token(request: Request) -> JSONResponse:
 
     user_id = int(payload.get("sub"))
     username = payload.get("username")
-    new_token, _ = rotate_admin_token(
+    new_token, _ = rotate_user_token(
         _config.auth.sqlite_path,
         user_id,
         username,
@@ -207,12 +217,13 @@ async def user_account_rotate_token(request: Request) -> JSONResponse:
     )
 
     response = JSONResponse({"access_token": new_token})
+    is_https = _is_https_request(request)
     response.set_cookie(
         "user_token",
         new_token,
         httponly=True,
         samesite="lax",
-        secure=True,
+        secure=is_https,
         max_age=_config.jwt.access_token_expire_minutes * 60,
     )
     return response
@@ -223,7 +234,7 @@ async def user_account_info(request: Request) -> JSONResponse:
     from datetime import datetime, timezone
 
     from authmcp_gateway.auth.jwt_handler import decode_token_unsafe, verify_token
-    from authmcp_gateway.auth.token_service import get_or_create_admin_token
+    from authmcp_gateway.auth.token_service import get_or_create_user_token
     from authmcp_gateway.auth.user_store import get_user_by_id, is_token_blacklisted
     from authmcp_gateway.mcp.store import list_mcp_servers
 
@@ -250,7 +261,7 @@ async def user_account_info(request: Request) -> JSONResponse:
         user = get_user_by_id(_config.auth.sqlite_path, int(user_id))
         username = user["username"] if user else ""
 
-    access_token, exp_dt = get_or_create_admin_token(
+    access_token, exp_dt = get_or_create_user_token(
         _config.auth.sqlite_path,
         int(user_id),
         username,
@@ -297,12 +308,13 @@ async def user_account_info(request: Request) -> JSONResponse:
             "gateway_endpoint": f"{public_base}/mcp" if public_base else "/mcp",
         }
     )
+    is_https = _is_https_request(request)
     response.set_cookie(
         "user_token",
         access_token,
         httponly=True,
         samesite="lax",
-        secure=True,
+        secure=is_https,
         max_age=_config.jwt.access_token_expire_minutes * 60,
     )
     return response
