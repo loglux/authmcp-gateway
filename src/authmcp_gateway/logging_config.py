@@ -173,6 +173,12 @@ def log_mcp_request_to_file(
     success: bool = True,
     error: Optional[str] = None,
     suspicious: bool = False,
+    client_id: Optional[str] = None,
+    client_name: Optional[str] = None,
+    user_agent: Optional[str] = None,
+    request_id: Optional[str] = None,
+    path: Optional[str] = None,
+    event_kind: Optional[str] = None,
 ):
     """Log MCP request to file.
 
@@ -188,6 +194,12 @@ def log_mcp_request_to_file(
         success: Whether request succeeded
         error: Error message if failed
         suspicious: Whether request is suspicious
+        client_id: OAuth client_id (if available)
+        client_name: Friendly client name (if available)
+        user_agent: Client user agent (if available)
+        request_id: JSON-RPC request id (if available)
+        path: Request path
+        event_kind: "work" or "system"
     """
     logger.info(
         f"MCP request: {method}",
@@ -203,5 +215,11 @@ def log_mcp_request_to_file(
             "success": success,
             "error": error,
             "suspicious": suspicious,
+            "client_id": client_id,
+            "client_name": client_name,
+            "user_agent": user_agent,
+            "request_id": request_id,
+            "path": path,
+            "event_kind": event_kind,
         },
     )

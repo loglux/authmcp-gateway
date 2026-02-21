@@ -251,6 +251,11 @@
                                     <span x-text="request.username"></span>
                                     <span x-show="request.server_name" x-text="'• ' + request.server_name"></span>
                                     <span x-show="request.response_time_ms" x-text="'• ' + request.response_time_ms + 'ms'"></span>
+                                    <span x-show="request.client_name || request.client_id"
+                                          x-text="'• client: ' + (request.client_name || request.client_id)"></span>
+                                    <span x-show="!request.client_name && !request.client_id && request.user_agent"
+                                          x-text="'• client: ' + request.user_agent"></span>
+                                    <span x-show="request.ip_address" x-text="'• ip: ' + request.ip_address"></span>
                                 </div>
                             </div>
                             <div class="text-xs text-gray-500 whitespace-nowrap" x-text="formatTime(request.timestamp)"></div>
@@ -384,7 +389,7 @@
             
             async loadRecentRequests() {
                 try {
-                    const response = await fetch('/admin/api/mcp-requests?limit=10&last_seconds={{ activity_window_seconds | default(7200) }}');
+                    const response = await fetch('/admin/api/mcp-requests?limit=10&last_seconds={{ activity_window_seconds | default(7200) }}&event_kind=work');
                     const data = await response.json();
                     this.recentRequests = data.requests || [];
                 } catch (error) {

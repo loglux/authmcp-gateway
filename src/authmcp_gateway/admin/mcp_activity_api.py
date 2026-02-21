@@ -62,6 +62,7 @@ async def admin_mcp_requests_api(request: Request) -> JSONResponse:
     last_seconds = int(request.query_params.get("last_seconds", "60"))
     method = request.query_params.get("method")
     success_param = request.query_params.get("success")
+    event_kind = request.query_params.get("event_kind")
 
     success = None
     if success_param is not None:
@@ -73,6 +74,7 @@ async def admin_mcp_requests_api(request: Request) -> JSONResponse:
         last_seconds=last_seconds,
         method=method,
         success=success,
+        event_kind=event_kind,
     )
 
     return JSONResponse({"requests": requests})

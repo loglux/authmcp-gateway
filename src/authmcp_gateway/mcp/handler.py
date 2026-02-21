@@ -151,6 +151,7 @@ class McpHandler:
             method="initialize",
             user_id=user_id,
             success=True,
+            request_id=jsonrpc_id,
             request=request,
         )
 
@@ -200,6 +201,7 @@ class McpHandler:
                 user_id=user_id,
                 success=True,
                 response_time_ms=self._elapsed(start_time),
+                request_id=jsonrpc_id,
                 request=request,
             )
             return JSONResponse(
@@ -214,6 +216,7 @@ class McpHandler:
                 success=False,
                 error_message=str(e),
                 response_time_ms=self._elapsed(start_time),
+                request_id=jsonrpc_id,
                 request=request,
             )
             return self._error_response(jsonrpc_id, -32603, str(e))
@@ -251,6 +254,7 @@ class McpHandler:
                     mcp_server_id=server_id,
                     success=True,
                     response_time_ms=self._elapsed(start_time),
+                    request_id=jsonrpc_id,
                     request=request,
                 )
                 return JSONResponse(
@@ -266,6 +270,7 @@ class McpHandler:
                     success=False,
                     error_message=error_msg,
                     response_time_ms=self._elapsed(start_time),
+                    request_id=jsonrpc_id,
                     request=request,
                 )
                 return JSONResponse({"jsonrpc": "2.0", "id": jsonrpc_id, "error": result["error"]})
@@ -279,6 +284,7 @@ class McpHandler:
                     success=False,
                     error_message=error_msg,
                     response_time_ms=self._elapsed(start_time),
+                    request_id=jsonrpc_id,
                     request=request,
                 )
                 return self._error_response(jsonrpc_id, -32603, error_msg)
@@ -292,6 +298,7 @@ class McpHandler:
                 success=False,
                 error_message=str(e),
                 response_time_ms=self._elapsed(start_time),
+                request_id=jsonrpc_id,
                 request=request,
             )
             return self._error_response(jsonrpc_id, -32601, str(e))
@@ -637,6 +644,7 @@ class McpHandler:
         success: bool = True,
         error_message: Optional[str] = None,
         response_time_ms: Optional[int] = None,
+        request_id: Optional[str] = None,
         request: Optional[Request] = None,
     ) -> None:
         """Log MCP request to security logger (best-effort)."""
@@ -653,6 +661,11 @@ class McpHandler:
                 error_message=error_message,
                 response_time_ms=response_time_ms,
                 ip_address=get_request_ip(request),
+                client_id=getattr(request.state, "client_id", None) if request else None,
+                user_agent=request.headers.get("user-agent") if request else None,
+                request_id=str(request_id) if request_id is not None else None,
+                path=request.url.path if request else None,
+                event_kind="work" if method == "tools/call" else "system",
             )
         except Exception as log_err:
             logger.error(f"Failed to log MCP request: {log_err}")

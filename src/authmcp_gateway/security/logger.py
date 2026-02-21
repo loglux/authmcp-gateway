@@ -81,6 +81,12 @@ def log_mcp_request(
     error_message: Optional[str] = None,
     response_time_ms: Optional[int] = None,
     ip_address: Optional[str] = None,
+    client_id: Optional[str] = None,
+    client_name: Optional[str] = None,
+    user_agent: Optional[str] = None,
+    request_id: Optional[str] = None,
+    path: Optional[str] = None,
+    event_kind: Optional[str] = None,
     is_suspicious: bool = False,
 ) -> None:
     """Log MCP request to file.
@@ -108,7 +114,7 @@ def log_mcp_request(
         username = None
         server_name = None
 
-        if user_id or mcp_server_id or db_logging_enabled:
+        if user_id or mcp_server_id or db_logging_enabled or client_id:
             with get_db(db_path, row_factory=None) as conn:
                 cursor = conn.cursor()
 
@@ -124,15 +130,26 @@ def log_mcp_request(
                     if row:
                         server_name = row[0]
 
+                if client_id and not client_name:
+                    cursor.execute(
+                        "SELECT client_name FROM oauth_clients WHERE client_id = ?",
+                        (client_id,),
+                    )
+                    row = cursor.fetchone()
+                    if row:
+                        client_name = row[0]
+
                 # DB insert in same connection (if enabled)
                 if db_logging_enabled:
                     cursor.execute(
                         """
                         INSERT INTO mcp_requests (
                             user_id, mcp_server_id, method, tool_name, success,
-                            error_message, response_time_ms, ip_address, is_suspicious
+                            error_message, response_time_ms, ip_address, client_id,
+                            client_name, user_agent, request_id, path, event_kind,
+                            is_suspicious
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             user_id,
@@ -143,6 +160,12 @@ def log_mcp_request(
                             error_message,
                             response_time_ms,
                             ip_address,
+                            client_id,
+                            client_name,
+                            user_agent,
+                            request_id,
+                            path,
+                            event_kind,
                             is_suspicious,
                         ),
                     )
@@ -161,6 +184,12 @@ def log_mcp_request(
             success=success,
             error=error_message,
             suspicious=is_suspicious,
+            client_id=client_id,
+            client_name=client_name,
+            user_agent=user_agent,
+            request_id=request_id,
+            path=path,
+            event_kind=event_kind,
         )
 
         # Periodic DB size/row check (runs rarely, separate connection)
@@ -444,6 +473,7 @@ def get_mcp_requests(
     last_seconds: int = 60,
     method: str = None,
     success: bool = None,
+    event_kind: str = None,
 ) -> list:
     """Get recent MCP requests from DB (fallback to log files).
 
@@ -483,6 +513,12 @@ def get_mcp_requests(
                         r.error_message,
                         r.response_time_ms,
                         r.ip_address,
+                        r.client_id,
+                        r.client_name,
+                        r.user_agent,
+                        r.request_id,
+                        r.path,
+                        r.event_kind,
                         r.is_suspicious,
                         r.timestamp
                     FROM mcp_requests r
@@ -499,6 +535,24 @@ def get_mcp_requests(
                 if success is not None:
                     query += " AND r.success = ?"
                     params.append(1 if success else 0)
+
+                if event_kind:
+                    if event_kind == "work":
+                        query += (
+                            " AND (r.event_kind = ? OR "
+                            "(r.event_kind IS NULL AND r.method = 'tools/call'))"
+                        )
+                        params.append("work")
+                    elif event_kind == "system":
+                        query += (
+                            " AND (r.event_kind = ? OR "
+                            "(r.event_kind IS NULL AND r.method IN "
+                            "('initialize','tools/list','notifications/initialized')))"
+                        )
+                        params.append("system")
+                    else:
+                        query += " AND r.event_kind = ?"
+                        params.append(event_kind)
 
                 query += " ORDER BY r.timestamp DESC LIMIT ?"
                 params.append(limit)
@@ -519,6 +573,13 @@ def get_mcp_requests(
                     "error_message": row["error_message"],
                     "response_time_ms": row["response_time_ms"],
                     "ip_address": row["ip_address"],
+                    "client_id": row["client_id"],
+                    "client_name": row["client_name"],
+                    "user_agent": row["user_agent"],
+                    "request_id": row["request_id"],
+                    "path": row["path"],
+                    "event_kind": row["event_kind"]
+                    or ("work" if row["method"] == "tools/call" else "system"),
                     "is_suspicious": bool(row["is_suspicious"]),
                     "timestamp": row["timestamp"],
                 }
@@ -549,6 +610,12 @@ def get_mcp_requests(
                     if success is not None and entry.get("success") != success:
                         continue
 
+                    entry_event_kind = entry.get("event_kind") or (
+                        "work" if entry.get("method") == "tools/call" else "system"
+                    )
+                    if event_kind and entry_event_kind != event_kind:
+                        continue
+
                     requests.append(
                         {
                             "id": len(requests) + 1,  # Synthetic ID
@@ -562,6 +629,12 @@ def get_mcp_requests(
                             "error_message": entry.get("error"),
                             "response_time_ms": entry.get("response_time_ms"),
                             "ip_address": entry.get("ip_address"),
+                            "client_id": entry.get("client_id"),
+                            "client_name": entry.get("client_name"),
+                            "user_agent": entry.get("user_agent"),
+                            "request_id": entry.get("request_id"),
+                            "path": entry.get("path"),
+                            "event_kind": entry_event_kind,
                             "is_suspicious": entry.get("suspicious", False),
                             "timestamp": entry.get("timestamp"),
                         }

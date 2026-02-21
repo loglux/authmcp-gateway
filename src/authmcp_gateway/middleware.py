@@ -305,6 +305,9 @@ class McpAuthMiddleware:
                             scope.setdefault("state", {})["user_id"] = int(token_payload["sub"])
                         except (ValueError, TypeError):
                             logger.warning("Invalid user_id in token: %s", token_payload.get("sub"))
+                    # Extract client_id (OAuth) from token if present
+                    if "client_id" in token_payload:
+                        scope.setdefault("state", {})["client_id"] = token_payload.get("client_id")
 
                     logger.info("JWT token verified successfully")
                 except Exception:

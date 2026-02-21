@@ -109,12 +109,18 @@
                 <div class="p-4">
                     <!-- Filter controls -->
                     <div class="flex gap-2 mb-4">
-                        <select x-model="filterMethod" @change="loadRequests()" 
+                        <select x-model="filterMethod" @change="syncEventKind(); loadRequests()" 
                                 class="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                             <option value="">All Methods</option>
                             <option value="tools/list">tools/list</option>
                             <option value="tools/call">tools/call</option>
                             <option value="initialize">initialize</option>
+                        </select>
+                        <select x-model="filterEventKind" @change="loadRequests()" 
+                                class="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <option value="work">Work (tools/call)</option>
+                            <option value="">All Events</option>
+                            <option value="system">System (initialize/tools/list)</option>
                         </select>
                         <select x-model="filterSuccess" @change="loadRequests()" 
                                 class="px-3 py-1.5 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -160,6 +166,9 @@
                                         <template x-if="req.server_name">
                                             <span class="px-2 py-0.5 text-xs bg-blue-100 text-blue-700 rounded" x-text="req.server_name"></span>
                                         </template>
+                                        <template x-if="req.event_kind === 'system'">
+                                            <span class="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">system</span>
+                                        </template>
                                         <template x-if="req.is_suspicious">
                                             <span class="px-2 py-0.5 text-xs bg-red-100 text-red-700 rounded">⚠ Suspicious</span>
                                         </template>
@@ -167,6 +176,27 @@
                                     <div class="flex items-center gap-3 text-xs text-gray-500">
                                         <span x-text="formatTimestamp(req.timestamp)"></span>
                                         <span x-text="req.username || 'Unknown'"></span>
+                                        <template x-if="req.client_name || req.client_id">
+                                            <span class="text-gray-600">
+                                                client:
+                                                <span x-text="req.client_name || req.client_id"></span>
+                                            </span>
+                                        </template>
+                                        <template x-if="!req.client_name && !req.client_id && req.user_agent">
+                                            <span class="text-gray-600">
+                                                client:
+                                                <span x-text="req.user_agent"></span>
+                                            </span>
+                                        </template>
+                                        <template x-if="req.ip_address">
+                                            <span class="text-gray-400">
+                                                ip:
+                                                <span x-text="req.ip_address"></span>
+                                            </span>
+                                        </template>
+                                        <template x-if="req.request_id">
+                                            <span class="text-gray-400" x-text="req.request_id"></span>
+                                        </template>
                                         <template x-if="req.error_message">
                                             <span class="text-red-600" x-text="req.error_message"></span>
                                         </template>
@@ -292,6 +322,7 @@ function mcpActivity() {
         refreshInterval: null,
         lastSeconds: {{ activity_window_seconds | default(7200) }},
         filterMethod: '',
+        filterEventKind: 'work',
         filterSuccess: '',
         authEvents: [],
 
@@ -311,6 +342,9 @@ function mcpActivity() {
                 
                 if (this.filterMethod) {
                     params.append('method', this.filterMethod);
+                }
+                if (this.filterEventKind) {
+                    params.append('event_kind', this.filterEventKind);
                 }
                 if (this.filterSuccess) {
                     params.append('success', this.filterSuccess);
@@ -346,6 +380,16 @@ function mcpActivity() {
                 this.authEvents = data.events || [];
             } catch (error) {
                 console.error('Failed to load MCP auth events:', error);
+            }
+        },
+
+        syncEventKind() {
+            if (this.filterMethod === 'tools/call') {
+                this.filterEventKind = 'work';
+                return;
+            }
+            if (this.filterMethod === 'tools/list' || this.filterMethod === 'initialize') {
+                this.filterEventKind = 'system';
             }
         },
 

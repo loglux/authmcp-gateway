@@ -10,7 +10,12 @@ from authmcp_gateway.config import JWTConfig
 
 
 def create_access_token(
-    user_id: int, username: str, is_superuser: bool, config: JWTConfig, expire_minutes: int = None
+    user_id: int,
+    username: str,
+    is_superuser: bool,
+    config: JWTConfig,
+    expire_minutes: int = None,
+    client_id: str | None = None,
 ) -> str:
     """Create JWT access token.
 
@@ -37,6 +42,8 @@ def create_access_token(
         "iat": now,
         "jti": str(uuid.uuid4()),
     }
+    if client_id:
+        payload["client_id"] = client_id
 
     return _encode_token(payload, config)
 

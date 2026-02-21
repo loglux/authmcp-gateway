@@ -192,6 +192,12 @@ def init_database(db_path: str):
                 error_message TEXT,
                 response_time_ms INTEGER,
                 ip_address TEXT,
+                client_id TEXT,
+                client_name TEXT,
+                user_agent TEXT,
+                request_id TEXT,
+                path TEXT,
+                event_kind TEXT,
                 is_suspicious BOOLEAN DEFAULT 0,
                 timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
@@ -210,6 +216,25 @@ def init_database(db_path: str):
         cursor.execute("""
             CREATE INDEX IF NOT EXISTS idx_mcp_requests_suspicious ON mcp_requests(is_suspicious)
         """)
+
+        # Ensure new MCP request columns exist for older DBs
+        try:
+            cursor.execute("PRAGMA table_info(mcp_requests)")
+            existing_cols = {row[1] for row in cursor.fetchall()}
+            new_cols = {
+                "client_id": "TEXT",
+                "client_name": "TEXT",
+                "user_agent": "TEXT",
+                "request_id": "TEXT",
+                "path": "TEXT",
+                "event_kind": "TEXT",
+            }
+            for col, col_type in new_cols.items():
+                if col not in existing_cols:
+                    cursor.execute(f"ALTER TABLE mcp_requests ADD COLUMN {col} {col_type}")
+        except Exception as e:
+            logger = get_auth_logger()
+            logger.warning(f"Failed to ensure mcp_requests columns: {e}")
 
         # OAuth clients (Dynamic Client Registration)
         try:

@@ -745,6 +745,7 @@ async def oauth_token(request: Request) -> JSONResponse:
         if grant_type == "password":
             username = data.get("username")
             password = data.get("password")
+            client_id = data.get("client_id")
 
             logger.debug(f"OAuth login attempt: username={username}")
 
@@ -843,6 +844,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 bool(user["is_superuser"]),
                 config.jwt,
                 expire_minutes=access_ttl,
+                client_id=client_id,
             )
             refresh_token = create_refresh_token(user["id"], config.jwt, expire_days=refresh_ttl)
 
@@ -961,12 +963,14 @@ async def oauth_token(request: Request) -> JSONResponse:
 
             # Create new access token with dynamic TTL from settings
             access_ttl, _ = _get_token_ttl(config)
+            refresh_client_id = data.get("client_id")
             new_access_token = create_access_token(
                 user["id"],
                 user["username"],
                 bool(user["is_superuser"]),
                 config.jwt,
                 expire_minutes=access_ttl,
+                client_id=refresh_client_id,
             )
 
             # Update current access token JTI in database
@@ -983,7 +987,6 @@ async def oauth_token(request: Request) -> JSONResponse:
                 access_expires_at,
             )
             try:
-                refresh_client_id = data.get("client_id")
                 if refresh_client_id:
                     issued_at = datetime.fromtimestamp(access_payload["iat"], tz=timezone.utc)
                     update_oauth_client_token_meta(
@@ -1146,6 +1149,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 username=user["username"],
                 is_superuser=user["is_superuser"],
                 config=config.jwt,
+                client_id=client_id,
             )
 
             # Update client last seen info
