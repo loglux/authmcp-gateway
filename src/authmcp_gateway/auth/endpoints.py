@@ -474,7 +474,7 @@ async def login(request: Request) -> JSONResponse:
         access_token=access_token,
         refresh_token=refresh_token,
         token_type="bearer",
-        expires_in=config.jwt.access_token_expire_minutes * 60,
+        expires_in=access_ttl * 60,
     )
 
     logger.info("User logged in successfully: %s (id=%d)", user["username"], user["id"])
@@ -580,7 +580,7 @@ async def refresh(request: Request) -> JSONResponse:
         access_token=access_token,
         refresh_token=None,  # Don't issue new refresh token
         token_type="bearer",
-        expires_in=config.jwt.access_token_expire_minutes * 60,
+        expires_in=access_ttl * 60,
     )
 
     logger.info("Token refreshed successfully for user %s (id=%d)", user["username"], user["id"])
@@ -929,7 +929,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 content={
                     "access_token": access_token,
                     "token_type": "bearer",
-                    "expires_in": config.jwt.access_token_expire_minutes * 60,
+                    "expires_in": access_ttl * 60,
                     "refresh_token": refresh_token,
                 },
             )
@@ -1043,7 +1043,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 content={
                     "access_token": new_access_token,
                     "token_type": "bearer",
-                    "expires_in": config.jwt.access_token_expire_minutes * 60,
+                    "expires_in": access_ttl * 60,
                 },
             )
 
@@ -1180,12 +1180,14 @@ async def oauth_token(request: Request) -> JSONResponse:
                     content={"error": "invalid_grant", "error_description": "User not found"},
                 )
 
-            # Generate tokens
+            # Generate tokens with dynamic TTL from settings
+            access_ttl, refresh_ttl = _get_token_ttl(config)
             access_token = create_access_token(
                 user_id=user["id"],
                 username=user["username"],
                 is_superuser=user["is_superuser"],
                 config=config.jwt,
+                expire_minutes=access_ttl,
                 client_id=client_id,
             )
 
@@ -1201,7 +1203,9 @@ async def oauth_token(request: Request) -> JSONResponse:
             except Exception as e:
                 logger.debug(f"Failed to update client last_seen: {e}")
 
-            refresh_token = create_refresh_token(user_id=user["id"], config=config.jwt)
+            refresh_token = create_refresh_token(
+                user_id=user["id"], config=config.jwt, expire_days=refresh_ttl
+            )
 
             # Save refresh token (hash full token, consistent with /auth/login)
             from datetime import datetime, timezone
@@ -1258,7 +1262,7 @@ async def oauth_token(request: Request) -> JSONResponse:
                 content={
                     "access_token": access_token,
                     "token_type": "bearer",
-                    "expires_in": config.jwt.access_token_expire_minutes * 60,
+                    "expires_in": access_ttl * 60,
                     "refresh_token": refresh_token,
                 },
             )
