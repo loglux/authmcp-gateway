@@ -610,11 +610,18 @@ async def logout(request: Request) -> JSONResponse:
         logger.error("Failed to parse logout request: %s", str(e))
         return _error_response(400, "Invalid request body", "INVALID_REQUEST")
 
-    # Decode access token (unsafe) to get JTI and exp
-    access_payload = decode_token_unsafe(logout_data.access_token)
-    if not access_payload:
-        logger.warning("Logout failed: unable to decode access token")
-        return _error_response(400, "Invalid access token", "INVALID_TOKEN")
+    # Verify access token signature/expiry before processing logout
+    try:
+        access_payload = verify_token(logout_data.access_token, "access", config.jwt)
+    except jwt.ExpiredSignatureError:
+        logger.warning("Logout failed: access token expired")
+        return _error_response(401, "Token expired", "TOKEN_EXPIRED")
+    except jwt.InvalidTokenError as e:
+        logger.warning("Logout failed: invalid access token - %s", str(e))
+        return _error_response(401, "Invalid access token", "INVALID_TOKEN")
+    except Exception as e:
+        logger.error("Logout token verification failed: %s", str(e))
+        return _error_response(401, "Token verification failed", "VERIFICATION_ERROR")
 
     access_jti = access_payload.get("jti")
     access_exp = access_payload.get("exp")
