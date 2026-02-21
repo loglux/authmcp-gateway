@@ -264,26 +264,26 @@ curl -X POST http://localhost:9105/admin/api/mcp-servers \
 
 ```
 ┌──────────────────────────────────────────┐
-│     MCP Clients (Claude, Codex, etc.)    │
-│     OAuth 2.0 / JWT Authentication       │
-└──────────────┬───────────────────────────┘
-               │
-       ┌───────▼────────────────────────┐
-       │       AuthMCP Gateway          │
-       │     MCP 2025-03-26 Proxy       │
-       │                                │
-       │  • Full MCP Protocol Proxy     │
-       │  • Tools / Resources / Prompts │
-       │  • OAuth 2.0 + DCR             │
-       │  • JWT Auth (HS256/RS256+JWKS) │
-       │  • Rate Limiting               │
-       │  • Security Logging            │
-       │  • Multi-Server Aggregation    │
-       │  • Health Monitoring           │
-       │  • Admin Dashboard             │
-       └───────┬────────────────────────┘
-               │
-    ┌──────────┼──────────┬──────────┐
+│      MCP Clients (Claude, Codex, etc.)  │
+│      OAuth 2.0 / JWT Authentication      │
+└────────────────────┬─────────────────────┘
+                     │
+┌────────────────────▼─────────────────────┐
+│               AuthMCP Gateway            │
+│             MCP 2025-03-26 Proxy         │
+│                                          │
+│  • Full MCP Protocol Proxy               │
+│  • Tools / Resources / Prompts           │
+│  • OAuth 2.0 + DCR                       │
+│  • JWT Auth (HS256/RS256+JWKS)           │
+│  • Rate Limiting                         │
+│  • Security Logging                      │
+│  • Multi-Server Aggregation              │
+│  • Health Monitoring                     │
+│  • Admin Dashboard                       │
+└────────────────────┬─────────────────────┘
+                     │
+    ┌──────────┬──────────┬──────────┐
     ▼          ▼          ▼          ▼
 ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
 │GitHub  │ │  RAG   │ │Zapier  │ │Custom  │
