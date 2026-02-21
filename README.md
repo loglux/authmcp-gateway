@@ -286,8 +286,8 @@ curl -X POST http://localhost:9105/admin/api/mcp-servers \
     ┌──────────┬──────────┬──────────┐
     ▼          ▼          ▼          ▼
 ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
-│GitHub  │ │  RAG   │ │Zapier  │ │Custom  │
-│ MCP    │ │  MCP   │ │  MCP   │ │  MCP   │
+│  RAG   │ │WhatsApp│ │ Docs   │ │Custom  │
+│  MCP   │ │  MCP   │ │  MCP   │ │  MCP   │
 └────────┘ └────────┘ └────────┘ └────────┘
 ```
 
