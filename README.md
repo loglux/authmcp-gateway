@@ -270,11 +270,11 @@ curl -X POST http://localhost:9105/admin/api/mcp-servers \
                │
        ┌───────▼────────────────────────┐
        │       AuthMCP Gateway          │
-       │     MCP 2025-03-26 Proxy      │
+       │     MCP 2025-03-26 Proxy       │
        │                                │
        │  • Full MCP Protocol Proxy     │
        │  • Tools / Resources / Prompts │
-       │  • OAuth 2.0 + DCR            │
+       │  • OAuth 2.0 + DCR             │
        │  • JWT Auth (HS256/RS256+JWKS) │
        │  • Rate Limiting               │
        │  • Security Logging            │
