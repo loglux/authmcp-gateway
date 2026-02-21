@@ -264,7 +264,7 @@ curl -X POST http://localhost:9105/admin/api/mcp-servers \
 
 ```
 ┌──────────────────────────────────────────┐
-│      MCP Clients (Claude, Codex, etc.)  │
+│      MCP Clients (Claude, Codex, etc.)   │
 │      OAuth 2.0 / JWT Authentication      │
 └────────────────────┬─────────────────────┘
                      │
