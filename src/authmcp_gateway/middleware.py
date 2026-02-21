@@ -320,14 +320,28 @@ class McpAuthMiddleware:
                 logger.info(
                     "Unauthorized gateway call (JWT required). method=%s id=%s", method, request_id
                 )
-                self._log_security_event(get_request_ip(request), path, method, request_id)
+                self._log_security_event(
+                    get_request_ip(request),
+                    path,
+                    method,
+                    request_id,
+                    request.headers.get("user-agent"),
+                    auth_header,
+                )
                 resp = _unauthorized(self.mcp_public_url, self.oauth_scopes)
                 await resp(scope, receive, send)
                 return
         else:
             if method in {"tools/call"} and not token_payload and not trusted_ip:
                 logger.info("Unauthorized tools/call (missing or invalid token). id=%s", request_id)
-                self._log_security_event(get_request_ip(request), path, method, request_id)
+                self._log_security_event(
+                    get_request_ip(request),
+                    path,
+                    method,
+                    request_id,
+                    request.headers.get("user-agent"),
+                    auth_header,
+                )
                 resp = _unauthorized(self.mcp_public_url, self.oauth_scopes)
                 await resp(scope, receive, send)
                 return
@@ -338,7 +352,14 @@ class McpAuthMiddleware:
                 and not trusted_ip
             ):
                 logger.info("Unauthorized MCP call. method=%s id=%s", method, request_id)
-                self._log_security_event(get_request_ip(request), path, method, request_id)
+                self._log_security_event(
+                    get_request_ip(request),
+                    path,
+                    method,
+                    request_id,
+                    request.headers.get("user-agent"),
+                    auth_header,
+                )
                 resp = _unauthorized(self.mcp_public_url, self.oauth_scopes)
                 await resp(scope, receive, send)
                 return
@@ -411,10 +432,14 @@ class McpAuthMiddleware:
 
         await self.app(scope, replay_receive, intercept_send)
 
-    def _log_security_event(self, client_host, path, method, request_id):
+    def _log_security_event(self, client_host, path, method, request_id, user_agent, auth_header):
         """Log unauthorized access security event."""
         try:
             from .security.logger import log_security_event
+
+            auth_scheme = None
+            if auth_header:
+                auth_scheme = auth_header.split(" ", 1)[0]
 
             log_security_event(
                 db_path=self.auth_db_path,
@@ -423,7 +448,13 @@ class McpAuthMiddleware:
                 ip_address=client_host,
                 endpoint=path,
                 method=method,
-                details={"request_id": request_id, "mcp_method": method},
+                details={
+                    "request_id": request_id,
+                    "mcp_method": method,
+                    "user_agent": user_agent,
+                    "auth_header_present": bool(auth_header),
+                    "auth_scheme": auth_scheme,
+                },
             )
         except Exception as log_err:
             logger.error(f"Failed to log security event: {log_err}")
