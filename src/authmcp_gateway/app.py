@@ -260,7 +260,42 @@ def create_app(config=None):
         """JWKS endpoint (for RS256 public key)."""
         if config.jwt.algorithm != "RS256":
             return JSONResponse({"keys": []})
-        return JSONResponse({"keys": []})
+        if not config.jwt.public_key:
+            logger.warning("RS256 is enabled but JWT public key is missing; returning empty JWKS")
+            return JSONResponse({"keys": []})
+
+        try:
+            import base64
+            import hashlib
+
+            from cryptography.hazmat.primitives import serialization
+            from cryptography.hazmat.primitives.asymmetric import rsa
+
+            def _b64url_uint(value: int) -> str:
+                byte_len = (value.bit_length() + 7) // 8
+                raw = value.to_bytes(byte_len, "big")
+                return base64.urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+
+            public_key = serialization.load_pem_public_key(config.jwt.public_key.encode("utf-8"))
+            if not isinstance(public_key, rsa.RSAPublicKey):
+                logger.warning("RS256 is enabled but configured public key is not RSA")
+                return JSONResponse({"keys": []})
+
+            numbers = public_key.public_numbers()
+            pem_bytes = config.jwt.public_key.encode("utf-8")
+            kid = hashlib.sha256(pem_bytes).hexdigest()[:16]
+            jwk = {
+                "kty": "RSA",
+                "use": "sig",
+                "alg": "RS256",
+                "kid": kid,
+                "n": _b64url_uint(numbers.n),
+                "e": _b64url_uint(numbers.e),
+            }
+            return JSONResponse({"keys": [jwk]})
+        except Exception as e:
+            logger.warning("Failed to build JWKS for RS256: %s", e)
+            return JSONResponse({"keys": []})
 
     def _check_mcp_rate_limit(request: Request):
         """Check per-user rate limit for MCP endpoints."""

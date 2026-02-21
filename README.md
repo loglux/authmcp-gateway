@@ -275,7 +275,7 @@ curl -X POST http://localhost:9105/admin/api/mcp-servers \
        │  • Full MCP Protocol Proxy     │
        │  • Tools / Resources / Prompts │
        │  • OAuth 2.0 + DCR            │
-       │  • JWT Authentication          │
+       │  • JWT Auth (HS256/RS256+JWKS) │
        │  • Rate Limiting               │
        │  • Security Logging            │
        │  • Multi-Server Aggregation    │
