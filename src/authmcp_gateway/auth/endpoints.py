@@ -151,6 +151,22 @@ def _extract_token(request: Request) -> Optional[str]:
     return None
 
 
+def _persist_current_access_token(db_path: str, user_id: int, access_token: str) -> None:
+    """Store the current access token JTI for single-session enforcement."""
+    from datetime import datetime, timezone
+
+    access_jti = get_token_jti(access_token)
+    access_payload = decode_token_unsafe(access_token)
+    access_expires_at = datetime.fromtimestamp(access_payload["exp"], tz=timezone.utc)
+    upsert_user_access_token(
+        db_path,
+        user_id,
+        "",  # Don't store full token
+        access_jti,
+        access_expires_at,
+    )
+
+
 def _error_response(
     status_code: int, detail: str, error_code: Optional[str] = None
 ) -> JSONResponse:
@@ -406,6 +422,13 @@ async def login(request: Request) -> JSONResponse:
         logger.exception("Failed to create tokens for user '%s'", login_data.username)
         return _error_response(500, "Failed to create tokens", "TOKEN_CREATION_ERROR")
 
+    # Store current access token JTI for single-session enforcement
+    try:
+        _persist_current_access_token(db_path, user["id"], access_token)
+    except Exception:
+        logger.exception("Failed to save access token for user '%s'", login_data.username)
+        return _error_response(500, "Failed to save access token", "TOKEN_SAVE_ERROR")
+
     # Hash and save refresh token
     refresh_token_hash = hash_token(refresh_token)
     try:
@@ -533,6 +556,13 @@ async def refresh(request: Request) -> JSONResponse:
     except Exception:
         logger.exception("Failed to create access token for user %d", user_id)
         return _error_response(500, "Failed to create token", "TOKEN_CREATION_ERROR")
+
+    # Store current access token JTI for single-session enforcement
+    try:
+        _persist_current_access_token(db_path, user["id"], access_token)
+    except Exception:
+        logger.exception("Failed to save refreshed access token for user %d", user_id)
+        return _error_response(500, "Failed to save access token", "TOKEN_SAVE_ERROR")
 
     # Log event
     log_auth_event(
