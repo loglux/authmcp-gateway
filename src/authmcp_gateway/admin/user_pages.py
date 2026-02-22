@@ -65,12 +65,13 @@ async def user_login_page(request: Request) -> HTMLResponse:
 
 async def user_login_api(request: Request) -> JSONResponse:
     """Login for non-admin users and set user_token cookie."""
-    from authmcp_gateway.auth.password import verify_password
+    from authmcp_gateway.auth.password import verify_password_with_rehash
     from authmcp_gateway.auth.token_service import get_or_create_user_token
     from authmcp_gateway.auth.user_store import (
         get_user_by_username,
         log_auth_event,
         update_last_login,
+        update_user_password_hash,
     )
 
     _config = get_config(request)
@@ -82,7 +83,11 @@ async def user_login_api(request: Request) -> JSONResponse:
         return JSONResponse({"detail": "Username and password required"}, status_code=400)
 
     user = get_user_by_username(_config.auth.sqlite_path, username)
-    if not user or not verify_password(password, user["password_hash"]):
+    password_ok = False
+    upgraded_hash = None
+    if user:
+        password_ok, upgraded_hash = verify_password_with_rehash(password, user["password_hash"])
+    if not user or not password_ok:
         log_auth_event(
             db_path=_config.auth.sqlite_path,
             event_type="login",
@@ -93,6 +98,11 @@ async def user_login_api(request: Request) -> JSONResponse:
             details="Invalid credentials",
         )
         return JSONResponse({"detail": "Invalid username or password"}, status_code=401)
+    if upgraded_hash:
+        try:
+            update_user_password_hash(_config.auth.sqlite_path, user["id"], upgraded_hash)
+        except Exception:
+            logger.exception("Failed to upgrade password hash for user '%s'", username)
 
     if user.get("is_superuser"):
         return JSONResponse({"detail": "Admin accounts must use the admin panel."}, status_code=403)

@@ -37,7 +37,11 @@ from .models import (
     UserRegisterRequest,
     UserResponse,
 )
-from .password import hash_password, validate_password_strength, verify_password
+from .password import (
+    hash_password,
+    validate_password_strength,
+    verify_password_with_rehash,
+)
 from .user_store import (
     blacklist_token,
     create_user,
@@ -49,6 +53,7 @@ from .user_store import (
     revoke_refresh_token,
     save_refresh_token,
     update_last_login,
+    update_user_password_hash,
     upsert_user_access_token,
     verify_refresh_token,
 )
@@ -375,8 +380,11 @@ async def login(request: Request) -> JSONResponse:
         )
         return _error_response(401, "Invalid username or password", "INVALID_CREDENTIALS")
 
-    # Verify password
-    if not verify_password(login_data.password, user["password_hash"]):
+    # Verify password (and opportunistically migrate hash format/cost)
+    password_ok, upgraded_hash = verify_password_with_rehash(
+        login_data.password, user["password_hash"]
+    )
+    if not password_ok:
         logger.warning("Login failed: invalid credentials - '%s'", login_data.username)
         log_auth_event(
             db_path=db_path,
@@ -389,6 +397,11 @@ async def login(request: Request) -> JSONResponse:
             details="Invalid credentials",
         )
         return _error_response(401, "Invalid username or password", "INVALID_CREDENTIALS")
+    if upgraded_hash:
+        try:
+            update_user_password_hash(db_path, user["id"], upgraded_hash)
+        except Exception:
+            logger.exception("Failed to upgrade password hash for user '%s'", login_data.username)
 
     # Check if user is active
     if not user["is_active"]:
@@ -841,8 +854,11 @@ async def oauth_token(request: Request) -> JSONResponse:
                     },
                 )
 
-            # Verify password
-            if not verify_password(password, user["password_hash"]):
+            # Verify password (and opportunistically migrate hash format/cost)
+            password_ok, upgraded_hash = verify_password_with_rehash(
+                password, user["password_hash"]
+            )
+            if not password_ok:
                 logger.warning(f"OAuth login failed: invalid credentials - {username}")
                 log_auth_event(
                     config.auth.sqlite_path,
@@ -861,6 +877,11 @@ async def oauth_token(request: Request) -> JSONResponse:
                         "error_description": "Invalid username or password",
                     },
                 )
+            if upgraded_hash:
+                try:
+                    update_user_password_hash(config.auth.sqlite_path, user["id"], upgraded_hash)
+                except Exception:
+                    logger.exception("Failed to upgrade password hash for user '%s'", username)
 
             # Check if user is active
             if not user["is_active"]:

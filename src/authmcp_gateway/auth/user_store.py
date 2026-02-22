@@ -329,6 +329,21 @@ def update_last_login(db_path: str, user_id: int):
         cursor.execute("UPDATE users SET last_login_at = ? WHERE id = ?", (now, user_id))
 
 
+def update_user_password_hash(db_path: str, user_id: int, password_hash: str) -> None:
+    """Update stored password hash for a user (used for hash migration)."""
+    now = datetime.now(timezone.utc).isoformat()
+    with get_db_connection(db_path) as conn:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE users
+            SET password_hash = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (password_hash, now, user_id),
+        )
+
+
 def save_refresh_token(db_path: str, user_id: int, token_hash: str, expires_at: datetime):
     """Save refresh token hash.
 

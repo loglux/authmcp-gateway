@@ -3,12 +3,20 @@
 import re
 from typing import Optional, Tuple
 
-from passlib.context import CryptContext
+import bcrypt
 
 from authmcp_gateway.config import AuthConfig
 
-# Password context using bcrypt
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def _parse_bcrypt_cost(hashed_password: str) -> Optional[int]:
+    """Return bcrypt cost factor from hash (e.g. 12), or None if unknown."""
+    try:
+        parts = hashed_password.split("$")
+        if len(parts) < 4:
+            return None
+        return int(parts[2])
+    except Exception:
+        return None
 
 
 def hash_password(password: str) -> str:
@@ -18,9 +26,9 @@ def hash_password(password: str) -> str:
         password: Plain text password to hash
 
     Returns:
-        str: Bcrypt hashed password
+        str: Bcrypt hashed password (UTF-8)
     """
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt(rounds=12)).decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -34,10 +42,36 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         bool: True if password matches, False otherwise
     """
     try:
-        return pwd_context.verify(plain_password, hashed_password)
+        return bcrypt.checkpw(
+            plain_password.encode("utf-8"),
+            hashed_password.encode("utf-8"),
+        )
     except Exception:
         # Invalid hash format or verification error
         return False
+
+
+def verify_password_with_rehash(
+    plain_password: str, hashed_password: str
+) -> Tuple[bool, Optional[str]]:
+    """Verify password and optionally return upgraded hash.
+
+    Rehash is triggered when verification succeeds but hash parameters
+    do not match current defaults (bcrypt $2b$ with cost>=12).
+    """
+    is_valid = verify_password(plain_password, hashed_password)
+    if not is_valid:
+        return False, None
+
+    needs_rehash = not hashed_password.startswith("$2b$")
+    cost = _parse_bcrypt_cost(hashed_password)
+    if cost is not None and cost < 12:
+        needs_rehash = True
+
+    if needs_rehash:
+        return True, hash_password(plain_password)
+
+    return True, None
 
 
 def validate_password_strength(password: str, config: AuthConfig) -> Tuple[bool, Optional[str]]:
