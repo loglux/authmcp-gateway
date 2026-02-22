@@ -399,6 +399,8 @@ Disable **Enforce Single Session** in the admin settings to avoid forced logouts
 
 ## 🛠️ Development
 
+Release process: see `docs/RELEASE.md`.
+
 ### Local Development
 
 ```bash
