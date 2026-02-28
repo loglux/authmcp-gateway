@@ -326,6 +326,27 @@ curl -X POST http://localhost:9105/admin/api/mcp-servers \
 | Direct tool name (e.g. `rag_query`) | Codex-style: routed as `tools/call` ([openai/codex#2264](https://github.com/openai/codex/pull/2264)) |
 | Unknown namespaced methods | Returns JSON-RPC `-32601 Method not found` |
 
+### Tool Annotations And Safe Retries
+
+For `tools/call`, the gateway prefers standard MCP tool `annotations` when deciding whether a tool is read-only
+or safe to retry:
+
+- `annotations.readOnlyHint`
+- `annotations.idempotentHint`
+- `annotations.destructiveHint`
+
+Behavior:
+
+- Read-only tools may use safe automatic retry.
+- Mutating tools are **not** retried blindly.
+- If a mutating tool is marked idempotent, the gateway preserves or generates
+  `arguments.idempotency_key` and reuses the same key on retry.
+- If metadata is missing or unclear, the gateway falls back to conservative behavior and disables
+  automatic retry for `tools/call`.
+
+This keeps the gateway aligned with standard MCP annotations while allowing backend MCP servers to
+implement stronger idempotency semantics where needed.
+
 ## 🤖 Codex OAuth (DCR) Login (Manual Callback)
 
 Codex uses OAuth Authorization Code + PKCE and Dynamic Client Registration (DCR). When running in a terminal

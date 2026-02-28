@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import time
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -24,6 +25,9 @@ from .store import (
 
 logger = logging.getLogger(__name__)
 _MCP_DEBUG = os.getenv("MCP_DEBUG", "").lower() in ("1", "true", "yes", "on")
+_IDEMPOTENCY_KEY_FIELD = "idempotency_key"
+_IDEMPOTENCY_VALUES = frozenset({"unsupported", "supported", "required"})
+_RETRY_VALUES = frozenset({"never", "safe", "safe_with_idempotency"})
 
 
 def normalize_server_name(name: str) -> str:
@@ -152,6 +156,7 @@ class McpProxy:
         method: str,
         params: Optional[Dict[str, Any]] = None,
         allow_retry: bool = True,
+        timeout_override_ms: Optional[int] = None,
     ) -> Dict[str, Any]:
         """Send a JSON-RPC request to a backend server and return parsed response.
 
@@ -169,7 +174,9 @@ class McpProxy:
         headers = self._get_auth_headers(server)
 
         # Per-server timeout override (DB field → global default)
-        server_timeout = server.get("timeout") or self.timeout
+        server_timeout = (
+            timeout_override_ms / 1000 if timeout_override_ms is not None else server.get("timeout")
+        ) or self.timeout
 
         # Include mcp-session-id if we have one (Streamable HTTP transport)
         session_id = self._session_ids.get(server_id)
@@ -467,6 +474,27 @@ class McpProxy:
             raise PermissionError(f"User {user_id} doesn't have access to server {server['name']}")
 
         args = arguments or {}
+        tool_definition = await self._get_tool_definition(server, tool_name)
+        execution_policy = self._get_execution_policy(tool_definition)
+        args, idempotency_key, idempotency_generated = self._prepare_tool_arguments(
+            execution_policy, args
+        )
+        allow_retry = self._should_retry_tool_call(execution_policy, args)
+        timeout_override_ms = execution_policy.get("timeout_ms")
+        if idempotency_key:
+            logger.info(
+                "Using idempotency_key for tool '%s' (server: %s, generated=%s)",
+                tool_name,
+                server["name"],
+                idempotency_generated,
+            )
+        else:
+            logger.info(
+                "Retry disabled for tool '%s' (server: %s): policy=%s",
+                tool_name,
+                server["name"],
+                execution_policy["retry"],
+            )
 
         dedup_key = self._build_dedup_key(server, tool_name, args)
         if dedup_key:
@@ -505,7 +533,8 @@ class McpProxy:
                 server,
                 "tools/call",
                 {"name": tool_name, "arguments": args},
-                allow_retry=not (tool_name == "send_message" and args.get("client_request_id")),
+                allow_retry=allow_retry,
+                timeout_override_ms=timeout_override_ms,
             )
         except Exception as exc:
             if dedup_key:
@@ -539,6 +568,8 @@ class McpProxy:
             data["result"]["_meta"]["server_id"] = server["id"]
             data["result"]["_meta"]["server_name"] = server["name"]
             data["result"]["_meta"]["tool_name"] = tool_name
+            if idempotency_key:
+                data["result"]["_meta"][_IDEMPOTENCY_KEY_FIELD] = idempotency_key
 
         if dedup_key and self._is_success_result(data):
             self._set_dedup_cache(dedup_key, data)
@@ -904,6 +935,10 @@ class McpProxy:
     def _build_dedup_key(
         self, server: Dict[str, Any], tool_name: str, arguments: Dict[str, Any]
     ) -> Optional[str]:
+        idempotency_key = arguments.get(_IDEMPOTENCY_KEY_FIELD)
+        if idempotency_key:
+            return f"{server['id']}:{tool_name}:idem:{idempotency_key}"
+
         client_request_id = arguments.get("client_request_id")
         if client_request_id:
             return f"{server['id']}:{tool_name}:req:{client_request_id}"
@@ -947,6 +982,109 @@ class McpProxy:
             return False
         is_error = result.get("isError")
         return is_error is False or is_error is None
+
+    def _prepare_tool_arguments(
+        self, execution_policy: Dict[str, Any], arguments: Dict[str, Any]
+    ) -> Tuple[Dict[str, Any], Optional[str], bool]:
+        if not self._should_attach_idempotency_key(execution_policy):
+            return arguments, None, False
+
+        existing_key = arguments.get(_IDEMPOTENCY_KEY_FIELD)
+        if existing_key:
+            return arguments, str(existing_key), False
+
+        prepared = dict(arguments)
+        generated_key = str(uuid.uuid4())
+        prepared[_IDEMPOTENCY_KEY_FIELD] = generated_key
+        return prepared, generated_key, True
+
+    def _should_retry_tool_call(
+        self, execution_policy: Dict[str, Any], arguments: Dict[str, Any]
+    ) -> bool:
+        retry_policy = execution_policy["retry"]
+        if retry_policy == "safe":
+            return True
+        if retry_policy == "safe_with_idempotency":
+            return bool(arguments.get(_IDEMPOTENCY_KEY_FIELD))
+        return False
+
+    def _should_attach_idempotency_key(self, execution_policy: Dict[str, Any]) -> bool:
+        if execution_policy["mutation"] is not True:
+            return False
+        if execution_policy["idempotency"] not in {"supported", "required"}:
+            return False
+        return execution_policy["retry"] == "safe_with_idempotency"
+
+    async def _get_tool_definition(
+        self, server: Dict[str, Any], tool_name: str
+    ) -> Optional[Dict[str, Any]]:
+        server_id = server["id"]
+        tools = self._tools_cache.get(server_id)
+        if tools is None:
+            tools = await self._fetch_tools_from_server(server)
+        for tool in tools or []:
+            if tool.get("name") == tool_name:
+                return tool
+        return None
+
+    def _get_execution_policy(self, tool_definition: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        default_policy = {
+            "mutation": None,
+            "idempotency": "unsupported",
+            "retry": "never",
+            "timeout_ms": None,
+        }
+        if not isinstance(tool_definition, dict):
+            return default_policy
+
+        annotations = tool_definition.get("annotations")
+        execution = tool_definition.get("_meta", {}).get("execution")
+        if not isinstance(annotations, dict):
+            annotations = {}
+        if not isinstance(execution, dict):
+            execution = {}
+
+        read_only_hint = annotations.get("readOnlyHint")
+        destructive_hint = annotations.get("destructiveHint")
+        idempotent_hint = annotations.get("idempotentHint")
+
+        mutation: Optional[bool]
+        if read_only_hint is True:
+            mutation = False
+        elif read_only_hint is False or destructive_hint is True:
+            mutation = True
+        else:
+            meta_mutation = execution.get("mutation")
+            mutation = meta_mutation if isinstance(meta_mutation, bool) else None
+
+        meta_idempotency = execution.get("idempotency")
+        if meta_idempotency in _IDEMPOTENCY_VALUES:
+            idempotency = meta_idempotency
+        elif idempotent_hint is True:
+            idempotency = "supported"
+        else:
+            idempotency = "unsupported"
+
+        meta_retry = execution.get("retry")
+        if meta_retry in _RETRY_VALUES:
+            retry = meta_retry
+        elif read_only_hint is True:
+            retry = "safe"
+        elif mutation is True and idempotent_hint is True:
+            retry = "safe_with_idempotency"
+        else:
+            retry = "never"
+
+        timeout_ms = execution.get("timeout_ms")
+        if timeout_ms is not None and (not isinstance(timeout_ms, int) or timeout_ms <= 0):
+            timeout_ms = None
+
+        return {
+            "mutation": mutation,
+            "idempotency": idempotency,
+            "retry": retry,
+            "timeout_ms": timeout_ms,
+        }
 
     def _get_auth_headers(self, server: Dict[str, Any]) -> Dict[str, str]:
         """Get authentication headers for backend MCP server."""
