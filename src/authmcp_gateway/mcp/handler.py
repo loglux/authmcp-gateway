@@ -20,9 +20,9 @@ logger = logging.getLogger(__name__)
 class McpHandler:
     """Handles MCP JSON-RPC requests and routes to backend servers."""
 
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, proxy: Optional[McpProxy] = None):
         self.db_path = db_path
-        self.proxy = McpProxy(db_path)
+        self.proxy = proxy or McpProxy(db_path)
 
     async def handle_request(
         self, request: Request, server_name: Optional[str] = None

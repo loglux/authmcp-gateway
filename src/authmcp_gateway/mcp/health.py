@@ -22,6 +22,7 @@ class HealthChecker:
         interval: int = 60,
         timeout: int = 10,
         shared_session_ids: Dict[int, str] | None = None,
+        shared_recovery_locks: Dict[int, asyncio.Lock] | None = None,
     ):
         """Initialize health checker.
 
@@ -31,6 +32,9 @@ class HealthChecker:
             timeout: Request timeout in seconds
             shared_session_ids: Optional shared session dict (from McpProxy) to
                 avoid creating competing sessions on single-session backends
+            shared_recovery_locks: Optional per-server lock dict (from McpProxy)
+                to serialize stale-session recovery across health checks and
+                foreground MCP requests
         """
         self.db_path = db_path
         self.interval = interval
@@ -40,6 +44,16 @@ class HealthChecker:
         self._session_ids: Dict[int, str] = (
             shared_session_ids if shared_session_ids is not None else {}
         )
+        self._recovery_locks: Dict[int, asyncio.Lock] = (
+            shared_recovery_locks if shared_recovery_locks is not None else {}
+        )
+
+    def _get_recovery_lock(self, server_id: int) -> asyncio.Lock:
+        lock = self._recovery_locks.get(server_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._recovery_locks[server_id] = lock
+        return lock
 
     def start(self):
         """Start health checking background task."""
@@ -150,25 +164,29 @@ class HealthChecker:
                             f"Health check: {server_name} timed out with session, "
                             "retrying with fresh initialize"
                         )
-                        del self._session_ids[server_id]
-                        headers.pop("mcp-session-id", None)
-                        session_id = await self._initialize_session(
-                            client, server_url, headers, server_id, server_name
-                        )
-                        if session_id:
-                            headers["mcp-session-id"] = session_id
-                            response = await client.post(
-                                server_url,
-                                json={
-                                    "jsonrpc": "2.0",
-                                    "id": 1,
-                                    "method": "tools/list",
-                                    "params": {},
-                                },
-                                headers=headers,
-                            )
-                        else:
-                            raise  # Re-raise timeout if init also failed
+                        async with self._get_recovery_lock(server_id):
+                            recovered_session = self._session_ids.get(server_id)
+                            if not recovered_session or recovered_session == session_id:
+                                self._session_ids.pop(server_id, None)
+                                headers.pop("mcp-session-id", None)
+                                recovered_session = await self._initialize_session(
+                                    client, server_url, headers, server_id, server_name
+                                )
+                            headers.pop("mcp-session-id", None)
+                            if recovered_session:
+                                headers["mcp-session-id"] = recovered_session
+                                response = await client.post(
+                                    server_url,
+                                    json={
+                                        "jsonrpc": "2.0",
+                                        "id": 1,
+                                        "method": "tools/list",
+                                        "params": {},
+                                    },
+                                    headers=headers,
+                                )
+                            else:
+                                raise  # Re-raise timeout if init also failed
                     else:
                         raise  # No session to clear, genuine timeout
 
@@ -177,23 +195,27 @@ class HealthChecker:
                     body_text = response.text[:200] if response.text else ""
                     if "session" in body_text.lower():
                         logger.info(f"Health check: {server_name} requires session, initializing")
-                        self._session_ids.pop(server_id, None)
-                        headers.pop("mcp-session-id", None)
-                        session_id = await self._initialize_session(
-                            client, server_url, headers, server_id, server_name
-                        )
-                        if session_id:
-                            headers["mcp-session-id"] = session_id
-                            response = await client.post(
-                                server_url,
-                                json={
-                                    "jsonrpc": "2.0",
-                                    "id": 1,
-                                    "method": "tools/list",
-                                    "params": {},
-                                },
-                                headers=headers,
-                            )
+                        async with self._get_recovery_lock(server_id):
+                            current_session = self._session_ids.get(server_id)
+                            if not current_session or current_session == session_id:
+                                self._session_ids.pop(server_id, None)
+                                headers.pop("mcp-session-id", None)
+                                current_session = await self._initialize_session(
+                                    client, server_url, headers, server_id, server_name
+                                )
+                            headers.pop("mcp-session-id", None)
+                            if current_session:
+                                headers["mcp-session-id"] = current_session
+                                response = await client.post(
+                                    server_url,
+                                    json={
+                                        "jsonrpc": "2.0",
+                                        "id": 1,
+                                        "method": "tools/list",
+                                        "params": {},
+                                    },
+                                    headers=headers,
+                                )
 
                 # Handle 401 with token refresh
                 if response.status_code == 401 and server.get("refresh_token_hash"):
@@ -400,6 +422,7 @@ def initialize_health_checker(
     interval: int = 60,
     timeout: int = 10,
     shared_session_ids: Dict[int, str] | None = None,
+    shared_recovery_locks: Dict[int, asyncio.Lock] | None = None,
 ) -> HealthChecker:
     """Initialize global health checker.
 
@@ -408,10 +431,17 @@ def initialize_health_checker(
         interval: Check interval in seconds
         timeout: Request timeout in seconds
         shared_session_ids: Optional shared session dict from McpProxy
+        shared_recovery_locks: Optional per-server recovery lock dict from McpProxy
 
     Returns:
         HealthChecker instance
     """
     global _health_checker
-    _health_checker = HealthChecker(db_path, interval, timeout, shared_session_ids)
+    _health_checker = HealthChecker(
+        db_path,
+        interval,
+        timeout,
+        shared_session_ids=shared_session_ids,
+        shared_recovery_locks=shared_recovery_locks,
+    )
     return _health_checker

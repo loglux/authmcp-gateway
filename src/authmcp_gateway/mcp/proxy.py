@@ -133,6 +133,16 @@ class McpProxy:
         self._dedup_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
         self._dedup_ttl_seconds: int = 60
         self._dedup_inflight: Dict[str, asyncio.Future] = {}
+        # Serialize stale-session recovery per backend to avoid concurrent
+        # reinitialize races (especially with health checks + client traffic).
+        self._session_recovery_locks: Dict[int, asyncio.Lock] = {}
+
+    def _get_session_recovery_lock(self, server_id: int) -> asyncio.Lock:
+        lock = self._session_recovery_locks.get(server_id)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._session_recovery_locks[server_id] = lock
+        return lock
 
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create shared httpx.AsyncClient."""
@@ -200,18 +210,24 @@ class McpProxy:
                     f"Timeout with stale session for {server_name}/{method}, "
                     "retrying with fresh initialize"
                 )
-                self._session_ids.pop(server_id, None)
-                self._capabilities_cache.pop(server_id, None)
-                self._cache_timestamp.pop(server_id, None)
-                self._tools_cache.pop(server_id, None)
-                headers.pop("mcp-session-id", None)
-                await self._fetch_capabilities_from_server(server)
-                # Warm up: some backends require tools/list before tools/call
-                if method not in ("initialize", "tools/list"):
-                    await self._fetch_tools_from_server(server)
-                session_id = self._session_ids.get(server_id)
-                if session_id:
-                    headers["mcp-session-id"] = session_id
+                async with self._get_session_recovery_lock(server_id):
+                    # Another coroutine may have already recovered the session.
+                    recovered_session = self._session_ids.get(server_id)
+                    if not recovered_session or recovered_session == session_id:
+                        self._session_ids.pop(server_id, None)
+                        self._capabilities_cache.pop(server_id, None)
+                        self._cache_timestamp.pop(server_id, None)
+                        self._tools_cache.pop(server_id, None)
+                        headers.pop("mcp-session-id", None)
+                        await self._fetch_capabilities_from_server(server)
+                        # Warm up: some backends require tools/list before tools/call
+                        if method not in ("initialize", "tools/list"):
+                            await self._fetch_tools_from_server(server)
+                        recovered_session = self._session_ids.get(server_id)
+
+                    headers.pop("mcp-session-id", None)
+                    if recovered_session:
+                        headers["mcp-session-id"] = recovered_session
                 response = await client.post(
                     server_url, json=payload, headers=headers, timeout=server_timeout
                 )
@@ -259,20 +275,25 @@ class McpProxy:
             body_text = response.text[:200] if response.text else ""
             if "session" in body_text.lower():
                 logger.info(f"Session expired/missing for {server_name}, re-initializing")
-                self._session_ids.pop(server_id, None)
-                self._capabilities_cache.pop(server_id, None)
-                self._cache_timestamp.pop(server_id, None)
-                self._tools_cache.pop(server_id, None)
-                await self._fetch_capabilities_from_server(server)
-                # Warm up: some backends require tools/list before tools/call
-                if method not in ("initialize", "tools/list"):
-                    await self._fetch_tools_from_server(server)
-                session_id = self._session_ids.get(server_id)
-                if session_id:
-                    headers["mcp-session-id"] = session_id
-                    response = await client.post(
-                        server_url, json=payload, headers=headers, timeout=server_timeout
-                    )
+                async with self._get_session_recovery_lock(server_id):
+                    current_session = self._session_ids.get(server_id)
+                    if not current_session or current_session == session_id:
+                        self._session_ids.pop(server_id, None)
+                        self._capabilities_cache.pop(server_id, None)
+                        self._cache_timestamp.pop(server_id, None)
+                        self._tools_cache.pop(server_id, None)
+                        await self._fetch_capabilities_from_server(server)
+                        # Warm up: some backends require tools/list before tools/call
+                        if method not in ("initialize", "tools/list"):
+                            await self._fetch_tools_from_server(server)
+                        current_session = self._session_ids.get(server_id)
+
+                    headers.pop("mcp-session-id", None)
+                    if current_session:
+                        headers["mcp-session-id"] = current_session
+                        response = await client.post(
+                            server_url, json=payload, headers=headers, timeout=server_timeout
+                        )
 
         response.raise_for_status()
 

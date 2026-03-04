@@ -170,7 +170,7 @@ def create_app(config=None):
 
     # Initialize MCP Gateway components
     mcp_proxy = McpProxy(config.auth.sqlite_path, timeout=proxy_timeout)
-    mcp_handler = McpHandler(config.auth.sqlite_path)
+    mcp_handler = McpHandler(config.auth.sqlite_path, proxy=mcp_proxy)
 
     # Initialize health checker
     health_checker = initialize_health_checker(
@@ -178,6 +178,7 @@ def create_app(config=None):
         interval=health_check_interval,
         timeout=health_check_timeout,
         shared_session_ids=mcp_proxy._session_ids,
+        shared_recovery_locks=mcp_proxy._session_recovery_locks,
     )
 
     # Initialize token manager and refresher
