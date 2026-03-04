@@ -663,6 +663,11 @@ def create_app(config=None):
             ),
             Route("/.well-known/openid-configuration", openid_configuration, methods=["GET"]),
             Route(
+                "/.well-known/openid-configuration/oauth/token",
+                openid_configuration,
+                methods=["GET"],
+            ),
+            Route(
                 "/oauth/token/.well-known/openid-configuration",
                 openid_configuration,
                 methods=["GET"],
