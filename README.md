@@ -386,6 +386,12 @@ Without this parameter Codex fails to refresh tokens because it looks for a keyr
 fails. That forces you to re-login each time again and again following the manual procedure above.
 After updating the config, restart Codex.
 
+### Discovery Compatibility
+
+Some MCP clients probe OpenID discovery using non-standard paths after a successful token exchange. In
+addition to the standard `/.well-known/openid-configuration`, the gateway also serves the same discovery
+document at `/oauth/token/.well-known/openid-configuration` as a compatibility alias.
+
 If you are already locked out and see this warning:
 
 ```

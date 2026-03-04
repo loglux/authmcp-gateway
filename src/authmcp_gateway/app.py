@@ -652,6 +652,11 @@ def create_app(config=None):
             ),
             Route("/.well-known/openid-configuration", openid_configuration, methods=["GET"]),
             Route(
+                "/oauth/token/.well-known/openid-configuration",
+                openid_configuration,
+                methods=["GET"],
+            ),
+            Route(
                 "/mcp/{server_name}/.well-known/openid-configuration",
                 openid_configuration,
                 methods=["GET"],
