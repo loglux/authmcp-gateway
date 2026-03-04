@@ -213,7 +213,7 @@ def create_app(config=None):
         body = {
             "resource": config.mcp_public_url,
             "authorization_servers": [f"{config.mcp_public_url}/"],
-            "scopes_supported": ["openid", "profile", "email"],
+            "scopes_supported": ["openid", "profile", "email", "offline_access"],
         }
         return JSONResponse(body)
 
@@ -224,6 +224,7 @@ def create_app(config=None):
             "authorization_endpoint": f"{config.mcp_public_url}/authorize",
             "token_endpoint": f"{config.mcp_public_url}/oauth/token",
             "jwks_uri": f"{config.mcp_public_url}/.well-known/jwks.json",
+            "scopes_supported": ["openid", "profile", "email", "offline_access"],
             "response_types_supported": ["code"],
             "grant_types_supported": ["authorization_code", "password", "refresh_token"],
             "token_endpoint_auth_methods_supported": ["none"],
@@ -245,14 +246,24 @@ def create_app(config=None):
         """OpenID Connect configuration."""
         response = {
             "issuer": config.mcp_public_url,
+            "authorization_endpoint": f"{config.mcp_public_url}/authorize",
             "token_endpoint": f"{config.mcp_public_url}/oauth/token",
             "userinfo_endpoint": f"{config.mcp_public_url}/auth/me",
             "jwks_uri": f"{config.mcp_public_url}/.well-known/jwks.json",
-            "response_types_supported": ["code", "token"],
+            "scopes_supported": ["openid", "profile", "email", "offline_access"],
+            "response_types_supported": ["code"],
+            "grant_types_supported": ["authorization_code", "refresh_token"],
             "subject_types_supported": ["public"],
+            "token_endpoint_auth_methods_supported": ["none"],
+            "code_challenge_methods_supported": ["S256", "plain"],
             "id_token_signing_alg_values_supported": [config.jwt.algorithm],
         }
         if config.auth.allow_dcr:
+            response["token_endpoint_auth_methods_supported"] = [
+                "none",
+                "client_secret_basic",
+                "client_secret_post",
+            ]
             response["registration_endpoint"] = f"{config.mcp_public_url}/oauth/register"
         return JSONResponse(response)
 
