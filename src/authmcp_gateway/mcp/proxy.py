@@ -682,6 +682,17 @@ class McpProxy:
             return self._resources_cache[server_id]
 
         await self._ensure_session(server)
+        capabilities = self._capabilities_cache.get(server_id, {})
+        if "resources" not in capabilities:
+            # Skip probing resources/list when backend does not advertise
+            # resources capability in initialize response.
+            self._resources_cache[server_id] = []
+            self._update_cache_timestamp(server_id)
+            logger.debug(
+                "Skipping resources/list for %s: resources capability not advertised",
+                server_name,
+            )
+            return []
 
         try:
             data = await self._proxy_jsonrpc(server, "resources/list")
