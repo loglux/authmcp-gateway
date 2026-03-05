@@ -7,7 +7,6 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Docker](https://img.shields.io/badge/docker-ready-brightgreen.svg)](https://hub.docker.com/)
 [![MCP 2025-03-26](https://img.shields.io/badge/MCP-2025--03--26-purple.svg)](https://modelcontextprotocol.io)
-[![Glama Server](https://glama.ai/mcp/servers/@loglux/auth-mcp-gateway/badge)](https://glama.ai/mcp/servers/@loglux/auth-mcp-gateway)
 
 AuthMCP Gateway is a **full MCP protocol proxy** with centralized authentication, authorization, and monitoring. It transparently proxies all MCP capabilities — tools, resources, prompts, and completions — from multiple backend servers through a single authenticated endpoint.
 
