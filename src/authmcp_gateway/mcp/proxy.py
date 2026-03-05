@@ -333,9 +333,25 @@ class McpProxy:
     async def _fetch_capabilities_from_server(self, server: Dict[str, Any]) -> Dict[str, Any]:
         """Send initialize to a backend and extract its capabilities."""
         server_id = server["id"]
+        server_name = server.get("name", str(server_id))
 
-        if server_id in self._capabilities_cache and self._is_cache_valid(server_id):
+        # Capabilities are effectively static for a running backend process.
+        # Re-sending initialize on TTL expiry causes avoidable 400s on servers
+        # that reject duplicate initialize for an active session.
+        if server_id in self._capabilities_cache:
             return self._capabilities_cache[server_id]
+
+        # If session already exists but capability snapshot was evicted, avoid
+        # another initialize and fall back to minimal conservative capabilities.
+        if server_id in self._session_ids:
+            logger.debug(
+                "Session exists for %s without cached capabilities; "
+                "reusing conservative default capabilities",
+                server_name,
+            )
+            caps = {"tools": {}}
+            self._capabilities_cache[server_id] = caps
+            return caps
 
         try:
             data = await self._proxy_jsonrpc(
@@ -370,6 +386,16 @@ class McpProxy:
 
             return caps
         except Exception as e:
+            message = str(e).lower()
+            if "already initialized" in message:
+                logger.info(
+                    "Backend %s reported already initialized; "
+                    "keeping conservative capabilities and continuing",
+                    server_name,
+                )
+                caps = {"tools": {}}
+                self._capabilities_cache[server_id] = caps
+                return caps
             logger.debug(f"Failed to fetch capabilities from {server['name']}: {e}")
             return {}
 
