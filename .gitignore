@@ -167,3 +167,9 @@ PRE_COMMIT_SETUP.md
 
 # Build artifacts
 src/authmcp_gateway/static/tailwind.css
+
+# Local shell trace logs (debugging command provenance)
+.codex-trace/
+
+# Local agent instructions
+AGENTS.md
