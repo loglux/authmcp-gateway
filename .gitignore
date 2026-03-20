@@ -173,3 +173,6 @@ src/authmcp_gateway/static/tailwind.css
 
 # Local agent instructions
 AGENTS.md
+
+# Local trace helper
+scripts/trace_exec.sh

@@ -95,7 +95,9 @@ def _registration_response(
         software_id=metadata.get("software_id"),
         software_version=metadata.get("software_version"),
     )
-    return JSONResponse(response.model_dump(), status_code=status_code)
+    # Omit null-valued optional fields so strict DCR clients do not reject
+    # `client_secret: null` or `scope: null` for public clients.
+    return JSONResponse(response.model_dump(exclude_none=True), status_code=status_code)
 
 
 async def register_client(request: Request) -> JSONResponse:
