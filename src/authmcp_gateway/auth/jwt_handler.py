@@ -74,6 +74,38 @@ def create_refresh_token(user_id: int, config: JWTConfig, expire_days: int = Non
     return _encode_token(payload, config)
 
 
+def create_id_token(
+    user_id: int,
+    username: str,
+    email: str | None,
+    full_name: str | None,
+    audience: str,
+    issuer: str,
+    config: JWTConfig,
+    expire_minutes: int = None,
+) -> str:
+    """Create OpenID Connect ID token."""
+    now = datetime.now(timezone.utc)
+    ttl = expire_minutes if expire_minutes is not None else config.access_token_expire_minutes
+    expire = now + timedelta(minutes=ttl)
+
+    payload = {
+        "iss": issuer,
+        "sub": str(user_id),
+        "aud": audience,
+        "exp": expire,
+        "iat": now,
+        "auth_time": int(now.timestamp()),
+        "jti": str(uuid.uuid4()),
+        "preferred_username": username,
+        "name": full_name or username,
+        "email": email,
+        "email_verified": bool(email),
+    }
+
+    return _encode_token(payload, config)
+
+
 def verify_token(token: str, token_type: str, config: JWTConfig) -> Dict[str, Any]:
     """Verify and decode JWT token.
 

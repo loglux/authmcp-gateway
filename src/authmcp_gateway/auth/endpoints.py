@@ -23,6 +23,7 @@ from .client_store import (
 )
 from .jwt_handler import (
     create_access_token,
+    create_id_token,
     create_refresh_token,
     decode_token_unsafe,
     get_token_jti,
@@ -737,7 +738,8 @@ async def me(request: Request) -> JSONResponse:
         logger.warning("Me endpoint: user %s is disabled", user["username"])
         return _error_response(403, "Account is disabled", "ACCOUNT_DISABLED")
 
-    # Return user response
+    # Return OIDC-compatible userinfo claims while keeping legacy fields
+    # for existing admin/UI consumers of /auth/me.
     response = UserResponse(
         id=user["id"],
         username=user["username"],
@@ -748,8 +750,18 @@ async def me(request: Request) -> JSONResponse:
         created_at=user["created_at"],
         last_login_at=user.get("last_login_at"),
     )
+    content = response.model_dump(mode="json")
+    content.update(
+        {
+            "sub": str(user["id"]),
+            "preferred_username": user["username"],
+            "name": user.get("full_name") or user["username"],
+            # The gateway does not implement a separate email verification flow.
+            "email_verified": bool(user.get("email")),
+        }
+    )
 
-    return JSONResponse(status_code=200, content=response.model_dump(mode="json"))
+    return JSONResponse(status_code=200, content=content)
 
 
 async def oauth_token(request: Request) -> JSONResponse:
@@ -1228,6 +1240,28 @@ async def oauth_token(request: Request) -> JSONResponse:
                 user_id=user["id"], config=config.jwt, expire_days=refresh_ttl
             )
 
+            granted_scope = code_info.get("scope")
+            response_content = {
+                "access_token": access_token,
+                "token_type": "bearer",
+                "expires_in": access_ttl * 60,
+                "refresh_token": refresh_token,
+            }
+            if granted_scope:
+                response_content["scope"] = granted_scope
+                scope_values = granted_scope.replace(",", " ").split()
+                if "openid" in scope_values and client_id:
+                    response_content["id_token"] = create_id_token(
+                        user_id=user["id"],
+                        username=user["username"],
+                        email=user.get("email"),
+                        full_name=user.get("full_name"),
+                        audience=client_id,
+                        issuer=config.mcp_public_url,
+                        config=config.jwt,
+                        expire_minutes=access_ttl,
+                    )
+
             # Save refresh token (hash full token, consistent with /auth/login)
             from datetime import datetime, timezone
 
@@ -1278,15 +1312,7 @@ async def oauth_token(request: Request) -> JSONResponse:
             logger.info(f"OAuth authorization code flow successful: {user['username']}")
 
             # Return OAuth2-compatible response
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "access_token": access_token,
-                    "token_type": "bearer",
-                    "expires_in": access_ttl * 60,
-                    "refresh_token": refresh_token,
-                },
-            )
+            return JSONResponse(status_code=200, content=response_content)
 
         else:
             return JSONResponse(
