@@ -510,3 +510,8 @@ For more help, see the troubleshooting and usage sections above.
 ## License
 
 MIT License - see [LICENSE](LICENSE) file for details.
+
+## Hosted deployment
+
+A hosted deployment is available on [Fronteir AI](https://fronteir.ai/mcp/loglux-authmcp-gateway).
+
