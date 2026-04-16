@@ -451,10 +451,50 @@ class McpProxy:
                 logger.error(f"Failed to fetch tools from server {servers[i]['name']}: {result}")
                 continue
             if result:
-                all_tools.extend(result)
+                aggregate_mode = server_name is None
+                all_tools.extend(
+                    self._format_tools_for_client(servers[i], result, aggregate_mode=aggregate_mode)
+                )
 
         logger.info(f"Aggregated {len(all_tools)} tools from {len(servers)} servers")
         return all_tools
+
+    def _client_tool_name(
+        self, server: Dict[str, Any], backend_tool_name: str, *, aggregate_mode: bool
+    ) -> str:
+        """Return the tool name that should be exposed to MCP clients."""
+        if not aggregate_mode:
+            return backend_tool_name
+        prefix = server.get("tool_prefix")
+        if prefix:
+            return f"{prefix}{backend_tool_name}"
+        return backend_tool_name
+
+    def _backend_tool_name(
+        self, server: Dict[str, Any], client_tool_name: str, *, aggregate_mode: bool
+    ) -> str:
+        """Return the raw backend tool name corresponding to a client-facing name."""
+        if not aggregate_mode:
+            return client_tool_name
+        prefix = server.get("tool_prefix")
+        if prefix and client_tool_name.startswith(prefix):
+            return client_tool_name[len(prefix) :]
+        return client_tool_name
+
+    def _format_tools_for_client(
+        self, server: Dict[str, Any], tools: List[Dict[str, Any]], *, aggregate_mode: bool
+    ) -> List[Dict[str, Any]]:
+        """Return client-facing tool definitions without mutating cached backend tools."""
+        formatted = []
+        for tool in tools:
+            client_tool = dict(tool)
+            backend_name = tool.get("name")
+            if isinstance(backend_name, str):
+                client_tool["name"] = self._client_tool_name(
+                    server, backend_name, aggregate_mode=aggregate_mode
+                )
+            formatted.append(client_tool)
+        return formatted
 
     async def _ensure_session(self, server: Dict[str, Any]) -> None:
         """Ensure we have a valid session with the server (initialize if needed)."""
@@ -520,8 +560,12 @@ class McpProxy:
         if user_id and not check_user_mcp_access(self.db_path, user_id, server["id"]):
             raise PermissionError(f"User {user_id} doesn't have access to server {server['name']}")
 
+        aggregate_mode = server_name is None
+        backend_tool_name = self._backend_tool_name(
+            server, tool_name, aggregate_mode=aggregate_mode
+        )
         args = arguments or {}
-        tool_definition = await self._get_tool_definition(server, tool_name)
+        tool_definition = await self._get_tool_definition(server, backend_tool_name)
         execution_policy = self._get_execution_policy(tool_definition)
         args, idempotency_key, idempotency_generated = self._prepare_tool_arguments(
             execution_policy, args
@@ -579,7 +623,7 @@ class McpProxy:
             data = await self._proxy_jsonrpc(
                 server,
                 "tools/call",
-                {"name": tool_name, "arguments": args},
+                {"name": backend_tool_name, "arguments": args},
                 allow_retry=allow_retry,
                 timeout_override_ms=timeout_override_ms,
             )
