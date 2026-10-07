@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.71] - 2026-10-07
+
+### Fixed
+- `pyproject.toml`: `[build-system] requires` floor raised from
+  `setuptools>=68.0` to `setuptools>=77.0.1`. The project declares
+  `license = "MIT"` + `license-files` (PEP 639 SPDX-style fields), which
+  setuptools only started parsing correctly at 77.0.1 — versions 68.2.2
+  through 76.1.0 fail `read_configuration()` on this `pyproject.toml` with
+  `project.license must be valid exactly by one definition`. `make build`
+  / `make publish` never hit this locally because they run with
+  `--no-isolation` and reuse whatever setuptools is already installed, but
+  a plain `pip install -e .` in a fresh venv (the documented dev-setup
+  path) could fail depending on the resolved setuptools version.
+- `mcp/proxy.py` (`_proxy_jsonrpc()`) and `mcp/health.py`
+  (`check_server()`): session recovery now also triggers on HTTP 404 when
+  the failing request carried an `Mcp-Session-Id` header, not just on
+  HTTP 400 with `"session"` in the body. Per the MCP Streamable HTTP spec
+  (Session Management, rev 2025-03-26 — the revision this gateway
+  negotiates), a backend that terminated a session **must** answer 404 to
+  a request still carrying that session id; only the 400 case was
+  previously handled. A 404 on a request with no session header is still
+  treated as a genuine routing error and passed through unchanged. Thanks
+  to @jnloos (#5).
+
+### Added
+- 4 new tests covering the 404 recovery path: 2 in
+  `tests/integration/test_mcp_proxy_more.py`, 2 in
+  `tests/integration/test_mcp_health.py` (one recovery case and one
+  negative/no-session case per module).
+
 ## [1.2.70] - 2026-05-10
 
 ### Fixed
@@ -1177,6 +1207,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved ChatGPT connector compatibility for OAuth, DCR, and authorization code
   flows.
 
+[1.2.71]: https://github.com/loglux/authmcp-gateway/releases/tag/v1.2.71
 [1.2.70]: https://github.com/loglux/authmcp-gateway/releases/tag/v1.2.70
 [1.2.69]: https://github.com/loglux/authmcp-gateway/releases/tag/v1.2.69
 [1.2.68]: https://github.com/loglux/authmcp-gateway/releases/tag/v1.2.68
