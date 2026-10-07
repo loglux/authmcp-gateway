@@ -892,6 +892,97 @@ async def test_proxy_jsonrpc_400_session_recovery_reinitializes_and_retries(db_p
 
 
 @pytest.mark.asyncio
+async def test_proxy_jsonrpc_404_session_recovery_reinitializes_and_retries(db_path, monkeypatch):
+    """Per MCP spec a backend that terminated a session answers requests
+    carrying that session id with 404. The proxy must treat that like the
+    400 case: drop the stale state, re-initialize, retry the original call."""
+    proxy = McpProxy(db_path)
+    server = {
+        "id": 1,
+        "name": "good",
+        "url": "https://good.example/mcp",
+        "auth_type": "none",
+        "refresh_token_hash": None,
+    }
+    proxy._session_ids[1] = "stale-sess"
+
+    state = {"call": 0}
+
+    def handler(request):
+        state["call"] += 1
+        # First request — backend no longer knows this session.
+        if state["call"] == 1:
+            return httpx.Response(
+                404,
+                text="Session not found",
+                headers={"content-type": "text/plain"},
+            )
+        return httpx.Response(
+            200,
+            json={"jsonrpc": "2.0", "id": 1, "result": {"ok": True}},
+            headers={"content-type": "application/json"},
+        )
+
+    _patch_async_client(monkeypatch, handler)
+
+    async def fake_fetch_caps(srv):
+        proxy._session_ids[srv["id"]] = "fresh-sess"
+        proxy._capabilities_cache[srv["id"]] = {"tools": {}}
+        return proxy._capabilities_cache[srv["id"]]
+
+    async def fake_fetch_tools(_srv):
+        return []
+
+    monkeypatch.setattr(proxy, "_fetch_capabilities_from_server", fake_fetch_caps)
+    monkeypatch.setattr(proxy, "_fetch_tools_from_server", fake_fetch_tools)
+
+    data = await proxy._proxy_jsonrpc(server, "tools/call", {"name": "x"})
+    assert data["result"]["ok"] is True
+    assert proxy._session_ids[1] == "fresh-sess"
+    assert state["call"] == 2  # original 404 + retry
+
+
+@pytest.mark.asyncio
+async def test_proxy_jsonrpc_404_without_session_does_not_reinitialize(db_path, monkeypatch):
+    """A 404 on a request that carried no Mcp-Session-Id is a routing error
+    ("endpoint not found"), not an expired session — no re-initialize, the
+    HTTP error surfaces to the caller."""
+    proxy = McpProxy(db_path)
+    server = {
+        "id": 1,
+        "name": "wrong-path",
+        "url": "https://good.example/nope",
+        "auth_type": "none",
+        "refresh_token_hash": None,
+    }
+    # No session id cached for this server.
+
+    state = {"call": 0, "caps": 0}
+
+    def handler(_request):
+        state["call"] += 1
+        return httpx.Response(
+            404,
+            text="Not Found",
+            headers={"content-type": "text/plain"},
+        )
+
+    _patch_async_client(monkeypatch, handler)
+
+    async def fake_fetch_caps(srv):
+        state["caps"] += 1
+        return {}
+
+    monkeypatch.setattr(proxy, "_fetch_capabilities_from_server", fake_fetch_caps)
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await proxy._proxy_jsonrpc(server, "tools/call", {"name": "x"})
+
+    assert state["call"] == 1  # no retry
+    assert state["caps"] == 0  # no re-initialize attempt
+
+
+@pytest.mark.asyncio
 async def test_proxy_jsonrpc_401_triggers_refresh_and_retries(mcp_db, monkeypatch):
     """401 on a server with refresh_token_hash → call into token_manager,
     re-read server row from DB, retry once with the (now refreshed) token."""

@@ -282,11 +282,26 @@ class McpProxy:
             except PROXY_TOKEN_REFRESH_ERRORS as refresh_error:
                 logger.error(f"Exception during token refresh: {refresh_error}")
 
-        # Handle 400 "no valid session" — need to initialize first
-        if allow_retry and response.status_code == 400 and method != "initialize":
-            body_text = response.text[:200] if response.text else ""
-            if "session" in body_text.lower():
-                logger.info(f"Session expired/missing for {server_name}, re-initializing")
+        # Handle stale/missing session — need to (re-)initialize first.
+        # Per MCP Streamable HTTP spec (§ Session Management) there are two
+        # distinct cases, both recoverable the same way:
+        #   400 + "session" in body — backend demands a session we didn't send.
+        #   404 on a request that DID carry an Mcp-Session-Id — the backend
+        #     terminated that session and the client "MUST start a new session".
+        #     Without a session header a 404 just means "endpoint not found",
+        #     so the header check keeps genuine routing errors intact.
+        if allow_retry and method != "initialize":
+            if response.status_code == 400:
+                body_text = response.text[:200] if response.text else ""
+                needs_reinit = "session" in body_text.lower()
+            else:
+                needs_reinit = response.status_code == 404 and bool(session_id)
+
+            if needs_reinit:
+                logger.info(
+                    f"Session expired/missing for {server_name} "
+                    f"(HTTP {response.status_code}), re-initializing"
+                )
                 async with self._get_session_recovery_lock(server_id):
                     current_session = self._session_ids.get(server_id)
                     if not current_session or current_session == session_id:
