@@ -199,32 +199,47 @@ class HealthChecker:
                     else:
                         raise  # No session to clear, genuine timeout
 
-                # Handle 400 "no valid session" — initialize first
+                # Handle stale/missing session — (re-)initialize first.
+                # Per MCP Streamable HTTP spec (§ Session Management) there are
+                # two distinct cases, both recoverable the same way:
+                #   400 + "session" in body — backend demands a session.
+                #   404 on a request that DID carry an Mcp-Session-Id — the
+                #     backend terminated that session and the client "MUST start
+                #     a new session". Without a session header a 404 just means
+                #     "endpoint not found", so the header check keeps genuine
+                #     routing errors intact.
                 if response.status_code == 400:
                     body_text = response.text[:200] if response.text else ""
-                    if "session" in body_text.lower():
-                        logger.info(f"Health check: {server_name} requires session, initializing")
-                        async with self._get_recovery_lock(server_id):
-                            current_session = self._session_ids.get(server_id)
-                            if not current_session or current_session == session_id:
-                                self._session_ids.pop(server_id, None)
-                                headers.pop("mcp-session-id", None)
-                                current_session = await self._initialize_session(
-                                    client, server_url, headers, server_id, server_name
-                                )
+                    needs_reinit = "session" in body_text.lower()
+                else:
+                    needs_reinit = response.status_code == 404 and bool(session_id)
+
+                if needs_reinit:
+                    logger.info(
+                        f"Health check: {server_name} needs a session "
+                        f"(HTTP {response.status_code}), initializing"
+                    )
+                    async with self._get_recovery_lock(server_id):
+                        current_session = self._session_ids.get(server_id)
+                        if not current_session or current_session == session_id:
+                            self._session_ids.pop(server_id, None)
                             headers.pop("mcp-session-id", None)
-                            if current_session:
-                                headers["mcp-session-id"] = current_session
-                                response = await client.post(
-                                    server_url,
-                                    json={
-                                        "jsonrpc": "2.0",
-                                        "id": 1,
-                                        "method": "tools/list",
-                                        "params": {},
-                                    },
-                                    headers=headers,
-                                )
+                            current_session = await self._initialize_session(
+                                client, server_url, headers, server_id, server_name
+                            )
+                        headers.pop("mcp-session-id", None)
+                        if current_session:
+                            headers["mcp-session-id"] = current_session
+                            response = await client.post(
+                                server_url,
+                                json={
+                                    "jsonrpc": "2.0",
+                                    "id": 1,
+                                    "method": "tools/list",
+                                    "params": {},
+                                },
+                                headers=headers,
+                            )
 
                 # Handle 401 with token refresh
                 if response.status_code == 401 and server.get("refresh_token_hash"):

@@ -354,6 +354,86 @@ async def test_check_server_400_no_session_initializes_then_retries(mcp_db, monk
     assert checker._session_ids[sid] == "sess-from-init"
 
 
+@pytest.mark.asyncio
+async def test_check_server_404_stale_session_reinitializes_then_retries(mcp_db, monkeypatch):
+    """A backend that was restarted answers requests carrying the old
+    Mcp-Session-Id with 404 (MCP spec, Session Management). The health check
+    must re-initialize and retry instead of flagging the server offline.
+    """
+    sid = store.create_mcp_server(mcp_db, "restarted", "https://restarted.example.com/mcp")
+
+    state = {"tools_calls": 0}
+
+    def handler(request):
+        body = json.loads(request.content.decode("utf-8")) if request.content else {}
+        method = body.get("method", "")
+
+        if method == "initialize":
+            return httpx.Response(
+                200,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "result": {"protocolVersion": "2025-03-26"},
+                },
+                headers={
+                    "content-type": "application/json",
+                    "mcp-session-id": "sess-after-restart",
+                },
+            )
+
+        if method == "tools/list":
+            state["tools_calls"] += 1
+            sent = {k.lower(): v for k, v in request.headers.items()}.get("mcp-session-id")
+            # The stale session the checker had cached is gone after restart.
+            if sent == "stale-sess":
+                return httpx.Response(
+                    404,
+                    text="Session not found",
+                    headers={"content-type": "text/plain"},
+                )
+            return _tools_list_response(tools=[{"name": "x"}])
+
+        return httpx.Response(404)
+
+    _patch_async_client(monkeypatch, handler)
+
+    checker = health_mod.HealthChecker(mcp_db)
+    checker._session_ids[sid] = "stale-sess"
+
+    result = await checker.check_server(store.get_mcp_server(mcp_db, sid))
+
+    assert result["status"] == "online"
+    assert checker._session_ids[sid] == "sess-after-restart"
+    assert state["tools_calls"] == 2  # original 404 + retry
+
+
+@pytest.mark.asyncio
+async def test_check_server_404_without_session_is_reported_as_error(mcp_db, monkeypatch):
+    """Without a cached session a 404 means "endpoint not found", not an
+    expired session — no re-initialize, the HTTP error is reported as-is."""
+    sid = store.create_mcp_server(mcp_db, "wrong-path", "https://wrong.example.com/nope")
+
+    state = {"initialize": 0, "calls": 0}
+
+    def handler(request):
+        state["calls"] += 1
+        body = json.loads(request.content.decode("utf-8")) if request.content else {}
+        if body.get("method") == "initialize":
+            state["initialize"] += 1
+        return httpx.Response(404, text="Not Found", headers={"content-type": "text/plain"})
+
+    _patch_async_client(monkeypatch, handler)
+
+    checker = health_mod.HealthChecker(mcp_db)
+    result = await checker.check_server(store.get_mcp_server(mcp_db, sid))
+
+    assert result["status"] == "error"  # HTTP status failure, surfaced as-is
+    assert "404" in result["error"]
+    assert state["initialize"] == 0  # no recovery attempt
+    assert state["calls"] == 1  # no retry
+
+
 # ---------------------------------------------------------------------------
 # _initialize_session
 # ---------------------------------------------------------------------------
