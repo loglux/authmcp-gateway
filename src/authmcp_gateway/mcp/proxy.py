@@ -21,6 +21,7 @@ from ._exceptions import (
     PROXY_TOKEN_REFRESH_ERRORS,
     PROXY_TRANSPORT_ERRORS,
 )
+from ._protocol import MCP_PROTOCOL_VERSION
 from .store import (
     check_user_mcp_access,
     get_mcp_server,
@@ -385,7 +386,7 @@ class McpProxy:
                 server,
                 "initialize",
                 {
-                    "protocolVersion": "2025-03-26",
+                    "protocolVersion": MCP_PROTOCOL_VERSION,
                     "capabilities": {},
                     "clientInfo": {"name": "authmcp-gateway", "version": "2.0.0"},
                 },

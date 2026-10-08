@@ -10,6 +10,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
+from ..mcp._protocol import MCP_PROTOCOL_VERSION
+
 
 class MCPSecurityAuditor:
     """Audits MCP server security"""
@@ -271,7 +273,7 @@ class MCPSecurityAuditor:
         status, data = self.mcp_request(
             "initialize",
             params={
-                "protocolVersion": "2024-11-05",
+                "protocolVersion": MCP_PROTOCOL_VERSION,
                 "clientInfo": {"name": "test", "version": "1.0"},
             },
         )

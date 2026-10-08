@@ -14,6 +14,7 @@ from starlette.responses import JSONResponse, Response
 from authmcp_gateway.utils import get_request_ip
 
 from ._exceptions import PROXY_DISCOVERY_DB_ERRORS
+from ._protocol import MCP_PROTOCOL_VERSION
 from .proxy import McpProxy, PromptNotFoundError, ResourceNotFoundError, ToolNotFoundError
 
 logger = logging.getLogger(__name__)
@@ -175,7 +176,7 @@ class McpHandler:
                 "jsonrpc": "2.0",
                 "id": jsonrpc_id,
                 "result": {
-                    "protocolVersion": "2025-03-26",
+                    "protocolVersion": MCP_PROTOCOL_VERSION,
                     "capabilities": capabilities,
                     "serverInfo": {"name": display_name, "version": "2.0.0"},
                 },

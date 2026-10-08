@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.72] - 2026-10-08
+
+### Changed
+- Centralized the MCP `protocolVersion` string ("2025-03-26") into a
+  single constant, `mcp._protocol.MCP_PROTOCOL_VERSION`, used by
+  `mcp/proxy.py`, `mcp/health.py`, `mcp/handler.py`, and
+  `security/mcp_auditor.py`. Previously it was duplicated as a literal
+  in each file — `mcp_auditor.py`'s unauthorized-initialize probe had
+  drifted to a stale `"2024-11-05"` in the process. No behavior change
+  for proxy/health/handler (same value); the auditor probe now sends
+  the same revision the gateway actually negotiates.
+
 ## [1.2.71] - 2026-10-07
 
 ### Fixed
@@ -1207,6 +1219,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved ChatGPT connector compatibility for OAuth, DCR, and authorization code
   flows.
 
+[1.2.72]: https://github.com/loglux/authmcp-gateway/releases/tag/v1.2.72
 [1.2.71]: https://github.com/loglux/authmcp-gateway/releases/tag/v1.2.71
 [1.2.70]: https://github.com/loglux/authmcp-gateway/releases/tag/v1.2.70
 [1.2.69]: https://github.com/loglux/authmcp-gateway/releases/tag/v1.2.69
