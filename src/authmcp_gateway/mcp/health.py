@@ -12,6 +12,7 @@ from ._exceptions import (
     PROXY_DISCOVERY_ERRORS,
     PROXY_TOKEN_REFRESH_ERRORS,
 )
+from ._protocol import MCP_PROTOCOL_VERSION
 from .proxy import get_auth_headers, parse_sse_response
 from .store import list_mcp_servers, update_server_health
 
@@ -399,7 +400,7 @@ class HealthChecker:
                     "id": 1,
                     "method": "initialize",
                     "params": {
-                        "protocolVersion": "2025-03-26",
+                        "protocolVersion": MCP_PROTOCOL_VERSION,
                         "capabilities": {},
                         "clientInfo": {"name": "authmcp-gateway", "version": "2.0.0"},
                     },
