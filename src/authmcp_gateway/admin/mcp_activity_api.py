@@ -98,13 +98,19 @@ async def api_mcp_stats(request: Request) -> JSONResponse:
     active_servers = sum(1 for s in servers if s.get("status") == "online")
     total_servers = len(servers)
 
-    # Rename fields to match Dashboard expectations
+    # requests_24h/avg_response_time are Dashboard-friendly aliases; total_requests/
+    # avg_response_time_ms/by_server are kept under their original names too since
+    # the MCP Activity page (mcp_activity.html) reads this same endpoint and expects
+    # get_mcp_request_stats()'s own field names.
     result = {
         "requests_24h": stats.get("total_requests", 0),
+        "total_requests": stats.get("total_requests", 0),
         "active_servers": active_servers,
         "total_servers": total_servers,
         "success_rate": stats.get("success_rate", 0),
         "avg_response_time": stats.get("avg_response_time_ms", 0),
+        "avg_response_time_ms": stats.get("avg_response_time_ms", 0),
+        "by_server": stats.get("by_server", {}),
         "trend": "",  # TODO: Calculate trend from previous period
     }
 

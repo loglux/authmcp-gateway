@@ -445,6 +445,20 @@ def get_mcp_request_stats(db_path: str, last_hours: int = 24) -> Dict[str, Any]:
                 for row in cursor.fetchall()
             ]
 
+            # Requests grouped by server name (drives the "By Server" breakdown)
+            cursor.execute(
+                """
+                SELECT COALESCE(s.name, 'Unknown'), COUNT(*) as count
+                FROM mcp_requests r
+                LEFT JOIN mcp_servers s ON s.id = r.mcp_server_id
+                WHERE r.timestamp >= ?
+                GROUP BY s.name
+                ORDER BY count DESC
+                """,
+                (cutoff,),
+            )
+            by_server = {row[0]: row[1] for row in cursor.fetchall()}
+
         return {
             "total_requests": total_requests,
             "successful_requests": successful_requests,
@@ -455,6 +469,7 @@ def get_mcp_request_stats(db_path: str, last_hours: int = 24) -> Dict[str, Any]:
             ),
             "avg_response_time_ms": round(avg_response_time, 2) if avg_response_time else 0,
             "top_tools": top_tools,
+            "by_server": by_server,
             "time_window_hours": last_hours,
         }
 
@@ -469,6 +484,7 @@ def get_mcp_request_stats(db_path: str, last_hours: int = 24) -> Dict[str, Any]:
             "success_rate": 0,
             "avg_response_time_ms": 0,
             "top_tools": [],
+            "by_server": {},
             "time_window_hours": last_hours,
         }
 

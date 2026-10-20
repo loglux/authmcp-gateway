@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.73] - 2026-10-20
+
+### Fixed
+- `admin/mcp_activity_api.py::api_mcp_stats` renamed `total_requests` →
+  `requests_24h` and `avg_response_time_ms` → `avg_response_time` for the
+  dashboard (commit `6efb183`, 2026-02-17, admin-routes split), but the MCP
+  Activity page (`mcp_activity.html`) reads the same endpoint and expects
+  the original field names. Since then, "Requests/min" and "Total (Last
+  hour)" on that page always showed 0 regardless of real traffic. The
+  response now includes both the renamed and original keys.
+- Same endpoint only included `top_tools` when called with
+  `include_top_tools=true`; the MCP Activity page's fetch never passed
+  that flag, so "Top Tools (1h)" was always empty there. Its `loadStats()`
+  now requests `include_top_tools=true`.
+- "By Server (1h)" on the MCP Activity page had no backing data at all —
+  `get_mcp_request_stats()` never computed a per-server breakdown.
+  Implemented it (grouped by server name, requests with no matching
+  server bucket under "Unknown") and wired it into `api_mcp_stats`.
+
+### Added
+- `test_get_mcp_request_stats_by_server` and an extra assertion in
+  `test_get_mcp_request_stats` covering the new `by_server` field.
+
 ## [1.2.72] - 2026-10-08
 
 ### Changed
@@ -1219,6 +1242,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improved ChatGPT connector compatibility for OAuth, DCR, and authorization code
   flows.
 
+[1.2.73]: https://github.com/loglux/authmcp-gateway/releases/tag/v1.2.73
 [1.2.72]: https://github.com/loglux/authmcp-gateway/releases/tag/v1.2.72
 [1.2.71]: https://github.com/loglux/authmcp-gateway/releases/tag/v1.2.71
 [1.2.70]: https://github.com/loglux/authmcp-gateway/releases/tag/v1.2.70

@@ -148,6 +148,36 @@ def test_get_mcp_request_stats(db_path):
     assert stats["successful_requests"] == 2
     assert stats["failed_requests"] == 1
     assert stats["success_rate"] == round(2 / 3 * 100, 2)
+    assert stats["by_server"] == {"Unknown": 3}
+
+
+def test_get_mcp_request_stats_by_server(db_path):
+    """by_server groups request counts per backend server name."""
+    _create_tables(db_path)
+    from datetime import datetime, timezone
+
+    now = datetime.now(timezone.utc).isoformat()
+    with get_db(db_path, row_factory=None) as conn:
+        conn.execute("INSERT INTO mcp_servers (id, name) VALUES (1, 'GitHub Tools')")
+        conn.execute("INSERT INTO mcp_servers (id, name) VALUES (2, 'Knowledge Base')")
+        conn.execute(
+            "INSERT INTO mcp_requests (timestamp, mcp_server_id, method, success) "
+            "VALUES (?, 1, 'tools/call', 1)",
+            (now,),
+        )
+        conn.execute(
+            "INSERT INTO mcp_requests (timestamp, mcp_server_id, method, success) "
+            "VALUES (?, 2, 'tools/call', 1)",
+            (now,),
+        )
+        conn.execute(
+            "INSERT INTO mcp_requests (timestamp, mcp_server_id, method, success) "
+            "VALUES (?, 2, 'tools/call', 1)",
+            (now,),
+        )
+
+    stats = get_mcp_request_stats(db_path, last_hours=1)
+    assert stats["by_server"] == {"GitHub Tools": 1, "Knowledge Base": 2}
 
 
 def test_cleanup_archives(db_path, tmp_path, monkeypatch):

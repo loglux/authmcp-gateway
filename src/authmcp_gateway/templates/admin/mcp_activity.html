@@ -360,7 +360,7 @@ function mcpActivity() {
 
         async loadStats() {
             try {
-                const response = await fetch('/admin/api/mcp-stats?last_hours=1');
+                const response = await fetch('/admin/api/mcp-stats?last_hours=1&include_top_tools=true');
                 const data = await response.json();
                 this.stats = data;
                 
