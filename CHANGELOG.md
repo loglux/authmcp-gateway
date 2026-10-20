@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.74] - 2026-10-20
+
+### Fixed
+- `security/mcp_auditor.py::test_valid_token` had its branch order swapped:
+  a plain `status == 200` check came before the JSON-RPC-error check, so
+  the error-check branch was unreachable. A provided bearer token that got
+  a JSON-RPC-level error back in a 200 response was reported as "✅ Token
+  works" instead of surfacing the actual error. Found while reviewing the
+  MCP Security Audit feature; all other tests in the same file already had
+  the correct order.
+- `scripts/test_mcp_security.py` and `scripts/test_mcp_security.sh` (the
+  standalone CLI/bash security-testing tools, intentionally independent of
+  the `authmcp-gateway` package so they can run against any MCP server
+  without installing it) still hardcoded the stale MCP protocol revision
+  `2024-11-05` in their `initialize` test, left behind when `mcp_auditor.py`
+  picked up the shared `MCP_PROTOCOL_VERSION` constant in 1.2.72. Updated
+  both to the current revision `2025-03-26`.
+
+### Added
+- `scripts/test_mcp_security.py --json FILE` now actually exists. It was
+  documented in `docs/internal/Security-Testing.md` (including a GitHub
+  Actions example) but was never implemented.
+
 ## [1.2.73] - 2026-10-20
 
 ### Fixed

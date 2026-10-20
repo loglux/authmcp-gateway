@@ -184,7 +184,14 @@ class MCPSecurityAuditor:
         headers = {"Authorization": f"Bearer {self.bearer_token}"}
         status, data = self.mcp_request("tools/list", headers=headers)
 
-        if status == 200:
+        if status == 200 and self._jsonrpc_error_message(data):
+            result = {
+                "status": "warn",
+                "name": test_name,
+                "message": self._jsonrpc_error_message(data),
+                "details": data,
+            }
+        elif status == 200:
             tools_count = 0
             if data and "result" in data:
                 tools = data.get("result", {}).get("tools", [])
@@ -193,13 +200,6 @@ class MCPSecurityAuditor:
                 "status": "pass",
                 "name": test_name,
                 "message": f"✅ Token works - {tools_count} tools accessible",
-                "details": data,
-            }
-        elif status == 200 and self._jsonrpc_error_message(data):
-            result = {
-                "status": "warn",
-                "name": test_name,
-                "message": self._jsonrpc_error_message(data),
                 "details": data,
             }
         elif status == 401 or status == 403:

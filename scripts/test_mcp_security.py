@@ -11,9 +11,12 @@ Tests MCP servers for common security issues:
 Usage:
     python test_mcp_security.py http://localhost:8000/mcp
     python test_mcp_security.py https://mcp.example.com/mcp --bearer TOKEN
+    python test_mcp_security.py http://localhost:8000/mcp --json results.json
 """
 
 import argparse
+import datetime
+import json
 import sys
 from typing import Any, Dict, Optional
 
@@ -43,7 +46,8 @@ class MCPSecurityTester:
     def __init__(self, url: str, bearer_token: Optional[str] = None):
         self.url = url
         self.bearer_token = bearer_token
-        self.results = []
+        self.results: list[Dict[str, str]] = []
+        self.current_test = ""
 
     def print_header(self, text: str):
         """Print section header"""
@@ -53,22 +57,28 @@ class MCPSecurityTester:
 
     def print_test(self, name: str):
         """Print test name"""
+        self.current_test = name
         print(f"{Colors.BOLD}🔍 Test: {name}{Colors.END}")
 
     def print_pass(self, message: str):
         """Print success message"""
         print(f"  {Colors.GREEN}✅ PASS:{Colors.END} {message}")
-        self.results.append(("PASS", message))
+        self.results.append({"status": "pass", "name": self.current_test, "message": message})
 
     def print_fail(self, message: str):
         """Print failure message"""
         print(f"  {Colors.RED}❌ FAIL:{Colors.END} {message}")
-        self.results.append(("FAIL", message))
+        self.results.append({"status": "fail", "name": self.current_test, "message": message})
 
     def print_warn(self, message: str):
         """Print warning message"""
         print(f"  {Colors.YELLOW}⚠️  WARN:{Colors.END} {message}")
-        self.results.append(("WARN", message))
+        self.results.append({"status": "warn", "name": self.current_test, "message": message})
+
+    def print_skip(self, message: str):
+        """Print skipped-test message"""
+        print(f"  ⊘ SKIP: {message}")
+        self.results.append({"status": "skip", "name": self.current_test, "message": message})
 
     def print_info(self, message: str):
         """Print info message"""
@@ -149,8 +159,8 @@ class MCPSecurityTester:
     def test_valid_token(self):
         """Test 3: Test with valid bearer token (if provided)"""
         if not self.bearer_token:
-            self.print_test("Valid Token Access (SKIPPED - no token provided)")
-            self.print_info("Use --bearer TOKEN to test with valid token")
+            self.print_test("Valid Token Access")
+            self.print_skip("No token provided - use --bearer TOKEN to test with valid token")
             return
 
         self.print_test("Valid Token Access")
@@ -194,7 +204,12 @@ class MCPSecurityTester:
         status, data = self.mcp_request(
             "initialize",
             params={
-                "protocolVersion": "2024-11-05",
+                # Current MCP Streamable HTTP spec revision. The target server
+                # is arbitrary (this script audits any MCP endpoint, not just
+                # our own gateway), and this test only checks whether
+                # initialize requires auth, not protocol negotiation -- the
+                # exact value here doesn't affect the test's outcome.
+                "protocolVersion": "2025-03-26",
                 "clientInfo": {"name": "test", "version": "1.0"},
             },
         )
@@ -238,30 +253,59 @@ class MCPSecurityTester:
         else:
             self.print_info("Could not analyze error responses")
 
+    def summary(self) -> Dict[str, Any]:
+        """Compute summary counts from recorded results (skips excluded from total)"""
+        skipped = sum(1 for r in self.results if r["status"] == "skip")
+        passed = sum(1 for r in self.results if r["status"] == "pass")
+        failed = sum(1 for r in self.results if r["status"] == "fail")
+        warned = sum(1 for r in self.results if r["status"] == "warn")
+        total = len(self.results) - skipped
+
+        return {
+            "total": total,
+            "passed": passed,
+            "failed": failed,
+            "warned": warned,
+            "skipped": skipped,
+            "severity": "critical" if failed > 0 else ("warning" if warned > 0 else "success"),
+        }
+
     def print_summary(self):
         """Print test summary"""
         self.print_header("SUMMARY")
 
-        total = len(self.results)
-        passed = sum(1 for r in self.results if r[0] == "PASS")
-        failed = sum(1 for r in self.results if r[0] == "FAIL")
-        warned = sum(1 for r in self.results if r[0] == "WARN")
+        summary = self.summary()
 
-        print(f"Total Tests: {total}")
-        print(f"{Colors.GREEN}Passed: {passed}{Colors.END}")
-        print(f"{Colors.RED}Failed: {failed}{Colors.END}")
-        print(f"{Colors.YELLOW}Warnings: {warned}{Colors.END}\n")
+        print(f"Total Tests: {summary['total']}")
+        print(f"{Colors.GREEN}Passed: {summary['passed']}{Colors.END}")
+        print(f"{Colors.RED}Failed: {summary['failed']}{Colors.END}")
+        print(f"{Colors.YELLOW}Warnings: {summary['warned']}{Colors.END}\n")
 
-        if failed > 0:
+        if summary["failed"] > 0:
             print(f"{Colors.RED}{Colors.BOLD}⚠️  SECURITY ISSUES DETECTED!{Colors.END}")
             print(f"{Colors.RED}Review failed tests above and fix issues.{Colors.END}\n")
             return 1
-        elif warned > 0:
+        elif summary["warned"] > 0:
             print(f"{Colors.YELLOW}⚠️  Some warnings detected. Review recommended.{Colors.END}\n")
             return 0
         else:
             print(f"{Colors.GREEN}✅ All tests passed! Server appears secure.{Colors.END}\n")
             return 0
+
+    def export_json(self) -> Dict[str, Any]:
+        """Export recorded results as JSON, matching the admin panel's audit export shape"""
+        return {
+            "metadata": {
+                "tool": "AuthMCP Gateway - MCP Security Audit (CLI)",
+                "timestamp": datetime.datetime.now(datetime.timezone.utc)
+                .isoformat()
+                .replace("+00:00", "Z"),
+                "tested_url": self.url,
+                "has_token": bool(self.bearer_token),
+            },
+            "summary": self.summary(),
+            "tests": self.results,
+        }
 
     def test_specific_server_endpoint(self):
         """Test 7: Check if named server endpoints require auth"""
@@ -333,6 +377,8 @@ Examples:
         "--bearer", "-b", help="Bearer token for authenticated tests", metavar="TOKEN"
     )
 
+    parser.add_argument("--json", help="Export results as JSON to this file", metavar="FILE")
+
     args = parser.parse_args()
 
     # Validate URL
@@ -343,6 +389,11 @@ Examples:
     # Run tests
     tester = MCPSecurityTester(args.url, args.bearer)
     exit_code = tester.run_all_tests()
+
+    if args.json:
+        with open(args.json, "w", encoding="utf-8") as f:
+            json.dump(tester.export_json(), f, ensure_ascii=False, indent=2)
+        print(f"{Colors.CYAN}Results exported to {args.json}{Colors.END}")
 
     sys.exit(exit_code)
 
